@@ -1,0 +1,82 @@
+{
+    "name": "gym-management-system",
+    "version": "1.0.0",
+    "description": "Professional Gym Management System",
+    "main": "electron/main.js",
+    "author": {
+        "name": "Omar Habib Software",
+        "email": "contact@omarhabib.software"
+    },
+    "scripts": {
+        "start": "electron .",
+        "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && electron .\"",
+        "dev:backend": "cd backend && npm run dev",
+        "dev:frontend": "cd frontend && npm run dev",
+        "build": "npm run build:frontend && npm run build:electron",
+        "build:frontend": "cd frontend && npm run build",
+        "build:electron": "electron-builder --win",
+        "postinstall": "electron-builder install-app-deps"
+    },
+    "dependencies": {
+        "electron-updater": "^6.1.7"
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2",
+        "electron": "^28.1.0",
+        "electron-builder": "^24.9.1",
+        "wait-on": "^7.2.0"
+    },
+    "build": {
+        "appId": "com.omarhabib.gymmanagement",
+        "productName": "Gym Management System",
+        "copyright": "Copyright © 2024 Omar Habib Software",
+        "directories": {
+            "output": "dist",
+            "buildResources": "electron/assets"
+        },
+        "files": [
+            "electron/**/*",
+            "frontend/dist/**/*",
+            "backend/**/*",
+            "!backend/node_modules",
+            "!**/node_modules/.cache"
+        ],
+        "extraResources": [
+            {
+                "from": "backend",
+                "to": "backend",
+                "filter": [
+                    "**/*",
+                    "!node_modules/**"
+                ]
+            }
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "electron/assets/icon.ico",
+            "artifactName": "${productName}-Setup-${version}.${ext}"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "Gym Management",
+            "installerIcon": "electron/assets/icon.ico",
+            "uninstallerIcon": "electron/assets/icon.ico",
+            "installerHeaderIcon": "electron/assets/icon.ico",
+            "license": "LICENSE.txt"
+        },
+        "publish": {
+            "provider": "generic",
+            "url": "https://updates.omarhabib.software/gym-management"
+        }
+    }
+}

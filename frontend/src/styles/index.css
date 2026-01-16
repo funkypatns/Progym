@@ -1,0 +1,383 @@
+/**
+ * ============================================
+ * GLOBAL STYLES
+ * ============================================
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+@layer base {
+  :root {
+    /* Brand Colors (Dynamic) */
+    --primary-50: 239 246 255;
+    --primary-100: 219 234 254;
+    --primary-200: 191 219 254;
+    --primary-300: 147 197 253;
+    --primary-400: 96 165 250;
+    --primary-500: 59 130 246;
+    --primary-600: 37 99 235;
+    --primary-700: 29 78 216;
+    --primary-800: 30 64 175;
+    --primary-900: 30 58 138;
+    --primary-950: 23 37 84;
+  }
+
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+
+  /* Default to light mode (High Contrast) */
+  html {
+    @apply bg-gray-100 text-slate-900 dark:bg-dark-950 dark:text-dark-100;
+  }
+
+  body {
+    @apply font-sans antialiased;
+  }
+
+  /* Key Fix: Light Mode Text Visibility */
+  .text-default {
+    @apply text-slate-900 dark:text-white;
+  }
+
+  .text-muted {
+    @apply text-slate-600 dark:text-dark-400;
+  }
+
+  /* RTL support for Arabic */
+  html[dir="rtl"] {
+    @apply font-arabic;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-dark-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-dark-500;
+  }
+
+  /* Focus styles - Exclude MUI components which have their own focus handling */
+  *:focus {
+    @apply outline-none;
+  }
+
+  /* Only apply Tailwind focus ring to non-MUI elements */
+  *:focus-visible:not([class*="Mui"]):not([class*="css-"]) {
+    @apply ring-2 ring-primary-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
+  }
+
+  /* Remove duplicate focus styles from MUI inputs - they have their own box-shadow */
+  .MuiOutlinedInput-root:focus-within {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Single subtle focus ring for inputs via MUI theme */
+  .MuiInputBase-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
+}
+
+/* ============================================
+   COMPONENT STYLES
+   ============================================ */
+
+@layer components {
+
+  /* Card styles - Enhanced light mode */
+  .card {
+    @apply bg-white dark:bg-dark-800/50 backdrop-blur-sm border border-gray-200 dark:border-dark-700 rounded-2xl p-6 shadow-md dark:shadow-none;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-300 hover:border-primary-500/50 hover:shadow-lg dark:hover:shadow-glow;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-white/80 dark:bg-dark-800/30 backdrop-blur-md border border-gray-200/80 dark:border-dark-700/50;
+  }
+
+  /* Button base */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-lg shadow-primary-500/30;
+  }
+
+  .btn-secondary {
+    @apply btn bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-dark-100 hover:bg-gray-200 dark:hover:bg-dark-600 border-2 border-gray-300 dark:border-dark-600 font-semibold;
+  }
+
+  .btn-success {
+    @apply btn bg-accent-600 text-white hover:bg-accent-700 shadow-lg shadow-accent-500/30;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-500/30;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-gray-700 dark:text-dark-300 hover:bg-gray-100 dark:hover:bg-dark-800 hover:text-gray-900 dark:hover:text-dark-100;
+  }
+
+  .btn-icon {
+    @apply p-2.5 rounded-xl transition-colors text-gray-600 dark:text-dark-400 hover:bg-gray-100 dark:hover:bg-dark-800;
+  }
+
+  /* Input styles - Enhanced light mode visibility */
+  .input {
+    @apply w-full px-4 py-3 bg-white dark:bg-dark-800 border-2 border-gray-300 dark:border-dark-600 rounded-xl text-gray-900 dark:text-dark-100 placeholder-gray-500 dark:placeholder-dark-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors shadow-sm;
+  }
+
+  .input-error {
+    @apply input border-red-500 focus:border-red-500 focus:ring-red-500/20 bg-red-50 dark:bg-red-900/10;
+  }
+
+  .label {
+    @apply block text-sm font-semibold text-gray-700 dark:text-dark-300 mb-2;
+  }
+
+  /* Select dropdown - Light mode fix */
+  select.input {
+    @apply text-gray-900 dark:text-dark-100;
+  }
+
+  select.input option {
+    @apply bg-white dark:bg-dark-800 text-gray-900 dark:text-dark-100;
+  }
+
+  /* Badge styles - Enhanced contrast */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold;
+  }
+
+  .badge-success {
+    @apply badge bg-green-100 dark:bg-accent-500/20 text-green-700 dark:text-accent-400 border border-green-200 dark:border-transparent;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-100 dark:bg-yellow-500/20 text-amber-700 dark:text-yellow-400 border border-amber-200 dark:border-transparent;
+  }
+
+  .badge-danger {
+    @apply badge bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-transparent;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-100 dark:bg-primary-500/20 text-blue-700 dark:text-primary-400 border border-blue-200 dark:border-transparent;
+  }
+
+  .badge-neutral {
+    @apply badge bg-gray-200 dark:bg-dark-600 text-gray-700 dark:text-dark-300 border border-gray-300 dark:border-transparent;
+  }
+
+  /* Table styles - Enhanced light mode */
+  .table-container {
+    @apply overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700 bg-white dark:bg-transparent shadow-sm;
+  }
+
+  .table {
+    @apply w-full text-sm;
+  }
+
+  .table th {
+    @apply px-4 py-3 text-start text-gray-600 dark:text-dark-400 font-bold uppercase text-xs tracking-wider bg-gray-100 dark:bg-dark-800/50 border-b-2 border-gray-200 dark:border-dark-700;
+  }
+
+  .table td {
+    @apply px-4 py-3.5 border-b border-gray-100 dark:border-dark-700/50 text-gray-800 dark:text-dark-200 text-start;
+  }
+
+  .table tr:hover td {
+    @apply bg-gray-50 dark:bg-dark-800/30;
+  }
+
+  /* Sidebar styles - Enhanced light mode */
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 dark:text-dark-400 hover:text-gray-900 dark:hover:text-dark-100 hover:bg-gray-100 dark:hover:bg-dark-800 transition-colors font-medium;
+  }
+
+  .sidebar-item.active {
+    @apply bg-primary-100 dark:bg-primary-600/20 text-primary-700 dark:text-primary-400 font-semibold;
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply card-hover relative overflow-hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    @apply absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary-500 to-accent-500;
+  }
+
+  /* Loading skeleton */
+  .skeleton {
+    @apply bg-gray-300 dark:bg-dark-700 animate-pulse rounded;
+  }
+
+  /* Avatar - Enhanced light mode */
+  .avatar {
+    @apply w-10 h-10 rounded-full bg-gray-200 dark:bg-dark-700 flex items-center justify-center text-gray-600 dark:text-dark-400 overflow-hidden border-2 border-gray-300 dark:border-transparent font-semibold;
+  }
+
+  .avatar img {
+    @apply w-full h-full object-cover;
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 bg-gray-900/60 dark:bg-dark-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+  }
+
+  .modal-content {
+    @apply bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-700 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-auto shadow-2xl;
+  }
+
+  /* Dropdown / Select - Light mode enhancement */
+  .dropdown-menu {
+    @apply bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-700 rounded-xl shadow-xl;
+  }
+
+  .dropdown-item {
+    @apply px-4 py-2.5 text-gray-700 dark:text-dark-200 hover:bg-gray-100 dark:hover:bg-dark-700 cursor-pointer transition-colors;
+  }
+
+  /* Light mode icon visibility */
+  .icon-muted {
+    @apply text-gray-500 dark:text-dark-400;
+  }
+
+  /* Light mode heading styles */
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-gray-900 dark:text-white;
+  }
+
+  /* Ensure paragraph text is readable */
+  p {
+    @apply text-gray-700 dark:text-dark-300;
+  }
+}
+
+/* ============================================
+   UTILITY STYLES
+   ============================================ */
+
+@layer utilities {
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-accent-400;
+  }
+
+  /* Glow effect */
+  .glow {
+    filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.5));
+  }
+
+  /* Hide scrollbar */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Smooth transitions */
+  .transition-smooth {
+    @apply transition-all duration-300 ease-out;
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+/* Page transition */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Pulse ring animation */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: pulse-ring 1.5s ease-out infinite;
+  border: 2px solid currentColor;
+}
+
+/* Number counter animation */
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.count-up {
+  animation: countUp 0.5s ease-out forwards;
+}
+
+/* Success checkmark animation */
+@keyframes checkmark {
+  0% {
+    stroke-dashoffset: 100;
+  }
+
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-checkmark {
+  animation: checkmark 0.5s ease-out forwards;
+}

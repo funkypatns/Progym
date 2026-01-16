@@ -1,0 +1,556 @@
+// ============================================
+// DATABASE SCHEMA - Gym Management System
+// ============================================
+// 
+// This Prisma schema defines all database tables and relationships
+// Using SQLite for local, offline-first operation
+//
+// To generate client: npx prisma generate
+// To migrate: npx prisma migrate dev
+// To seed: npm run seed
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+/// System users (admin, staff)
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  email     String?  @unique
+  password  String   // Hashed with bcrypt
+  firstName String
+  lastName  String
+  role      String   @default("staff") // admin, staff
+  permissions String? // JSON array of permission strings for granular RBAC
+  avatar    String?  // Profile photo path
+  isActive  Boolean  @default(true)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  canceledSubscriptions Subscription[] @relation("CanceledSubscriptions")
+
+  // Relations
+  activities ActivityLog[]
+  openedShifts POSShift[] @relation("ShiftOpener")
+  closedShifts POSShift[] @relation("ShiftCloser")
+  payments     Payment[]  @relation("PaymentCreator")
+  
+  // Closing & Audit Relations
+  closings        CashClosing[] @relation("EmployeeClosings")
+  createdClosings CashClosing[] @relation("CreatedClosings")
+  audits          AuditLog[]    @relation("AuditActions")
+  refunds         Refund[]
+  staffNotifications StaffNotification[]
+  cashClosingAdjustments CashClosingAdjustment[]
+  cashMovements CashMovement[]
+  
+  // Sales & Inventory
+  stockMovements StockMovement[]
+  sales         SaleTransaction[]
+}
+
+/// Activity log for audit trail
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  action      String   // LOGIN, LOGOUT, CREATE_MEMBER, etc.
+  entityType  String?  // Member, Subscription, Payment, etc.
+  entityId    Int?
+  details     String?  // JSON string with additional details
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ============================================
+// MEMBER MANAGEMENT
+// ============================================
+
+/// Gym members
+model Member {
+  id           Int      @id @default(autoincrement())
+  memberId     String   @unique // Custom member ID (e.g., GYM-001)
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String
+  address      String?
+  dateOfBirth  DateTime?
+  gender       String?  // male, female, other
+  photo        String?  // Photo file path
+  qrCode       String?  // QR code data/path
+  faceEncoding Bytes?   // Face recognition encoding (binary)
+  
+  // Emergency contact
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  
+  // Membership status
+  isActive     Boolean  @default(true)
+  notes        String?
+  lastRenewalDate DateTime?
+  
+  // Timestamps
+  joinDate     DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  subscriptions Subscription[]
+  checkIns      CheckIn[]
+  payments      Payment[]
+  reminders     Reminder[]
+
+  @@index([gender])
+}
+
+// ============================================
+// SUBSCRIPTION MANAGEMENT
+// ============================================
+
+/// Subscription plans available
+model SubscriptionPlan {
+  id          Int      @id @default(autoincrement())
+  name        String   // Basic, Premium, VIP
+  nameAr      String?  // Arabic name
+  duration    Int      // Duration in days
+  durationType String  @default("days") // days, months, years
+  price       Float
+  description String?
+  descriptionAr String?
+  features    String?  // JSON array of features
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  subscriptions Subscription[]
+}
+
+/// Member subscriptions
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  memberId  Int
+  planId    Int
+  startDate DateTime
+  endDate   DateTime
+  status    String   @default("active") // active, expired, cancelled, frozen
+  
+  // Freeze functionality
+  frozenAt    DateTime?
+  frozenUntil DateTime?
+  frozenDays  Int?
+  
+  // Pricing at time of purchase (may differ from plan)
+  price       Float?   // Snapshot of plan price
+  paidAmount  Float?
+  usedNonRefundableAmount Float @default(0) // Amount consumed by usage (non-refundable)
+  discount    Float    @default(0)
+  
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Cancellation tracking
+  canceledAt    DateTime?
+  canceledById  Int?
+  canceledBy    User?     @relation("CanceledSubscriptions", fields: [canceledById], references: [id])
+  cancelReason  String?
+  cancelSource  String?   // manual, auto_refund
+  
+  // Alerts
+  alertAcknowledged Boolean   @default(false)
+  alertAcknowledgedAt DateTime?
+  alertAcknowledgedBy Int?
+
+  // Relations
+  member   Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  plan     SubscriptionPlan @relation(fields: [planId], references: [id])
+  payments Payment[]
+  reminders Reminder[]
+}
+
+// ============================================
+// CHECK-IN SYSTEM
+// ============================================
+
+/// Member check-ins
+model CheckIn {
+  id           Int       @id @default(autoincrement())
+  memberId     Int
+  checkInTime  DateTime  @default(now())
+  checkOutTime DateTime?
+  method       String    @default("manual") // manual, qr, face
+  
+  // Additional info
+  notes        String?
+  createdAt    DateTime  @default(now())
+
+  // Relations
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// PAYMENTS & ACCOUNTING
+// ============================================
+
+/// Payment records
+model Payment {
+  id             Int      @id @default(autoincrement())
+  memberId       Int
+  subscriptionId Int?
+  amount         Float
+  method         String   @default("cash") // cash, card, transfer
+  status         String   @default("completed") // pending, completed, refunded
+  
+  // Receipt info
+  receiptNumber  String   @unique
+  notes          String?
+  
+  // Card/Visa transaction reference
+  transactionRef String?  @map("transaction_ref") // Deprecated, use externalReference
+  externalReference String? // POS/Bank transaction reference (uniqueness enforced at app level)
+  
+  // Card Payment Verification (Hybrid System)
+  verificationMode  String?  // 'pos_screen' | 'pos_receipt' | 'manual'
+  posAmountVerified Float?   // Amount shown on POS device (for audit)
+  
+  paidAt         DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // POS Info
+  shiftId        Int?
+  createdBy      Int?     // User ID who processed the payment
+  collectorName  String?  // Snapshot of employee name who collected the money
+  refundedTotal  Float    @default(0)
+
+  // Relations
+  member       Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  shift        POSShift?     @relation(fields: [shiftId], references: [id])
+  creator      User?         @relation("PaymentCreator", fields: [createdBy], references: [id])
+  refunds      Refund[]
+  
+  @@index([transactionRef])
+}
+
+
+/// Expense tracking
+model Expense {
+  id          Int      @id @default(autoincrement())
+  category    String   // rent, utilities, equipment, salaries, etc.
+  amount      Float
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+
+/// Application settings (key-value store)
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   // Can store JSON for complex values
+  type      String   @default("string") // string, number, boolean, json
+  group     String   @default("general") // general, branding, pricing, etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+/// System notifications
+model Notification {
+  id        Int      @id @default(autoincrement())
+  type      String   // subscription_expiry, payment_due, etc.
+  title     String
+  message   String
+  targetId  Int?     // Related entity ID
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+}
+
+// ============================================
+// POS & SHIFT MANAGEMENT
+// ============================================
+
+/// POS Machine (Terminal)
+model POSMachine {
+  id        Int      @id @default(autoincrement())
+  name      String
+  machineKey String  @unique // Hash of hardware ID
+  status    String   @default("active") // active, inactive
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shifts    POSShift[]
+}
+
+/// Work Shift
+model POSShift {
+  id          Int      @id @default(autoincrement())
+  machineId   Int
+  openedBy    Int      // User ID
+  closedBy    Int?     // User ID
+  
+  openedAt    DateTime @default(now())
+  closedAt    DateTime?
+  
+  openingCash      Float
+  closingCash      Float? // Counted by cashier
+  expectedCash     Float? // Calculated system total
+  cashDifference   Float? // closing - expected
+  
+  status      String   @default("open") // open, closed
+  activityType String  @default("NORMAL") // NORMAL, NO_ACTIVITY
+  notes       String?  // Auto-generated or manual notes
+  
+  // Relations
+  machine     POSMachine @relation(fields: [machineId], references: [id])
+  opener      User       @relation("ShiftOpener", fields: [openedBy], references: [id])
+  closer      User?      @relation("ShiftCloser", fields: [closedBy], references: [id])
+  payments    Payment[]
+  refunds     Refund[]
+  cashMovements CashMovement[]
+  
+  // Sales & Inventory
+  stockMovements StockMovement[]
+  sales          SaleTransaction[]
+}
+
+/// Cash Movements (Pay In / Pay Out)
+model CashMovement {
+  id          Int      @id @default(autoincrement())
+  type        String   // IN, OUT
+  amount      Float
+  reason      String
+  notes       String?
+  shiftId     Int
+  employeeId  Int
+  createdAt   DateTime @default(now())
+  
+  shift       POSShift @relation(fields: [shiftId], references: [id])
+  employee    User     @relation(fields: [employeeId], references: [id])
+}
+
+// ============================================
+// CASH CLOSING & AUDIT
+// ============================================
+
+/// Cash Closing (Reconciliation) Records
+model CashClosing {
+  id                    Int      @id @default(autoincrement())
+  employeeId            Int?     // Optional: filtering by employee
+  employeeName          String?  // Snapshot name
+  
+  periodType            String   // daily, monthly, custom
+  startAt               DateTime
+  endAt                 DateTime
+  
+  // Snapshots (Expected)
+  expectedCashAmount    Float    @default(0)
+  expectedNonCashAmount Float    @default(0)
+  expectedTotalAmount   Float    @default(0)
+  
+  // Declared (Input)
+  declaredCashAmount    Float    @default(0)
+  declaredNonCashAmount Float    @default(0)
+  declaredTotalAmount   Float    @default(0)
+  
+  // Difference
+  differenceCash        Float    @default(0)
+  differenceNonCash     Float    @default(0)
+  differenceTotal       Float    @default(0)
+  
+  status                String   // shortage, overage, balanced
+  notes                 String?
+  
+  createdBy             Int
+  createdAt             DateTime @default(now())
+
+  // Relations
+  employee  User? @relation("EmployeeClosings", fields: [employeeId], references: [id])
+  creator   User  @relation("CreatedClosings", fields: [createdBy], references: [id])
+  adjustments CashClosingAdjustment[]
+}
+
+/// Post-closing manual adjustments
+model CashClosingAdjustment {
+  id          Int      @id @default(autoincrement())
+  closingId   Int
+  type        String   // ADD, SUBTRACT
+  amount      Float
+  reason      String
+  createdBy   Int
+  createdAt   DateTime @default(now())
+
+  closing     CashClosing @relation(fields: [closingId], references: [id])
+  creator     User        @relation(fields: [createdBy], references: [id])
+}
+
+/// System Audit Logs
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  action      String   // e.g., CASH_CLOSING_CREATED
+  entityType  String   // e.g., CashClosing
+  entityId    String?  // Store as string to support mixed ID types if needed
+  performedBy Int
+  timestamp   DateTime @default(now())
+  metadata    String?  // JSON string
+  
+  user        User     @relation("AuditActions", fields: [performedBy], references: [id])
+}
+
+/// Refund Records
+model Refund {
+  id          Int      @id @default(autoincrement())
+  paymentId   Int
+  amount      Float
+  reason      String?
+  shiftId     Int
+  createdBy   Int
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  payment     Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  shift       POSShift  @relation(fields: [shiftId], references: [id])
+  user        User      @relation(fields: [createdBy], references: [id])
+}
+
+// ============================================
+// PAYMENT REMINDERS & STAFF NOTIFICATIONS
+// ============================================
+
+/// Payment reminders for members with outstanding balances
+model Reminder {
+  id             Int       @id @default(autoincrement())
+  memberId       Int
+  subscriptionId Int?
+  type           String    // DUE_SOON, OVERDUE, END_OF_MONTH, INSTALLMENT
+  channel        String    @default("IN_APP") // SMS, WHATSAPP, EMAIL, IN_APP
+  scheduledAt    DateTime
+  sentAt         DateTime?
+  status         String    @default("PENDING") // PENDING, SENT, FAILED, CANCELLED
+  message        String?   // Generated message content
+  retryCount     Int       @default(0)
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  // Relations
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  notifications  StaffNotification[]
+  
+  @@index([memberId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+/// Staff notifications for payment alerts
+model StaffNotification {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  reminderId  Int?
+  type        String    // PAYMENT_DUE, PAYMENT_OVERDUE, SYSTEM
+  title       String
+  message     String
+  priority    String    @default("NORMAL") // LOW, NORMAL, HIGH
+  seenAt      DateTime?
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder    Reminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+  
+  @@index([userId, seenAt])
+}
+
+// ============================================
+// SALES & INVENTORY
+// ============================================
+
+/// Products for sale
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  salePrice   Float
+  imageUrl    String?
+  sku         String?  @unique // Barcode/SKU
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+}
+
+/// Inventory Audit Log
+model StockMovement {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  type        String   // IN, OUT, ADJUST
+  quantity    Int      // Absolute value
+  unitCost    Float?   // Optional: Cost price for IN movements
+  reason      String?  // Required for ADJUST
+  notes       String?
+  
+  shiftId     Int?     // Optional: inventory changes might happen during a shift
+  employeeId  Int      // Who performed the action
+  createdAt   DateTime @default(now())
+
+  product     Product  @relation(fields: [productId], references: [id])
+  employee    User     @relation(fields: [employeeId], references: [id])
+  shift       POSShift? @relation(fields: [shiftId], references: [id])
+}
+
+/// Point of Sale Transaction
+model SaleTransaction {
+  id            Int      @id @default(autoincrement())
+  shiftId       Int      // Must be linked to an open shift
+  employeeId    Int      // Cashier
+  paymentMethod String   // cash, card, transfer
+  totalAmount   Float
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  shift     POSShift   @relation(fields: [shiftId], references: [id])
+  employee  User       @relation(fields: [employeeId], references: [id])
+  items     SaleItem[]
+}
+
+/// Line items for a sale
+model SaleItem {
+  id                Int      @id @default(autoincrement())
+  saleTransactionId Int
+  productId         Int
+  quantity          Int
+  unitPrice         Float    // Price at time of sale (snapshot)
+  lineTotal         Float
+  
+  transaction SaleTransaction @relation(fields: [saleTransactionId], references: [id], onDelete: Cascade)
+  product     Product         @relation(fields: [productId], references: [id])
+}

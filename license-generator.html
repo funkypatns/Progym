@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Management System - License Generator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background-color: #1e293b;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid #334155;
+        }
+
+        h1 {
+            color: #38bdf8;
+            margin-top: 0;
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #94a3b8;
+        }
+
+        select,
+        button,
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #475569;
+            background-color: #0f172a;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.2s;
+            box-sizing: border-box;
+        }
+
+        select:focus,
+        input:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+
+        button {
+            background-color: #38bdf8;
+            color: #0f172a;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+
+        button:hover {
+            background-color: #0ea5e9;
+        }
+
+        .result {
+            margin-top: 2rem;
+            padding: 1rem;
+            background-color: #0f172a;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+        }
+
+        .key-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.25rem;
+            color: #4ade80;
+            word-break: break-all;
+            text-align: center;
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            border: 1px dashed #475569;
+            border-radius: 0.25rem;
+            letter-spacing: 1px;
+        }
+
+        .copy-btn {
+            background-color: #334155;
+            color: #e2e8f0;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .copy-btn:hover {
+            background-color: #475569;
+        }
+
+        .note {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>🔑 License Key Generator</h1>
+
+        <div class="form-group">
+            <label for="type">License Type (Duration)</label>
+            <select id="type" onchange="toggleCustomDays()">
+                <option value="MONTH">Monthly (30 Days)</option>
+                <option value="YEAR">Annual (1 Year)</option>
+                <option value="VIP">Lifetime / VIP (99 Years)</option>
+                <option value="CUSTOM">Custom Number of Days</option>
+            </select>
+        </div>
+
+        <div id="customDaysGroup" class="form-group hidden">
+            <label for="days">Enter Number of Days</label>
+            <input type="number" id="days" placeholder="e.g. 7" min="1" max="9999">
+        </div>
+
+        <button onclick="generateKey()">Generate License Key</button>
+
+        <div id="result" class="result">
+            <label>Your License Key:</label>
+            <div id="keyDisplay" class="key-display"></div>
+            <button class="copy-btn" onclick="copyKey()">Copy to Clipboard</button>
+        </div>
+
+        <div class="note">
+            This tool generates valid license keys for the Gym Management System.
+            <br>Use these keys in the Settings > License page.
+            <br>Generating a NEW key will replace the current one.
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:4000/api';
+
+        function toggleCustomDays() {
+            const type = document.getElementById('type').value;
+            const customGroup = document.getElementById('customDaysGroup');
+            if (type === 'CUSTOM') {
+                customGroup.classList.remove('hidden');
+            } else {
+                customGroup.classList.add('hidden');
+            }
+        }
+
+        function generateRandomString(length) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        async function generateLicenseOnServer(type, days) {
+            try {
+                // 1. Login
+                const loginRes = await fetch(`${API_URL}/admin/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: 'LicenseAdmin123!' })
+                });
+
+                if (!loginRes.ok) throw new Error('Admin login failed. Checking server...');
+                const { token } = await loginRes.json();
+
+                // 2. Call Generate Endpoint
+                const generateRes = await fetch(`${API_URL}/admin/licenses/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        type: type,
+                        days: days,
+                        gymName: 'Generated License',
+                        ownerName: 'Local User'
+                    })
+                });
+
+                if (!generateRes.ok) throw new Error('Failed to generate license on server');
+                const result = await generateRes.json();
+                return result.data; // { key, expiresAt, id }
+
+            } catch (error) {
+                console.error(error);
+                return null;
+            }
+        }
+
+        async function generateKey() {
+            const btn = document.querySelector('button[onclick="generateKey()"]');
+            const originalText = btn.textContent;
+            btn.textContent = 'Generating...';
+            btn.disabled = true;
+
+            try {
+                let type = document.getElementById('type').value;
+                let days = 30;
+
+                if (type === 'MONTH') days = 30;
+                if (type === 'YEAR') days = 365;
+                if (type === 'VIP') days = 36500;
+                if (type === 'CUSTOM') {
+                    const daysInput = document.getElementById('days').value;
+                    if (!daysInput || daysInput <= 0) {
+                        alert('Please enter a valid number of days');
+                        btn.textContent = originalText;
+                        btn.disabled = false;
+                        return;
+                    }
+                    days = parseInt(daysInput);
+                }
+
+                // Call Server
+                const licenseData = await generateLicenseOnServer(type, days);
+
+                const resultDiv = document.getElementById('result');
+                const keyDisplay = document.getElementById('keyDisplay');
+                const note = document.querySelector('.note');
+
+                if (licenseData && licenseData.key) {
+                    keyDisplay.textContent = licenseData.key;
+                    keyDisplay.style.color = '#4ade80'; // Green
+                    note.innerHTML = `✅ <b>Success!</b> License generated & registered.<br>Expires: ${new Date(licenseData.expiresAt).toLocaleDateString()}<br>Use in Settings > License.`;
+                } else {
+                    keyDisplay.textContent = "ERROR";
+                    keyDisplay.style.color = '#f87171'; // Red
+                    note.innerHTML = `⚠️ <b>Error:</b> Server generation failed.<br>Ensure License Server is running at port 4000.`;
+                }
+
+                resultDiv.classList.add('show');
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function copyKey() {
+            const key = document.getElementById('keyDisplay').textContent;
+            navigator.clipboard.writeText(key).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+
+</html>
