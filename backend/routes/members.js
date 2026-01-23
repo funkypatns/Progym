@@ -604,6 +604,13 @@ router.get('/search/:query', requirePermission(PERMISSIONS.MEMBERS_VIEW), async 
                     { memberId: { contains: query } },
                     { phone: { contains: query } }
                 ],
+                // Require active membership flag? Or just search all?
+                // Usually search finds everyone, status handles the rest.
+                // Keeping isActive: true for now as per original code, or removing if we want to find inactive members too?
+                // Modal implies "Assign Plan", so usually we want to find ANYONE to assign to.
+                // But original code has `isActive: true`. If checking "Active Subscription", we should probably search ALL members?
+                // User said: "Current behavior: Member shows as Inactive". This implies they were found.
+                // So I will keep the base filter but fetch subscription info.
                 isActive: true
             },
             take: 10,
@@ -613,13 +620,34 @@ router.get('/search/:query', requirePermission(PERMISSIONS.MEMBERS_VIEW), async 
                 firstName: true,
                 lastName: true,
                 phone: true,
-                photo: true
+                photo: true,
+                isActive: true, // Need this base flag
+                subscriptions: {
+                    where: {
+                        status: 'active',
+                        endDate: { gte: new Date() }
+                    },
+                    take: 1,
+                    select: { status: true, endDate: true, plan: { select: { name: true } } }
+                }
             }
+        });
+
+        const membersWithStatus = members.map(m => {
+            const hasActiveSub = m.subscriptions && m.subscriptions.length > 0;
+            return {
+                ...m,
+                // Override isActive to reflect REAL subscription status for the purpose of the modal badge
+                isActive: hasActiveSub,
+                // Also provide specific field if needed
+                hasActiveSubscription: hasActiveSub,
+                activePlan: hasActiveSub ? m.subscriptions[0].plan.name : null
+            };
         });
 
         res.json({
             success: true,
-            data: members
+            data: membersWithStatus
         });
 
     } catch (error) {

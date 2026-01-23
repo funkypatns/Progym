@@ -14,12 +14,19 @@ const { PERMISSIONS } = require('../utils/permissions');
 
 router.use(authenticate);
 
-// All write operations require an active shift
+// All write operations (except checkout) require an active shift
 router.use(['/'], (req, res, next) => {
-    if (req.method !== 'GET') {
-        return requireActiveShift(req, res, next);
+    // GET requests are allowed
+    if (req.method === 'GET') {
+        return next();
     }
-    next();
+
+    // Checkout is allowed without an active shift as it doesn't involve financial transactions
+    if (req.path === '/checkout' && req.method === 'POST') {
+        return next();
+    }
+
+    return requireActiveShift(req, res, next);
 });
 
 /**

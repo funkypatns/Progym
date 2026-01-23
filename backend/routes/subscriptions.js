@@ -41,18 +41,26 @@ function generateReceiptNumber() {
  */
 router.get('/', async (req, res) => {
     try {
-        const { status, memberId, page = 1, limit = 20 } = req.query;
+        const { status, memberId, page = 1, limit = 20, distinctMembers } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const where = {};
         if (status) where.status = status;
         if (memberId) where.memberId = parseInt(memberId);
 
-        const [rawSubscriptions, total] = await Promise.all([
+        let [rawSubscriptions, total] = await Promise.all([
             req.prisma.subscription.findMany({
                 where,
-                skip,
-                take: parseInt(limit),
+                // If filtering by distinct members, we might need to fetch more and filter in memory 
+                // OR use a raw query. For safety/Simplicity now: fetch standard page, but if param is set we need to rethink.
+                // BETTER: If distinctMembers is set, we need to GROUP BY memberId.
+                // Prisma doesn't support easy "Distinct On" with partial select easily in all DBs.
+                // Strategy: If distinctMembers=true, we fetch ALL relevant subs (sorted by date) then dedupe in JS, then paginate.
+                // Warning: This is heavy if there are millions. 
+                // Optimization: Fetch only ID/MemberID first?
+                // For Gym System (< 1000 active): In-memory dedupe of "Latest 1000" is fine.
+                skip: distinctMembers === 'true' ? undefined : skip,
+                take: distinctMembers === 'true' ? undefined : parseInt(limit),
                 orderBy: { createdAt: 'desc' },
                 include: {
                     member: {
@@ -72,6 +80,26 @@ router.get('/', async (req, res) => {
             }),
             req.prisma.subscription.count({ where })
         ]);
+
+        // DEDUPLICATION LOGIC
+        if (distinctMembers === 'true') {
+            const uniqueMap = new Map();
+            rawSubscriptions.forEach(sub => {
+                if (!uniqueMap.has(sub.memberId)) {
+                    uniqueMap.set(sub.memberId, sub);
+                } else {
+                    // We already have one. Since we sorted by createdAt DESC, the first one we saw IS the latest.
+                    // However, we might want to prioritize 'active' over 'expired' if dates are close? 
+                    // No, createdAt DESC is the standard "Latest".
+                }
+            });
+            const uniqueSubs = Array.from(uniqueMap.values());
+
+            // Re-apply pagination manually since we fetched all
+            total = uniqueSubs.length;
+            const start = (parseInt(page) - 1) * parseInt(limit);
+            rawSubscriptions = uniqueSubs.slice(start, start + parseInt(limit));
+        }
 
         // Calculate days remaining and payment status
         const subscriptions = rawSubscriptions.map(sub => {
@@ -143,7 +171,7 @@ router.post('/', [
 
         // 1. RBAC Check (Inline to handle complex AND logic if needed, or strictly enforcement)
         // User needs 'subscriptions.create' AND 'payments.create' if there is a payment
-        if (req.user.role !== 'admin') {
+        if ((req.user.role || '').toLowerCase() !== 'admin') {
             const userPerms = req.user.permissions || [];
             // Check essential permission
             if (!userPerms.includes('subscriptions.create')) {
@@ -175,19 +203,65 @@ router.post('/', [
         if (!member) return res.status(404).json({ success: false, message: 'Member not found' });
 
         let initialPaid = 0;
-        if (paymentStatus === 'paid') initialPaid = plan.price;
-        else if (paymentStatus === 'partial' && paidAmount) initialPaid = parseFloat(paidAmount);
+        // Fix: Prioritize explicit paidAmount if valid, otherwise fallback to plan price for 'paid' status
+        if (paidAmount !== undefined && paidAmount !== null && !isNaN(parseFloat(paidAmount))) {
+            initialPaid = parseFloat(paidAmount);
+        } else if (paymentStatus === 'paid') {
+            initialPaid = plan.price;
+        } else if (paymentStatus === 'partial' && paidAmount) {
+            // Fallback for partial if not caught above
+            initialPaid = parseFloat(paidAmount);
+        }
 
         const numericPaidAmount = initialPaid;
         const numericDiscount = discount ? parseFloat(discount) : 0;
 
         // 4. Create Subscription (Transaction)
         const result = await req.prisma.$transaction(async (prisma) => {
-            // Expire old
-            await prisma.subscription.updateMany({
-                where: { memberId: parseInt(memberId), status: 'active' },
-                data: { status: 'expired' }
+            // Safety: Check if an identical active subscription already exists (Race condition check)
+            const existing = await prisma.subscription.findFirst({
+                where: {
+                    memberId: parseInt(memberId),
+                    planId: parseInt(planId),
+                    status: 'active',
+                    startDate: startDate ? new Date(startDate) : { lte: new Date() },
+                    endDate: { gte: new Date() }
+                }
             });
+
+            if (existing) {
+                // If it exists and was created very recently (e.g. within 5 seconds), 
+                // it's likely a double-post. Return it instead of creating a new one.
+                const fiveSecondsAgo = new Date(Date.now() - 5000);
+                if (existing.createdAt > fiveSecondsAgo) {
+                    console.log(`[SUBS] Duplicate detected for member ${memberId}. Returning existing sub ${existing.id}`);
+                    return existing;
+                }
+            }
+
+            // STRICT RULE: Cannot assign new subscription if one is already active
+            const activeSub = await prisma.subscription.findFirst({
+                where: {
+                    memberId: parseInt(memberId),
+                    status: 'active'
+                },
+                include: { plan: true }
+            });
+
+            if (activeSub) {
+                // Check if it's a race-condition duplicate (created just now) or a legitimate existing one
+                // If it's a race duplicate, we might want to return it (idempotency), 
+                // BUT the requirement says "Return HTTP 409".
+                // To be safe and compliant:
+                const isRace = activeSub.createdAt > new Date(Date.now() - 5000) && activeSub.planId === parseInt(planId);
+
+                if (isRace) {
+                    console.log(`[SUBS] Idempotency: Returning existing sub ${activeSub.id}`);
+                    return activeSub;
+                }
+
+                throw new Error(`CONFLICT: Member already has an active subscription (${activeSub.plan.name}).`);
+            }
 
             const start = startDate ? new Date(startDate) : new Date();
             const end = new Date(start);
@@ -208,45 +282,63 @@ router.post('/', [
                 include: { member: true, plan: true }
             });
 
-            // 5. Create Payment (if applicable)
-            if (numericPaidAmount > 0) {
-                // Detect shift
-                let finalCreatedBy = req.user.id;
-                let finalCollectorName = `${req.user.firstName} ${req.user.lastName}`;
+            // 5. Unified Payment & Invoice Logic
+            // Detect shift & collector info
+            let finalCreatedBy = req.user.id;
+            let finalCollectorName = `${req.user.firstName} ${req.user.lastName}`;
 
-                // Admin override logic
-                if (req.user.role === 'admin' && collectorId) {
-                    finalCreatedBy = parseInt(collectorId);
-                    // fetch collector name if needed, or rely on logic
-                }
+            if ((req.user.role || '').toLowerCase() === 'admin' && collectorId) {
+                finalCreatedBy = parseInt(collectorId);
+                // Try to find collector name if provided in body or just use snapshot
+            }
 
-                let shiftId = null;
-                // Use the shift attached by requireActiveShift middleware if available
-                if (req.activeShift) {
-                    shiftId = req.activeShift.id;
-                } else {
-                    // Fallback manual check
-                    const userShift = await prisma.pOSShift.findFirst({
-                        where: { openedBy: finalCreatedBy, closedAt: null }
-                    });
-                    if (userShift) shiftId = userShift.id;
-                }
+            let shiftId = null;
+            if (req.activeShift) {
+                shiftId = req.activeShift.id;
+            } else {
+                const userShift = await prisma.pOSShift.findFirst({
+                    where: { openedBy: finalCreatedBy, closedAt: null }
+                });
+                if (userShift) shiftId = userShift.id;
+            }
 
+            const fullPrice = plan.price;
+            const paidNow = numericPaidAmount;
+
+            // Step A: Create "Receipt" for money actually received now
+            if (paidNow > 0) {
                 await prisma.payment.create({
                     data: {
                         memberId: sub.memberId,
                         subscriptionId: sub.id,
-                        amount: numericPaidAmount,
+                        amount: paidNow,
                         method: String(method).toLowerCase().trim(),
                         status: 'completed',
                         receiptNumber: generateReceiptNumber(),
-                        notes: `${paymentStatus === 'paid' ? 'Full' : 'Partial'} subscription` + (safeRef ? ` (Ref: ${safeRef})` : '') + (notes ? ` - ${notes}` : ''),
+                        notes: `${paymentStatus === 'paid' ? 'Full' : 'Partial'} subscription payment` + (safeRef ? ` (Ref: ${safeRef})` : '') + (notes ? ` - ${notes}` : ''),
                         shiftId: shiftId,
                         createdBy: finalCreatedBy,
                         collectorName: finalCollectorName,
-                        // Mapped field: transactionRef (schema) <= safeRef
-                        // Use externalReference as preferred field
                         externalReference: safeRef
+                    }
+                });
+            }
+
+            // Step B: Create "Invoice" (Pending Payment) for any remaining balance
+            if (paidNow < fullPrice) {
+                const remaining = fullPrice - paidNow;
+                await prisma.payment.create({
+                    data: {
+                        memberId: sub.memberId,
+                        subscriptionId: sub.id,
+                        amount: remaining,
+                        method: 'other', // Invoice doesn't have a method yet
+                        status: 'pending',
+                        receiptNumber: generateReceiptNumber() + "-INV",
+                        notes: `Remaining balance for ${plan.name} subscription`,
+                        shiftId: shiftId,
+                        createdBy: finalCreatedBy,
+                        collectorName: finalCollectorName
                     }
                 });
             }
@@ -268,6 +360,14 @@ router.post('/', [
 
     } catch (error) {
         console.error('Create subscription error:', error);
+
+        if (error.message && error.message.includes('CONFLICT:')) {
+            return res.status(409).json({
+                success: false,
+                message: error.message.replace('CONFLICT: ', '')
+            });
+        }
+
         // Return 500 only for actual crashes, but validation/logic errors should be handled above
         res.status(500).json({
             success: false,
@@ -299,6 +399,21 @@ router.put('/:id/renew', async (req, res) => {
             });
 
             if (!previousSub) throw new Error('Previous subscription not found');
+
+            // 1.5 Safety: Check if this renewal already happened (Race condition)
+            const existingNewSub = await prisma.subscription.findFirst({
+                where: {
+                    memberId: previousSub.memberId,
+                    planId: parseInt(planId),
+                    status: 'active',
+                    createdAt: { gte: new Date(Date.now() - 5000) } // Created in last 5s
+                }
+            });
+
+            if (existingNewSub) {
+                console.log(`[SUBS] Duplicate renewal detected for member ${previousSub.memberId}. Returning existing.`);
+                return existingNewSub;
+            }
 
 
             // 2. Validate New Plan
@@ -353,39 +468,61 @@ router.put('/:id/renew', async (req, res) => {
                 }
             });
 
-            // 5. Handle Payment for NEW Subscription
-            if (numericPaidAmount > 0) {
-                let finalCreatedBy = req.user.id;
-                let finalCollectorName = `${req.user.firstName} ${req.user.lastName}`;
+            // 5. Unified Payment Logic for Renewal
+            let finalCreatedBy = req.user.id;
+            let finalCollectorName = `${req.user.firstName} ${req.user.lastName}`;
 
-                if (req.user.role === 'admin' && collectorId) {
-                    finalCreatedBy = parseInt(collectorId);
-                    if (collectorName) finalCollectorName = collectorName;
-                }
+            if (req.user.role === 'admin' && collectorId) {
+                finalCreatedBy = parseInt(collectorId);
+                if (collectorName) finalCollectorName = collectorName;
+            }
 
-                let shiftId = null;
-                if (req.activeShift) {
-                    shiftId = req.activeShift.id;
-                } else {
-                    const userShift = await prisma.pOSShift.findFirst({
-                        where: { openedBy: finalCreatedBy, closedAt: null }
-                    });
-                    if (userShift) shiftId = userShift.id;
-                }
+            let shiftId = null;
+            if (req.activeShift) {
+                shiftId = req.activeShift.id;
+            } else {
+                const userShift = await prisma.pOSShift.findFirst({
+                    where: { openedBy: finalCreatedBy, closedAt: null }
+                });
+                if (userShift) shiftId = userShift.id;
+            }
 
+            const fullPrice = newPlan.price;
+            const paidNow = numericPaidAmount;
+
+            // Step A: Receipt for actual money
+            if (paidNow > 0) {
                 await prisma.payment.create({
                     data: {
                         memberId: newSub.memberId,
                         subscriptionId: newSub.id,
-                        amount: numericPaidAmount,
+                        amount: paidNow,
                         method: String(method).toLowerCase().trim(),
                         status: 'completed',
                         receiptNumber: generateReceiptNumber(),
-                        notes: `Renewal Payment: ${paymentStatus === 'paid' ? 'Full' : 'Partial'}` + (externalReference ? ` (Ref: ${externalReference})` : ''),
+                        notes: `Renewal Payment: ${paymentStatus === 'paid' ? 'Full' : 'Partial'}` + (externalReference ? ` (Ref: ${externalReference})` : '') + (notes ? ` - ${notes}` : ''),
                         shiftId: shiftId,
                         createdBy: finalCreatedBy,
                         collectorName: finalCollectorName,
                         externalReference: externalReference
+                    }
+                });
+            }
+
+            // Step B: Invoice for remaining balance
+            if (paidNow < fullPrice) {
+                await prisma.payment.create({
+                    data: {
+                        memberId: newSub.memberId,
+                        subscriptionId: newSub.id,
+                        amount: fullPrice - paidNow,
+                        method: 'other',
+                        status: 'pending',
+                        receiptNumber: generateReceiptNumber() + "-INV",
+                        notes: `Remaining balance for ${newPlan.name} renewal`,
+                        shiftId: shiftId,
+                        createdBy: finalCreatedBy,
+                        collectorName: finalCollectorName
                     }
                 });
             }
@@ -423,65 +560,112 @@ router.put('/:id/renew', async (req, res) => {
 });
 
 /**
- * PUT /api/subscriptions/:id/freeze
- * Freeze subscription
+ * PUT /api/subscriptions/:id/toggle-pause
+ * Pause or Resume subscription
  */
-router.put('/:id/freeze', [
-    body('days').isInt({ min: 1, max: 30 }).withMessage('Freeze days must be between 1-30')
-], async (req, res) => {
+router.put('/:id/toggle-pause', async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
         const subscriptionId = parseInt(req.params.id);
-        const { days } = req.body;
 
         const subscription = await req.prisma.subscription.findUnique({
             where: { id: subscriptionId }
         });
 
-        if (!subscription || subscription.status !== 'active') {
-            return res.status(400).json({
-                success: false,
-                message: 'Can only freeze active subscriptions'
-            });
+        if (!subscription) {
+            return res.status(404).json({ success: false, message: 'Subscription not found' });
         }
 
-        const frozenUntil = new Date();
-        frozenUntil.setDate(frozenUntil.getDate() + days);
+        const isPausing = !subscription.isPaused;
+        const now = new Date();
 
-        // Extend end date
-        const newEndDate = new Date(subscription.endDate);
-        newEndDate.setDate(newEndDate.getDate() + days);
+        let updateData = {};
+
+        // Parse existing history
+        let history = [];
+        try {
+            if (subscription.pauseHistory) {
+                history = JSON.parse(subscription.pauseHistory);
+            }
+        } catch (e) { history = []; }
+
+        if (isPausing) {
+            // PAUSE ACTION
+            if (subscription.status !== 'active') {
+                return res.status(400).json({ success: false, message: 'Can only pause active subscriptions' });
+            }
+
+            // Add new "open" history entry
+            history.push({ start: now.toISOString(), end: null, reason: req.body.reason || 'Manual Pause' });
+
+            updateData = {
+                isPaused: true,
+                status: 'paused', // Visual status
+                pauseHistory: JSON.stringify(history),
+                frozenAt: now // Legacy support if needed
+            };
+        } else {
+            // RESUME ACTION
+            if (!subscription.isPaused) {
+                return res.status(400).json({ success: false, message: 'Subscription is not paused' });
+            }
+
+            // Find the open entry (end is null)
+            const lastEntryIndex = history.findIndex(h => h.end === null);
+            if (lastEntryIndex === -1) {
+                // Should not happen if data integrity is good, but recover:
+                history.push({ start: now.toISOString(), end: now.toISOString(), note: 'Auto-closed orphan pause' });
+            } else {
+                const entry = history[lastEntryIndex];
+                entry.end = now.toISOString();
+
+                // Calculate duration
+                const start = new Date(entry.start);
+                const durationMs = now - start;
+                const durationDays = Math.ceil(durationMs / (1000 * 60 * 60 * 24));
+
+                entry.durationDays = durationDays;
+                history[lastEntryIndex] = entry; // Update
+
+                // EXTEND END DATE
+                const currentEndDate = new Date(subscription.endDate);
+                currentEndDate.setDate(currentEndDate.getDate() + durationDays);
+                updateData.endDate = currentEndDate;
+            }
+
+            updateData = {
+                isPaused: false,
+                status: 'active',
+                pauseHistory: JSON.stringify(history),
+                frozenAt: null, // Clear legacy
+                frozenUntil: null
+            };
+        }
 
         const updated = await req.prisma.subscription.update({
             where: { id: subscriptionId },
+            data: updateData
+        });
+
+        // Log
+        await req.prisma.activityLog.create({
             data: {
-                status: 'frozen',
-                frozenAt: new Date(),
-                frozenUntil,
-                frozenDays: days,
-                endDate: newEndDate
+                userId: req.user.id,
+                action: isPausing ? 'PAUSE_SUBSCRIPTION' : 'RESUME_SUBSCRIPTION',
+                entityType: 'Subscription',
+                entityId: subscriptionId,
+                details: JSON.stringify({ isPaused: isPausing })
             }
         });
 
         res.json({
             success: true,
-            message: `Subscription frozen for ${days} days`,
+            message: isPausing ? 'Subscription paused' : 'Subscription resumed (End date extended)',
             data: updated
         });
 
     } catch (error) {
-        console.error('Freeze subscription error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to freeze subscription'
-        });
+        console.error('Toggle pause error:', error);
+        res.status(500).json({ success: false, message: 'Failed to toggle pause' });
     }
 });
 
@@ -870,6 +1054,71 @@ router.get('/expiring/soon', async (req, res) => {
             success: false,
             message: 'Failed to fetch expiring subscriptions'
         });
+    }
+});
+
+/**
+ * PUT /api/subscriptions/:id/toggle-pause
+ * Freeze/Unfreeze a subscription
+ */
+router.put('/:id/toggle-pause', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const sub = await req.prisma.subscription.findUnique({ where: { id: parseInt(id) } });
+
+        if (!sub) return res.status(404).json({ success: false, message: 'Subscription not found' });
+
+        const isPaused = sub.isPaused || false;
+        const now = new Date();
+
+        if (!isPaused) {
+            // FREEZE
+            const history = Array.isArray(sub.pauseHistory) ? sub.pauseHistory : [];
+            history.push({ pausedAt: now, resumedAt: null });
+
+            await req.prisma.subscription.update({
+                where: { id: parseInt(id) },
+                data: {
+                    isPaused: true,
+                    // status: 'paused', // Optional: Keep status as active but flag isPaused, or use 'paused'
+                    pauseHistory: history
+                }
+            });
+
+            res.json({ success: true, message: 'Subscription frozen', isPaused: true });
+        } else {
+            // UNFREEZE
+            const history = Array.isArray(sub.pauseHistory) ? sub.pauseHistory : [];
+            let lastEntry = history[history.length - 1];
+
+            let daysToExtend = 0;
+            if (lastEntry && !lastEntry.resumedAt) {
+                lastEntry.resumedAt = now;
+                const pauseStart = new Date(lastEntry.pausedAt);
+                const diffTime = Math.abs(now - pauseStart);
+                daysToExtend = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            }
+
+            const currentEnd = new Date(sub.endDate);
+            const newEnd = new Date(currentEnd);
+            newEnd.setDate(newEnd.getDate() + daysToExtend);
+
+            await req.prisma.subscription.update({
+                where: { id: parseInt(id) },
+                data: {
+                    isPaused: false,
+                    // status: 'active',
+                    endDate: newEnd,
+                    pauseHistory: history
+                }
+            });
+
+            res.json({ success: true, message: `Subscription resumed. Extended by ${daysToExtend} days.`, isPaused: false, newEndDate: newEnd });
+        }
+
+    } catch (error) {
+        console.error('Toggle pause error:', error);
+        res.status(500).json({ success: false, message: 'Failed to toggle pause' });
     }
 });
 

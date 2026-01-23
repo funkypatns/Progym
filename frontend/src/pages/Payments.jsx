@@ -27,10 +27,15 @@ const Payments = () => {
         try {
             const res = await apiClient.get('/payments');
             if (res.data.success) {
-                const data = Array.isArray(res.data.data) ? res.data.data : (res.data.data?.docs || []);
+                // Handle various response formats (Array, Paginated with 'docs', Paginated with 'payments')
+                const rawData = res.data.data;
+                const data = Array.isArray(rawData)
+                    ? rawData
+                    : (rawData?.payments || rawData?.docs || []);
+
                 setPayments(data);
 
-                const total = data.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+                const total = data.filter(p => p.status === 'completed').reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
                 setSummary({ total, count: data.length });
             }
         } catch (e) {
@@ -138,6 +143,7 @@ const Payments = () => {
                     loading={loading}
                     onViewReceipt={handleViewReceipt}
                     onDelete={handleDelete}
+                    onRefresh={fetchPayments}
                 />
             </div>
 

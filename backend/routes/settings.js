@@ -196,64 +196,78 @@ router.post('/reset', authorize('admin'), async (req, res) => {
         await req.prisma.$transaction(async (tx) => {
             // 1. Logs & Notifications (No dependencies)
             if (isFullReset || targets.includes('logs')) {
-                const { count } = await tx.activityLog.deleteMany({ where: dateFilter });
+                await tx.activityLog.deleteMany({ where: dateFilter });
                 await tx.auditLog.deleteMany({ where: dateFilter });
-                result.deleted.logs = count;
-            }
-
-            if (isFullReset) {
                 await tx.notification.deleteMany({ where: dateFilter });
-                await tx.expense.deleteMany({ where: dateFilter });
-                // Cash closing depends on User, but nothing depends on it
-                await tx.cashClosing.deleteMany({ where: dateFilter });
+                await tx.staffNotification.deleteMany({ where: dateFilter });
+                result.deleted.logs = true;
             }
 
-            // 2. Payments & Child Entities (Refunds)
-            // CRITICAL: Delete Refunds first because they reference Payments.
-            // If clearing members or subscriptions, we MUST clear payments first as they are children.
-            if (isFullReset || targets.includes('payments') || targets.includes('members') || targets.includes('subscriptions')) {
-                // Delete Orphans logic is handled by 'deleteMany' with same filter, but strict order is needed.
-                const { count: rCount } = await tx.refund.deleteMany({ where: dateFilter });
-                result.deleted.refunds = rCount;
-
-                const { count } = await tx.payment.deleteMany({ where: dateFilter });
-                result.deleted.payments = count;
-            }
-
-            // 3. Child Entities of Members
-            // Check-ins
-            if (isFullReset || targets.includes('members')) {
-                const { count: c1 } = await tx.checkIn.deleteMany({ where: dateFilter });
-                result.deleted.checkIns = c1;
-            }
-
-            // 4. Subscriptions (Depend on Member, Plan)
-            // Payments are already deleted above, so Subscriptions can be deleted safely.
-            if (isFullReset || targets.includes('subscriptions') || targets.includes('members')) {
-                const { count } = await tx.subscription.deleteMany({ where: dateFilter });
-                result.deleted.subscriptions = count;
-            }
-
-            // 5. Members (Parent of all above)
-            if (isFullReset || targets.includes('members')) {
-                const { count } = await tx.member.deleteMany({ where: dateFilter });
-                result.deleted.members = count;
-            }
-
-            // 6. Plans & Shifts (Only on full reset)
+            // 2. POS Machine & Retail Data (Full reset only)
             if (isFullReset) {
-                // Delete plans (Parents of Subscriptions - Subs deleted above)
-                const { count: pCount } = await tx.subscriptionPlan.deleteMany({ where: dateFilter });
-                result.deleted.plans = pCount;
+                // Delete Sale Items first (Children of SaleTransaction)
+                await tx.saleItem.deleteMany({ where: dateFilter });
+                // Delete Sale Transactions (Children of Shift, Employee)
+                await tx.saleTransaction.deleteMany({ where: dateFilter });
+                // Delete Stock Movements (Children of Product, Shift, Employee)
+                await tx.stockMovement.deleteMany({ where: dateFilter });
+                // Delete Products
+                if (!date) await tx.product.deleteMany({});
+            }
 
-                // Close any open shifts and delete them
-                // Shifts are parents of Payments (Payments deleted above)
+            // 3. Shift-related Financial Data
+            if (isFullReset || targets.includes('payments')) {
+                // Must delete Cash Movements before Shifts (References Shift)
+                await tx.cashMovement.deleteMany({ where: dateFilter });
+            }
+
+            // 4. Payments & Child Entities (Refunds)
+            // CRITICAL: Delete Refunds first because they reference Payments.
+            if (isFullReset || targets.includes('payments') || targets.includes('members') || targets.includes('subscriptions')) {
+                await tx.refund.deleteMany({ where: dateFilter });
+                await tx.payment.deleteMany({ where: dateFilter });
+            }
+
+            // 5. Cash Closings (Reconciliation)
+            if (isFullReset) {
+                await tx.cashClosingAdjustment.deleteMany({ where: dateFilter });
+                await tx.cashClosing.deleteMany({ where: dateFilter });
+                await tx.expense.deleteMany({ where: dateFilter });
+            }
+
+            // 6. Reminders
+            if (isFullReset || targets.includes('members') || targets.includes('subscriptions')) {
+                await tx.reminder.deleteMany({ where: dateFilter });
+            }
+
+            // 7. Member Child Entities
+            if (isFullReset || targets.includes('members')) {
+                await tx.checkIn.deleteMany({ where: dateFilter });
+            }
+
+            // 8. Subscriptions (Depend on Member, Plan)
+            if (isFullReset || targets.includes('subscriptions') || targets.includes('members')) {
+                await tx.subscription.deleteMany({ where: dateFilter });
+            }
+
+            // 9. Members (Parent of all above)
+            if (isFullReset || targets.includes('members')) {
+                await tx.member.deleteMany({ where: dateFilter });
+            }
+
+            // 10. Shifts (Parent of Payments, CashMovements, etc.)
+            if (isFullReset || targets.includes('payments')) {
+                // Close any open shifts first
                 await tx.pOSShift.updateMany({
                     where: { status: 'open' },
                     data: { status: 'closed', closedAt: new Date() }
                 });
-                const { count: sCount } = await tx.pOSShift.deleteMany({ where: dateFilter });
-                result.deleted.shifts = sCount;
+                await tx.pOSShift.deleteMany({ where: dateFilter });
+            }
+
+            // 11. Plans (Only on full reset)
+            if (isFullReset) {
+                await tx.subscriptionPlan.deleteMany({ where: dateFilter });
             }
 
             // Factory Reset: Restore settings to defaults and re-seed essential data
@@ -295,7 +309,7 @@ router.post('/reset', authorize('admin'), async (req, res) => {
                 });
             }
         }, {
-            timeout: 60000 // Increased timeout for heavy cascading deletions
+            timeout: 90000 // Increased timeout for heavy cascading deletions
         });
 
         res.json({

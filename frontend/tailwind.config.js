@@ -54,15 +54,22 @@ export default {
                     hover: '#334155',   // matches dark-700
                     active: '#475569',  // matches dark-600
                 },
+                glass: {
+                    100: 'rgba(255, 255, 255, 0.1)',
+                    200: 'rgba(255, 255, 255, 0.2)',
+                    300: 'rgba(255, 255, 255, 0.3)',
+                    border: 'rgba(255, 255, 255, 0.1)',
+                },
             },
             fontFamily: {
                 sans: ['Inter', 'system-ui', 'sans-serif'],
                 arabic: ['Cairo', 'Noto Sans Arabic', 'sans-serif'],
             },
             boxShadow: {
-                'glow': '0 0 20px rgba(59, 130, 246, 0.3)',
-                'glow-lg': '0 0 40px rgba(59, 130, 246, 0.4)',
-                'inner-glow': 'inset 0 0 20px rgba(59, 130, 246, 0.1)',
+                'glow': '0 0 20px rgba(99, 102, 241, 0.5)', // Indigo glow
+                'glow-lg': '0 0 40px rgba(99, 102, 241, 0.6)',
+                'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
+                'glass-sm': '0 4px 16px 0 rgba(31, 38, 135, 0.20)',
             },
             animation: {
                 'fade-in': 'fadeIn 0.5s ease-out',

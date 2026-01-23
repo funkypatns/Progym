@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../utils/api';
 import { useTranslation } from 'react-i18next';
 import { Users, DollarSign, Activity, Calendar, ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
@@ -6,6 +7,7 @@ import { motion } from 'framer-motion';
 
 const Dashboard = () => {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const [stats, setStats] = useState({
         members: { total: 0, active: 0, newThisMonth: 0 },
         revenue: { thisMonth: 0, lastMonth: 0 },
@@ -70,39 +72,47 @@ const Dashboard = () => {
 
             {/* Stats Grid - 4 Columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                <StatCard
-                    title={t('dashboard.totalMembers')}
-                    value={stats.members?.total || 0}
-                    icon={Users}
-                    color="blue"
-                    trend={12} // Mock trend for premium UI
-                />
-                <StatCard
-                    title={t('dashboard.activeMembers')}
-                    value={stats.members?.active || 0}
-                    icon={Activity}
-                    color="green"
-                    trend={5}
-                />
-                <StatCard
-                    title={t('dashboard.monthlyRevenue')}
-                    value={`$${stats.revenue?.thisMonth?.toLocaleString() || 0}`}
-                    icon={DollarSign}
-                    color="amber"
-                />
-                <StatCard
-                    title={t('dashboard.todayCheckIns')}
-                    value={stats.checkIns?.today || 0}
-                    icon={Calendar}
-                    color="purple"
-                    trend={-2}
-                />
+                <div onClick={() => navigate('/members')} className="cursor-pointer">
+                    <StatCard
+                        title={t('dashboard.totalMembers')}
+                        value={stats.members?.total || 0}
+                        icon={Users}
+                        color="blue"
+                        trend={12}
+                    />
+                </div>
+                <div onClick={() => navigate('/members')} className="cursor-pointer">
+                    <StatCard
+                        title={t('dashboard.activeMembers')}
+                        value={stats.members?.active || 0}
+                        icon={Activity}
+                        color="green"
+                        trend={5}
+                    />
+                </div>
+                <div onClick={() => navigate('/reports')} className="cursor-pointer">
+                    <StatCard
+                        title={t('dashboard.monthlyRevenue')}
+                        value={`$${stats.revenue?.thisMonth?.toLocaleString() || 0}`}
+                        icon={DollarSign}
+                        color="amber"
+                    />
+                </div>
+                <div onClick={() => navigate('/check-in')} className="cursor-pointer">
+                    <StatCard
+                        title={t('dashboard.todayCheckIns')}
+                        value={stats.checkIns?.today || 0}
+                        icon={Calendar}
+                        color="purple"
+                        trend={-2}
+                    />
+                </div>
             </div>
 
             {/* Content Section - 2 Columns */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Main Chart Section */}
-                <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-8">
+                <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-8 cursor-pointer" onClick={() => navigate('/reports')}>
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Revenue Analytics</h3>
@@ -113,8 +123,8 @@ const Dashboard = () => {
                         </button>
                     </div>
 
-                    <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
-                        <p className="text-gray-400 font-medium">Chart Component Loading...</p>
+                    <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
+                        <p className="text-gray-400 font-medium">Click to view Detailed Revenue Report</p>
                     </div>
                 </div>
 
@@ -123,21 +133,21 @@ const Dashboard = () => {
                     <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
                         <h3 className="font-bold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
                         <div className="grid grid-cols-2 gap-4">
-                            <button className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
+                            <button onClick={() => navigate('/members/new')} className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
                                 <Users size={20} />
                                 Add Member
                             </button>
-                            <button className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
+                            <button onClick={() => navigate('/payments')} className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
                                 <DollarSign size={20} />
                                 New Payment
                             </button>
-                            <button className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
+                            <button onClick={() => navigate('/check-in')} className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
                                 <Calendar size={20} />
                                 Attendance
                             </button>
-                            <button className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
-                                <Activity size={20} />
-                                Check-in
+                            <button onClick={() => window.dispatchEvent(new Event('shift:open'))} className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors text-sm font-bold flex flex-col items-center gap-2">
+                                <DollarSign size={20} />
+                                Cash Closing
                             </button>
                         </div>
                     </div>

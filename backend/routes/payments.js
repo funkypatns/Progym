@@ -49,7 +49,7 @@ router.get('/', async (req, res) => {
         const where = {};
 
         // RBAC: Staff can ONLY see payments for their current open shift
-        if (req.user.role !== 'admin') {
+        if ((req.user.role || '').toLowerCase() !== 'admin') {
             const openShift = await req.prisma.pOSShift.findFirst({
                 where: {
                     openedBy: req.user.id,
@@ -73,7 +73,11 @@ router.get('/', async (req, res) => {
                 });
             }
 
-            where.shiftId = openShift.id;
+            where.OR = [
+                { shiftId: openShift.id },
+                { status: 'pending' },
+                { createdBy: req.user.id } // Allow seeing own payments regardless of shift
+            ];
         }
 
         if (memberId) where.memberId = parseInt(memberId);
@@ -95,7 +99,12 @@ router.get('/', async (req, res) => {
                         select: { id: true, memberId: true, firstName: true, lastName: true }
                     },
                     subscription: {
-                        include: { plan: true }
+                        include: {
+                            plan: true,
+                            payments: {
+                                select: { amount: true, status: true }
+                            }
+                        }
                     },
                     creator: {
                         select: { id: true, firstName: true, lastName: true, role: true }
@@ -301,12 +310,19 @@ router.post('/', requirePermission('payments.create'), [
                 const memIdInt = parseInt(memberId);
 
                 const subscription = await prisma.subscription.findFirst({
-                    where: { id: subIdInt, memberId: memIdInt }
+                    where: { id: subIdInt, memberId: memIdInt },
+                    select: {
+                        id: true,
+                        paidAmount: true,
+                        plan: {
+                            select: { price: true }
+                        }
+                    }
                 });
 
                 if (!subscription) throw new Error('SUBSCRIPTION_NOT_FOUND');
 
-                const planPrice = subscription.price || subscription.plan?.price || 0;
+                const planPrice = subscription.plan?.price || 0;
                 const currentPaid = subscription.paidAmount || 0;
                 const remaining = planPrice - currentPaid;
 
@@ -351,8 +367,8 @@ router.post('/', requirePermission('payments.create'), [
             const prismaData = {
                 memberId: parseInt(memberId),
                 amount: parseFloat(amount),
-                method: paymentMethod,
-                status: 'completed',
+                method: paymentMethod.toUpperCase(),
+                status: 'completed', // Match schema default and query filter
                 receiptNumber: generateReceiptNumber()
             };
 
@@ -396,15 +412,23 @@ router.post('/', requirePermission('payments.create'), [
                 const remaining = totalPrice - totalPaid;
 
                 // Update paidAmount on subscription
+                // NEW: Also update remainingAmount and paymentStatus
+                // Status logic: 
+                const newRemaining = Math.max(0, totalPrice - totalPaid);
+                let newStatus = 'unpaid';
+                if (totalPaid >= totalPrice - 0.01) newStatus = 'paid';
+                else if (totalPaid > 0) newStatus = 'partial';
+
                 await prisma.subscription.update({
                     where: { id: parseInt(subscriptionId) },
                     data: {
                         paidAmount: totalPaid,
-                        // If fully paid, could add settledAt here if needed
+                        remainingAmount: newRemaining,
+                        paymentStatus: newStatus
                     }
                 });
 
-                console.log(`[PAYMENTS] Subscription ${subscriptionId} updated: paid=${totalPaid}, remaining=${remaining}`);
+                console.log(`[PAYMENTS] Subscription ${subscriptionId} updated: paid=${totalPaid}, remaining=${newRemaining}, status=${newStatus}`);
             }
 
             // 5. Log Activity
@@ -470,6 +494,172 @@ router.post('/', requirePermission('payments.create'), [
             debug_code: error.code,
             debug_meta: error.meta
         });
+    }
+});
+
+/**
+ * POST /api/payments/refund
+ * Refund a subscription (Calculation based on usage)
+ */
+router.post('/refund', requirePermission('payments.create'), [
+    body('subscriptionId').isInt().withMessage('Subscription ID is required')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+        const { subscriptionId, reason, preview } = req.body;
+
+        // Perform calculation logic (outside transaction for preview, or inside but throw/rollback if preview? Better to separate logic)
+        // Re-using logic is key. Let's do the lookup and calc first.
+
+        const sub = await req.prisma.subscription.findUnique({
+            where: { id: parseInt(subscriptionId) },
+            include: { plan: true }
+        });
+
+        if (!sub) return res.status(404).json({ success: false, message: 'Subscription not found' });
+
+        // 2. Fetch Total Paid (Net of any previous refunds)
+        const allPayments = await req.prisma.payment.findMany({
+            where: {
+                subscriptionId: sub.id,
+                status: { in: ['completed', 'REFUNDED'] }
+            },
+            select: { amount: true }
+        });
+        const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        // 3. Calculate Usage
+        const now = new Date();
+        const start = new Date(sub.startDate);
+        let usedMs = now - start;
+        if (usedMs < 0) usedMs = 0;
+
+        // Subtract Paused Days
+        let pausedMs = 0;
+        if (sub.pauseHistory) {
+            try {
+                const history = JSON.parse(sub.pauseHistory);
+                history.forEach(h => {
+                    const pStart = new Date(h.start);
+                    const pEnd = h.end ? new Date(h.end) : now;
+                    let effectiveStart = pStart < start ? start : pStart;
+                    let effectiveEnd = pEnd > now ? now : pEnd;
+                    if (effectiveEnd > effectiveStart) pausedMs += (effectiveEnd - effectiveStart);
+                });
+            } catch (e) { console.error('Pause history parse error', e); }
+        }
+
+        const netUsedMs = Math.max(0, usedMs - pausedMs);
+        const usedDays = Math.ceil(netUsedMs / (1000 * 60 * 60 * 24)); // Round up partial days
+
+        // 4. Calculate Financials
+        const planDuration = sub.plan.duration; // days
+        const planPrice = sub.price || sub.plan.price;
+
+        // Use provided dailyRate or calculate default
+        let dailyRate;
+        if (req.body.dailyRate !== undefined && req.body.dailyRate !== null) {
+            dailyRate = parseFloat(req.body.dailyRate);
+        } else {
+            dailyRate = planPrice / planDuration;
+        }
+
+        const usedAmount = usedDays * dailyRate;
+
+        let refundable = totalPaid - usedAmount;
+        if (refundable < 0) refundable = 0;
+
+        // PREVIEW MODE: Return calculation here
+        if (preview) {
+            return res.json({
+                success: true,
+                data: {
+                    planName: sub.plan.name,
+                    planPrice,
+                    planDuration,
+                    usedDays,
+                    dailyRate, // keep precision
+                    paidAmount: totalPaid,
+                    usedAmount,
+                    refundableAmount: refundable,
+                    canRefund: refundable > 0
+                }
+            });
+        }
+
+        // EXECUTION MODE
+        const result = await req.prisma.$transaction(async (prisma) => {
+            // Determine final refund amount
+            // If manual amount provided, use it. Otherwise use calculated refundable.
+            let finalRefundAmount = refundable;
+            if (req.body.amount !== undefined && req.body.amount !== null) {
+                finalRefundAmount = parseFloat(req.body.amount);
+            }
+
+            if (finalRefundAmount <= 0) throw new Error('Refund amount must be greater than 0');
+            if (finalRefundAmount > totalPaid) throw new Error('Cannot refund more than total paid amount');
+
+            // 5. Create Negative Payment (Refund)
+            const refundPayment = await prisma.payment.create({
+                data: {
+                    memberId: sub.memberId,
+                    subscriptionId: sub.id,
+                    amount: -1 * finalRefundAmount,
+                    method: 'CASH',
+                    status: 'REFUNDED',
+                    receiptNumber: generateReceiptNumber() + '-REF',
+                    notes: `Refund: ${finalRefundAmount.toFixed(2)} EGP. Used ${usedDays} days. Rate: ${dailyRate.toFixed(2)}. Reason: ${reason || 'N/A'}`,
+                    createdBy: req.user.id,
+                    collectorName: `${req.user.firstName} ${req.user.lastName}`,
+                    shiftId: req.activeShift?.id
+                }
+            });
+
+            // 6. Update Subscription Logic
+            // Check if client explicitly requested cancellation, or default to cancel only if full refund
+            const shouldCancel = req.body.cancelSubscription === true;
+
+            const updateData = {
+                paidAmount: { decrement: finalRefundAmount },
+                // Recalculate remaining just in case
+                remainingAmount: Math.max(0, (sub.price || sub.plan.price || 0) - (totalPaid - finalRefundAmount))
+            };
+
+            if (shouldCancel) {
+                updateData.status = 'cancelled';
+                updateData.canceledAt = now;
+                updateData.cancelReason = reason || 'Refunded';
+                updateData.remainingAmount = 0; // Clear remaining if cancelled
+            } else {
+                // If not cancelling, ensure it's active (or keep current status if not 'expired')
+                // If it was 'paid', it might become 'partial' or 'unpaid'
+                // But simplified: Just don't set to 'cancelled'.
+                // Optionally update paymentStatus
+                const newTotalPaid = totalPaid - finalRefundAmount;
+                const totalPrice = sub.price || sub.plan.price || 0;
+
+                let newPayStatus = 'unpaid';
+                if (newTotalPaid >= totalPrice - 0.01) newPayStatus = 'paid';
+                else if (newTotalPaid > 0) newPayStatus = 'partial';
+
+                updateData.paymentStatus = newPayStatus;
+            }
+
+            await prisma.subscription.update({
+                where: { id: sub.id },
+                data: updateData
+            });
+
+            return { refundPayment, details: { totalPaid, usedDays, usedAmount, refundable: finalRefundAmount, status: shouldCancel ? 'cancelled' : 'active' } };
+        });
+
+        res.json({ success: true, message: 'Refund processed successfully', data: result });
+
+    } catch (error) {
+        console.error('Refund error:', error);
+        res.status(500).json({ success: false, message: error.message || 'Refund failed' });
     }
 });
 

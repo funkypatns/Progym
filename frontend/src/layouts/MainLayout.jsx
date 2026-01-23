@@ -1,6 +1,6 @@
 /**
  * ============================================
- * MAIN LAYOUT WITH SIDEBAR - PREMIUM REDESIGN
+ * MAIN LAYOUT - GLASS ENTERPRISE EDITION
  * ============================================
  */
 
@@ -9,27 +9,10 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    LayoutDashboard,
-    Users,
-    CreditCard,
-    CalendarCheck,
-    Receipt,
-    BarChart3,
-    Settings,
-    LogOut,
-    Sun,
-    Moon,
-    Globe,
-    Dumbbell,
-    ChevronLeft,
-    ClipboardList,
-    Package,
-    ShieldCheck,
-    Shield,
-    Bell,
-    ArrowUpCircle,
-    ShoppingCart,
-    Menu
+    LayoutDashboard, Users, CreditCard, CalendarCheck, Receipt,
+    BarChart3, Settings, LogOut, Sun, Moon, Globe, Dumbbell,
+    ChevronLeft, ClipboardList, Package, ShieldCheck, Shield,
+    Bell, ArrowUpCircle, ShoppingCart, Menu, Search
 } from 'lucide-react';
 import { useAuthStore, useThemeStore, useSidebarStore, usePosStore } from '../store';
 import PosShiftModal from '../components/PosShiftModal';
@@ -45,6 +28,7 @@ const MainLayout = () => {
     const { user, logout, isAuthenticated } = useAuthStore();
     const { theme, toggleTheme } = useThemeStore();
     const { isCollapsed, toggle } = useSidebarStore();
+    const isDark = theme === 'dark';
 
     // Voice & Alerts
     useVoiceAlerts(true);
@@ -57,15 +41,12 @@ const MainLayout = () => {
     React.useEffect(() => {
         initPos();
         const handleForbidden = async () => useAuthStore.getState().refreshSession();
+        const handleOpenShift = () => setIsShiftModalOpen(true);
         window.addEventListener('auth:forbidden', handleForbidden);
-
-        const interval = setInterval(() => {
-            if (isAuthenticated) useAuthStore.getState().refreshSession();
-        }, 30000);
-
+        window.addEventListener('shift:open', handleOpenShift);
         return () => {
             window.removeEventListener('auth:forbidden', handleForbidden);
-            clearInterval(interval);
+            window.removeEventListener('shift:open', handleOpenShift);
         };
     }, [user, isAuthenticated]);
 
@@ -83,11 +64,10 @@ const MainLayout = () => {
         i18n.changeLanguage(newLang);
     };
 
-    // RBAC
     const { can, isAdmin, PERMISSIONS } = usePermissions();
     const isRTL = i18n.dir() === 'rtl';
 
-    // Navigation Configuration
+    // Navigation Items
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: t('nav.dashboard'), permission: PERMISSIONS.DASHBOARD_VIEW_BASIC },
         { path: '/members', icon: Users, label: t('nav.members'), permission: PERMISSIONS.MEMBERS_VIEW },
@@ -113,24 +93,28 @@ const MainLayout = () => {
 
     const visibleNavItems = navItems.filter(item => !item.permission || can(item.permission));
 
-    // Shift Lock Screen
+    // Locked Screen (No Shift)
     if (!currentShift) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 dark:from-gray-900 dark:to-black flex flex-col items-center justify-center p-4">
-                <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-md w-full text-center border border-white/20">
-                    <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse-slow">
-                        <Receipt className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+            <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-purple-900/20 to-black z-0 pointer-events-none" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 blur-[120px] rounded-full" />
+
+                <div className="relative z-10 bg-white/5 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-2xl p-10 max-w-md w-full text-center">
+                    <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-glow">
+                        <Receipt className="w-12 h-12 text-white" />
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">Shift Required</h1>
-                    <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-                        Please start a new shift to access the dashboard. All transactions will be recorded under this session.
+                    <h1 className="text-4xl font-bold text-white mb-4 tracking-tight">Shift Locked</h1>
+                    <p className="text-gray-400 mb-10 leading-relaxed text-lg">
+                        System access is restricted. Please start a secure shift session to proceed.
                     </p>
                     <div className="space-y-4">
-                        <button onClick={() => setIsShiftModalOpen(true)} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-500/20 transition-all hover:scale-[1.02]">
-                            Start Critical Shift
+                        <button onClick={() => setIsShiftModalOpen(true)}
+                            className="w-full py-4 bg-white text-black hover:bg-gray-100 rounded-xl font-bold shadow-lg transition-all active:scale-95 text-lg">
+                            Start Session
                         </button>
-                        <button onClick={handleLogout} className="w-full py-3 text-gray-500 hover:text-red-500 transition-colors font-medium">
-                            Logout System
+                        <button onClick={handleLogout} className="w-full py-4 text-gray-500 hover:text-white transition-colors font-medium">
+                            Logout
                         </button>
                     </div>
                 </div>
@@ -140,141 +124,135 @@ const MainLayout = () => {
     }
 
     return (
-        <div className={`min-h-screen bg-gray-50 dark:bg-black flex overflow-hidden font-sans ${isRTL ? 'rtl' : 'ltr'}`}>
+        <div className={`min-h-screen flex overflow-hidden font-sans ${isRTL ? 'rtl' : 'ltr'}`}
+            style={{
+                background: isDark
+                    ? 'radial-gradient(circle at 50% 0%, #1e1b4b 0%, #020617 100%)'
+                    : 'radial-gradient(circle at 50% 0%, #f1f5f9 0%, #e2e8f0 100%)'
+            }}>
 
-            {/* SIDEBAR */}
+            {/* GLASS SIDEBAR */}
             <motion.aside
                 initial={false}
-                animate={{ width: isCollapsed ? 80 : 280 }}
-                className="fixed top-0 bottom-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-r rtl:border-l border-gray-100 dark:border-gray-800 shadow-2xl flex flex-col transition-all duration-300 left-0 rtl:right-0 rtl:left-auto"
+                animate={{ width: isCollapsed ? 88 : 280 }}
+                className={`fixed top-4 bottom-4 z-40 rounded-2xl border flex flex-col transition-all duration-300 shadow-2xl backdrop-blur-xl
+                    ${isDark
+                        ? 'bg-slate-900/60 border-white/10'
+                        : 'bg-white/70 border-white/40 shadow-blue-500/5'}
+                    ${isRTL ? 'right-4 left-auto' : 'left-4 right-auto'}
+                `}
             >
-                {/* Logo Area */}
-                <div className="h-20 flex items-center justify-between px-6 border-b border-gray-100 dark:border-gray-800/50">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
-                            <Dumbbell className="w-6 h-6 text-white" />
+                {/* Brand */}
+                <div className="h-24 flex items-center justify-center border-b border-white/5 relative">
+                    <div className={`flex items-center gap-3 transition-opacity duration-300 ${isCollapsed ? 'opacity-0 hidden' : 'opacity-100'}`}>
+                        <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                            <Dumbbell className="text-white w-6 h-6" />
                         </div>
-                        <AnimatePresence>
-                            {!isCollapsed && (
-                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-bold text-xl tracking-tight text-gray-900 dark:text-white whitespace-nowrap">
-                                    GYM<span className="text-blue-500">PRO</span>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                        <span className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
+                            GYM<span className="text-indigo-400">PRO</span>
+                        </span>
                     </div>
-                    <button onClick={toggle} className="p-2 -mr-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                        <ChevronLeft className={`w-5 h-5 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
-                    </button>
+                    {isCollapsed && (
+                        <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30 absolute">
+                            <Dumbbell className="text-white w-6 h-6" />
+                        </div>
+                    )}
                 </div>
 
-                {/* Navigation Items */}
-                <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1 custom-scrollbar">
+                {/* Navigation */}
+                <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1.5 no-scrollbar">
                     {visibleNavItems.map((item) => (
                         <NavLink
                             key={item.path}
                             to={item.path}
                             className={({ isActive }) => `
-                                relative flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-200 group
+                                relative flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group overflow-hidden
                                 ${isActive
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 font-medium'
-                                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'}
+                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/40'
+                                    : 'text-gray-500 dark:text-gray-400 hover:bg-white/10 hover:text-indigo-400 dark:hover:text-white'}
                             `}
                         >
-                            {({ isActive }) => (
-                                <>
-                                    <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-current'}`} />
+                            <item.icon className="w-5 h-5 flex-shrink-0 z-10 relative" />
 
-                                    {!isCollapsed && (
-                                        <span className="whitespace-nowrap flex-1">{item.label}</span>
-                                    )}
+                            {!isCollapsed && (
+                                <span className="font-medium tracking-wide z-10 relative text-sm">{item.label}</span>
+                            )}
 
-                                    {/* Badge for Alerts */}
-                                    {(item.path === '/subscription-alerts' && Number(unreadCount) > 0) && (
-                                        <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
-                                    )}
-
-                                    {/* Active Indicator Line for Collapsed Mode */}
-                                    {isActive && isCollapsed && (
-                                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-white/20 rounded-l-full" />
-                                    )}
-                                </>
+                            {/* Glow Effect for Active */}
+                            {({ isActive }) => isActive && (
+                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 z-0" />
                             )}
                         </NavLink>
                     ))}
                 </div>
 
-                {/* Footer Controls */}
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-emerald-900/5">
-                    <div className={`flex items-center gap-2 mb-4 ${isCollapsed ? 'flex-col' : 'justify-center'}`}>
-                        <button onClick={toggleTheme} className="p-2.5 rounded-xl bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 hover:scale-105 transition-transform text-gray-600 dark:text-yellow-400">
-                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                        </button>
-                        <button onClick={toggleLanguage} className="p-2.5 rounded-xl bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 hover:scale-105 transition-transform text-gray-600 dark:text-blue-400 font-bold text-xs">
-                            {i18n.language === 'en' ? 'AR' : 'EN'}
-                        </button>
-                    </div>
-
-                    <div className={`flex items-center gap-3 p-3 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm ${isCollapsed ? 'justify-center' : ''}`}>
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                {/* Footer User Info */}
+                <div className="p-4 bg-black/20 backdrop-blur-md rounded-b-2xl border-t border-white/5">
+                    <div className={`flex items-center gap-3 p-2 rounded-xl border border-white/5 bg-white/5 ${isCollapsed ? 'justify-center' : ''}`}>
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-yellow-400 to-orange-500 flex items-center justify-center text-white font-bold text-sm shadow-lg">
                             {user?.firstName?.[0]}
                         </div>
                         {!isCollapsed && (
                             <div className="flex-1 min-w-0">
-                                <div className="font-bold text-sm text-gray-900 dark:text-white truncate">{user?.firstName}</div>
-                                <div className="text-xs text-gray-500 truncate capitalize">{user?.role}</div>
+                                <p className="text-sm font-bold text-white truncate">{user?.firstName}</p>
+                                <p className="text-xs text-indigo-300 uppercase tracking-wider">{user?.role}</p>
                             </div>
                         )}
-                        {!isCollapsed && (
-                            <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors">
-                                <LogOut size={18} />
-                            </button>
-                        )}
+                        <button onClick={handleLogout}>
+                            <LogOut size={18} className="text-gray-400 hover:text-red-400 transition-colors" />
+                        </button>
                     </div>
                 </div>
+
+                {/* Toggles (Absolute positioned outside) */}
+                <button onClick={toggle} className={`absolute top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg border-4 border-slate-900 transition-all hover:scale-110 z-50 ${isRTL ? '-left-4' : '-right-4'}`}>
+                    <ChevronLeft size={14} className={`transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
+                </button>
+
             </motion.aside>
 
-            {/* MAIN CONTENT AREA */}
-            <main
-                className={`flex-1 min-w-0 transition-all duration-300 flex flex-col ${isCollapsed ? 'ltr:ml-20 rtl:mr-20' : 'ltr:ml-[280px] rtl:mr-[280px]'}`}
-            >
-                {/* HEADER */}
-                <header className="h-20 z-30 sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-8">
-                    {/* Breadcrumbs / Page Title Placeholder */}
-                    <div className="flex items-center gap-4">
-                        <button onClick={toggle} className="md:hidden p-2 text-gray-500"><Menu /></button>
-                        <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 hidden sm:block">
-                            {navItems.find(i => i.path === location.pathname)?.label || 'Gym Dashboard'}
-                        </h2>
+            {/* MAIN CONTENT WRAPPER */}
+            <main className={`flex-1 transition-all duration-300 flex flex-col relative h-screen
+                ${isCollapsed ? (isRTL ? 'mr-[120px]' : 'ml-[120px]') : (isRTL ? 'mr-[320px]' : 'ml-[320px]')}
+            `}>
+
+                {/* GLASS HEADER */}
+                <header className="h-20 shrink-0 px-8 flex items-center justify-between z-30 sticky top-0">
+
+                    {/* Page Title */}
+                    <div className="flex flex-col">
+                        <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-500 dark:from-white dark:to-gray-400 uppercase tracking-tight">
+                            {navItems.find(i => i.path === location.pathname)?.label || 'Dashboard'}
+                        </h1>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-wider">
+                            {new Date().toLocaleDateString(i18n.language, { weekday: 'long', month: 'long', day: 'numeric' })}
+                        </p>
                     </div>
 
-                    {/* Right Actions */}
-                    <div className="flex items-center gap-4">
-                        {machine && (
-                            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700">
-                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{machine.name}</span>
-                            </div>
-                        )}
-
+                    {/* Right Tools */}
+                    <div className="flex items-center gap-4 bg-white/5 p-1.5 pr-2 pl-4 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
+                        <div className="flex items-center gap-2">
+                            <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-white/10 text-gray-500 dark:text-gray-300 transition-colors">
+                                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                            </button>
+                            <button onClick={toggleLanguage} className="p-2 rounded-full hover:bg-white/10 text-gray-500 dark:text-gray-300 font-bold text-xs transition-colors">
+                                {isRTL ? 'EN' : 'AR'}
+                            </button>
+                        </div>
+                        <div className="w-px h-6 bg-white/10 mx-1" />
                         <NotificationBell />
-
-                        <button
-                            onClick={() => setIsShiftModalOpen(true)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-95 ${currentShift
-                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/20'
-                                }`}
-                        >
-                            <Receipt size={16} />
-                            {currentShift ? <span>{currentShift.opener?.firstName}</span> : <span>Open Shift</span>}
+                        <button onClick={() => setIsShiftModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-full font-bold text-sm hover:shadow-glow transition-all">
+                            <Receipt size={14} />
+                            <span>{currentShift?.opener?.firstName || 'Shift'}</span>
                         </button>
                     </div>
                 </header>
 
-                {/* CONTENT */}
-                <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden p-8 flex flex-col">
+                {/* SCROLLABLE VIEWPORT */}
+                <div className="flex-1 overflow-y-auto min-h-0 w-full p-4 lg:p-8 overflow-x-hidden scroll-smooth">
                     <Outlet />
                 </div>
+
             </main>
 
             <PosShiftModal

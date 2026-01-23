@@ -55,6 +55,8 @@ const MemberForm = () => {
         endDate: '',
         endTime: '23:59',
         price: '',
+        paidAmount: '',
+        method: 'cash',
     });
 
     useEffect(() => {
@@ -145,6 +147,7 @@ const MemberForm = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isSaving) return; // STRICT GUARD against double clicks
         setIsSaving(true);
 
         try {
@@ -180,12 +183,21 @@ const MemberForm = () => {
                     const startDateTime = new Date(`${subData.startDate}T${subData.startTime}`);
                     const endDateTime = new Date(`${subData.endDate}T${subData.endTime}`);
 
+                    const paid = parseFloat(subData.paidAmount || 0);
+                    const total = parseFloat(subData.price);
+                    let status = 'unpaid';
+                    if (paid >= total) status = 'paid';
+                    else if (paid > 0) status = 'partial';
+
                     await api.post('/subscriptions', {
                         memberId: memberIdResponse,
                         planId: subData.planId,
                         startDate: startDateTime.toISOString(),
                         endDate: endDateTime.toISOString(),
-                        price: parseFloat(subData.price) // Send the custom price if edited
+                        price: total,
+                        paidAmount: paid,
+                        paymentStatus: status,
+                        method: subData.method
                     });
                     toast.success('Subscription assigned');
                 } catch (subError) {
@@ -430,6 +442,37 @@ const MemberForm = () => {
                                         disabled={!subData.planId}
                                     />
                                 </div>
+                            </div>
+
+                            {/* Payment Integration Fields */}
+                            <div className="lg:col-span-6">
+                                <label className="label">Amount Paid Now ({currencyConf.symbol})</label>
+                                <input
+                                    type="number"
+                                    name="paidAmount"
+                                    className="input font-bold text-green-600 dark:text-green-400"
+                                    placeholder="0.00"
+                                    value={subData.paidAmount}
+                                    onChange={handleSubChange}
+                                    disabled={!subData.planId}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Leave empty or 0 to create a pending invoice.</p>
+                            </div>
+
+                            <div className="lg:col-span-6">
+                                <label className="label">Payment Method</label>
+                                <select
+                                    name="method"
+                                    className="input"
+                                    value={subData.method}
+                                    onChange={handleSubChange}
+                                    disabled={!subData.planId || !subData.paidAmount || parseFloat(subData.paidAmount) <= 0}
+                                >
+                                    <option value="cash">Cash</option>
+                                    <option value="card">Card / POS</option>
+                                    <option value="transfer">Bank Transfer</option>
+                                    <option value="other">Other</option>
+                                </select>
                             </div>
                         </div>
                         <div className="border-t border-gray-200 dark:border-dark-700 mt-6"></div>

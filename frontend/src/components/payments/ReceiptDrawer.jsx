@@ -166,6 +166,37 @@ const ReceiptDrawer = ({ payment, onClose, onRefund, onDownload, currencySymbol 
                         <Typography variant="subtitle2" textTransform="uppercase" color="text.secondary" gutterBottom>
                             Financials
                         </Typography>
+
+                        {/* Subscription Context (Debt Status) */}
+                        {payment.subscription && (
+                            <Paper sx={{ p: 2, mb: 2, borderRadius: 3, bgcolor: alpha(theme.palette.info.main, 0.05), borderColor: alpha(theme.palette.info.main, 0.2) }} variant="outlined">
+                                <Typography variant="caption" fontWeight="bold" color="info.main" textTransform="uppercase" gutterBottom display="block">
+                                    Subscription Balance
+                                </Typography>
+                                <Stack spacing={1}>
+                                    <Box display="flex" justifyContent="space-between">
+                                        <Typography variant="body2" color="text.secondary">Total Plan Price</Typography>
+                                        <Typography variant="body2" fontWeight="bold">
+                                            {currencySymbol}{(payment.subscription.price || payment.subscription.plan?.price || 0).toLocaleString()}
+                                        </Typography>
+                                    </Box>
+                                    <Box display="flex" justifyContent="space-between">
+                                        <Typography variant="body2" color="text.secondary">Total Paid So Far</Typography>
+                                        <Typography variant="body2" fontWeight="bold" color="success.main">
+                                            {currencySymbol}{(payment.subscription.paidAmount || 0).toLocaleString()}
+                                        </Typography>
+                                    </Box>
+                                    <Divider sx={{ borderStyle: 'dashed' }} />
+                                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body2" fontWeight="bold" color="text.secondary">Remaining</Typography>
+                                        <Typography variant="body2" fontWeight="bold" color={(payment.subscription.remainingAmount > 0) ? 'warning.main' : 'text.disabled'}>
+                                            {currencySymbol}{(payment.subscription.remainingAmount || 0).toLocaleString()}
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+                            </Paper>
+                        )}
+
                         <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'background.paper' }} elevation={0} variant="outlined">
                             <Stack spacing={2}>
                                 <Box display="flex" justifyContent="space-between">

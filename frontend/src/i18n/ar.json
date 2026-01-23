@@ -77,7 +77,11 @@
         "confirmDelete": "هل أنت متأكد من حذف هذا العضو؟",
         "memberCreated": "تم إنشاء العضو بنجاح",
         "memberUpdated": "تم تحديث العضو بنجاح",
-        "memberDeleted": "تم حذف العضو بنجاح"
+        "memberDeleted": "تم حذف العضو بنجاح",
+        "selectLabel": "اختر العضو",
+        "scanInput": "مسح الهوية / بحث",
+        "memberFound": "تم العثور على العضو: ",
+        "undefined": "غير معروف"
     },
     "memberDetails": {
         "overview": "نظرة عامة",
@@ -146,6 +150,7 @@
     },
     "checkin": {
         "title": "محطة تسجيل الدخول",
+        "subtitle": "إدارة دخول الأعضاء",
         "scanQR": "مسح رمز QR",
         "faceRecognition": "التعرف على الوجه",
         "manual": "إدخال يدوي",
@@ -156,7 +161,10 @@
         "welcome": "مرحباً",
         "todayAttendance": "حضور اليوم",
         "activeNow": "متواجدون الآن",
-        "history": "سجل الحضور"
+        "history": "سجل الحضور",
+        "checkoutAction": "تسجيل خروج العضو الآن",
+        "checkoutSuccess": "تم تسجيل الخروج بنجاح!",
+        "confirmCheckout": "هل أنت متأكد من تسجيل خروج العضو؟"
     },
     "payments": {
         "title": "المدفوعات",
@@ -291,7 +299,8 @@
         "confirmDelete": "هل أنت متأكد من حذف هذه الخطة؟",
         "planCreated": "تم إنشاء الخطة بنجاح",
         "planUpdated": "تم تحديث الخطة بنجاح",
-        "planDeleted": "تم حذف الخطة بنجاح"
+        "planDeleted": "تم حذف الخطة بنجاح",
+        "noPlans": "لا توجد خطط نشطة متاحة"
     },
     "backup": {
         "title": "النسخ الاحتياطي والاستعادة",
@@ -359,7 +368,20 @@
         "yesterday": "أمس",
         "thisWeek": "هذا الأسبوع",
         "thisMonth": "هذا الشهر",
-        "thisYear": "هذا العام"
+        "thisYear": "هذا العام",
+        "scanning": "جاري المسح...",
+        "startTyping": "بدء الكتابة للبحث...",
+        "noResults": "لا توجد نتائج",
+        "change": "تغيير",
+        "currency": "ج.م",
+        "days": "أيام",
+        "processing": "جاري المعالجة...",
+        "unknown": "غير معروف",
+        "paid": "مدفوع",
+        "pending": "قيد الانتظار",
+        "partial": "جزئي",
+        "refunded": "مسترد",
+        "cancelled": "ملغي"
     },
     "errors": {
         "required": "هذا الحقل مطلوب",
@@ -385,6 +407,19 @@
         "date": "التاريخ",
         "success": "تم تسجيل الحركة بنجاح",
         "error": "فشل التسجيل"
+    },
+    "step": {
+        "member": "خطوة 1: العضو",
+        "plan": "خطوة 2: الخطة",
+        "pay": "خطوة 3: الدفع"
+    },
+    "finance": {
+        "amountToPay": "المبلغ المطلوب",
+        "paymentMethod": "طريقة الدفع",
+        "transactionRef": "رقم مرجع المعاملة",
+        "transferRef": "رقم مرجع التحويل / الإيصال",
+        "refPlaceholder": "امسح أو اكتب رقم المرجع...",
+        "refRequired": "مطلوب للسجلات"
     },
     "cashClosing": {
         "title": "تقفيل الكاش",

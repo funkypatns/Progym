@@ -162,29 +162,43 @@ const MemberDetailsModal = ({ isOpen, onClose, memberId }) => {
                                             <InfoBlock label={t('members.phone')} value={data.basicInfo.phone} icon={<Phone size={14} />} />
                                             <InfoBlock label={t('members.joinDate')} value={formatDateTime(data.basicInfo.joinDate, i18n.language).split(',')[0]} icon={<Calendar size={14} />} />
 
-                                            <div className="col-span-1 sm:col-span-2 bg-primary-50 dark:bg-primary-900/10 p-4 rounded-xl border border-primary-100 dark:border-primary-900/20">
-                                                <div className="flex justify-between items-start mb-2">
+                                            <div className="col-span-1 sm:col-span-2 bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                                                <div className="flex justify-between items-start mb-4 relative z-10">
                                                     <div>
-                                                        <p className="text-xs text-primary-600 dark:text-primary-400 font-bold uppercase mb-1">
+                                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1.5 opacity-70">
                                                             {t('memberDetails.currentPlan')}
                                                         </p>
-                                                        <p className="font-bold text-gray-900 dark:text-white text-lg">
+                                                        <p className="font-black text-slate-900 dark:text-white text-xl tracking-tight">
                                                             {data.subscriptionInfo ? data.subscriptionInfo.planName : t('memberDetails.noPlan')}
                                                         </p>
                                                     </div>
                                                     {data.subscriptionInfo && (
                                                         <div className="text-right">
-                                                            <p className="text-2xl font-black text-primary-600 dark:text-primary-400">
-                                                                {data.subscriptionInfo.remainingDays}
-                                                            </p>
-                                                            <p className="text-[10px] text-gray-500 uppercase font-bold">{t('memberDetails.daysLeft')}</p>
+                                                            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-xl border border-emerald-100/50">
+                                                                <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                                                                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 leading-none">
+                                                                    {data.subscriptionInfo.remainingDays}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[9px] text-slate-400 uppercase font-black mt-1.5 tracking-tighter opacity-70">{t('memberDetails.daysLeft')}</p>
                                                         </div>
                                                     )}
                                                 </div>
 
                                                 {data.subscriptionInfo && (
-                                                    <div className="w-full bg-white dark:bg-dark-700 h-2 rounded-full overflow-hidden mt-1 shadow-inner">
-                                                        <div className="h-full bg-primary-500" style={{ width: '60%' }}></div>
+                                                    <div className="grid grid-cols-2 gap-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 opacity-70">Start Date</p>
+                                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                                                {formatDateTime(data.subscriptionInfo.startDate, i18n.language).split(',')[0]}
+                                                            </p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1 opacity-70">End Date</p>
+                                                            <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                                                                {formatDateTime(data.subscriptionInfo.endDate, i18n.language).split(',')[0]}
+                                                            </p>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -291,6 +305,44 @@ const MemberDetailsModal = ({ isOpen, onClose, memberId }) => {
                                                 <StatCard label={t('memberDetails.totalDue')} value={data.financialSummary.totalDue} color="amber" conf={currencyConf} />
                                             </div>
 
+                                            {/* Payment Ledger (NEW Section) */}
+                                            <div className="bg-white dark:bg-dark-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+                                                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                                                    <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                                                        <CreditCard className="w-4 h-4 text-blue-500" />
+                                                        Detailed Payment Ledger
+                                                    </h4>
+                                                </div>
+                                                {data.activity.payments.length > 0 ? (
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-sm">
+                                                            <thead>
+                                                                <tr className="bg-slate-50/50 dark:bg-slate-900/30 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700">
+                                                                    <th className="px-6 py-3 text-left">Date</th>
+                                                                    <th className="px-6 py-3 text-left">Amount</th>
+                                                                    <th className="px-6 py-3 text-left">Method</th>
+                                                                    <th className="px-6 py-3 text-left">Reference</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                                                {data.activity.payments.map(p => (
+                                                                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                                                                        <td className="px-6 py-4 text-slate-500 font-medium">{formatDateTime(p.date, i18n.language)}</td>
+                                                                        <td className="px-6 py-4 font-black text-slate-900 dark:text-white">{formatCurrency(p.amount, i18n.language, currencyConf)}</td>
+                                                                        <td className="px-6 py-4">
+                                                                            <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-[10px] font-black uppercase">
+                                                                                {t(`payments.${p.method.toLowerCase()}`, p.method)}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-6 py-4 text-xs text-slate-400 font-mono italic">{p.transactionRef || 'N/A'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : <EmptyState message={t('memberDetails.noPayments')} />}
+                                            </div>
+
                                             <div className="p-6 bg-white dark:bg-dark-800 rounded-xl border border-gray-100 dark:border-dark-700 shadow-sm">
                                                 <h4 className="text-sm font-bold mb-6 text-gray-900 dark:text-white flex items-center gap-2">
                                                     <DollarSign className="w-4 h-4 text-gray-400" />
@@ -311,29 +363,29 @@ const MemberDetailsModal = ({ isOpen, onClose, memberId }) => {
                                                 <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-wider">{t('memberDetails.refundHistory')}</h3>
                                             </div>
                                             {data.activity.refunds.length > 0 ? (
-                                                <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-100 dark:border-dark-700 overflow-hidden shadow-sm">
+                                                <div className="bg-white dark:bg-dark-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden shadow-sm">
                                                     <table className="w-full text-sm text-left">
-                                                        <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-dark-700/50 border-b border-gray-100 dark:border-dark-700">
+                                                        <thead className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50/50 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-700">
                                                             <tr>
-                                                                <th className={`p-4 font-semibold ${isRTL ? 'text-right' : 'text-left'}`}>{t('subscriptions.dates')}</th>
-                                                                <th className={`p-4 font-semibold ${isRTL ? 'text-right' : 'text-left'}`}>{t('payments.amount')}</th>
-                                                                <th className={`p-4 font-semibold ${isRTL ? 'text-right' : 'text-left'}`}>{t('payments.method')}</th>
-                                                                <th className={`p-4 font-semibold ${isRTL ? 'text-right' : 'text-left'}`}>{t('subscriptions.plan')}</th>
-                                                                <th className={`p-4 font-semibold ${isRTL ? 'text-right' : 'text-left'}`}>{t('common.by')}</th>
+                                                                <th className={`p-4 ${isRTL ? 'text-right' : 'text-left'}`}>{t('subscriptions.dates')}</th>
+                                                                <th className={`p-4 ${isRTL ? 'text-right' : 'text-left'}`}>{t('payments.amount')}</th>
+                                                                <th className={`p-4 ${isRTL ? 'text-right' : 'text-left'}`}>{t('payments.method')}</th>
+                                                                <th className={`p-4 ${isRTL ? 'text-right' : 'text-left'}`}>Reason</th>
+                                                                <th className={`p-4 ${isRTL ? 'text-right' : 'text-left'}`}>{t('common.by')}</th>
                                                             </tr>
                                                         </thead>
-                                                        <tbody className="divide-y divide-gray-100 dark:divide-dark-700">
+                                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                                             {data.activity.refunds.map(r => (
-                                                                <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-dark-700/50 transition-colors">
-                                                                    <td className="p-4 text-gray-600 dark:text-gray-300">{formatDateTime(r.date, i18n.language)}</td>
-                                                                    <td className="p-4 font-bold text-red-500">{formatCurrency(r.amount, 'en', currencyConf)}</td>
+                                                                <tr key={r.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                                                                    <td className="p-4 text-slate-500 font-medium">{formatDateTime(r.date, i18n.language)}</td>
+                                                                    <td className="p-4 font-black text-rose-500">{formatCurrency(r.amount, 'en', currencyConf)}</td>
                                                                     <td className="p-4">
-                                                                        <span className="text-xs font-semibold px-2 py-1 bg-gray-100 dark:bg-dark-700 rounded-md">
+                                                                        <span className="text-[10px] font-black px-2 py-1 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-md border border-rose-100/50 uppercase">
                                                                             {t(`payments.${r.method.toLowerCase()}`, r.method)}
                                                                         </span>
                                                                     </td>
-                                                                    <td className="p-4 text-gray-600 dark:text-gray-300">{r.subscriptionName}</td>
-                                                                    <td className="p-4 text-xs text-gray-400">{r.performedBy}</td>
+                                                                    <td className="p-4 text-slate-600 dark:text-slate-300 font-medium">{r.reason || 'Manual Adjustment'}</td>
+                                                                    <td className="p-4 text-[11px] font-bold text-slate-400 italic">@{r.performedBy}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>

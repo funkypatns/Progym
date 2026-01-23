@@ -3,19 +3,17 @@ import { useTranslation } from 'react-i18next';
 import {
     Loader2,
     RefreshCw,
-    Download,
     FileSpreadsheet,
-    ArrowUpCircle,
     ArrowDownCircle,
+    ArrowUpCircle,
     Banknote,
-    Filter
+    Calendar
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency, formatNumber } from '../utils/numberFormatter';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useSettingsStore } from '../store';
-import { motion } from 'framer-motion';
 
 const CashMovementsReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
@@ -68,7 +66,6 @@ const CashMovementsReport = ({ isActive }) => {
     }, [isActive, filters.startDate, filters.endDate, filters.type]);
 
     const handleExport = () => {
-        // Simple CSV Export implementation
         if (!data.data.length) return;
 
         const headers = ["Date", "Type", "Amount", "Reason", "Notes", "Employee"];
@@ -97,167 +94,191 @@ const CashMovementsReport = ({ isActive }) => {
     if (!isActive) return null;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Pay In */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-emerald-600 dark:text-emerald-400">
-                        <ArrowDownCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t('payInOut.in') || 'Total Pay In'}</p>
-                        <h3 className="text-2xl font-bold text-emerald-600 mt-1">
+                <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t('payInOut.in') || 'Total Pay In'}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             +{formatCurrency(data.totals.payIn, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
+                    <div className="p-3 bg-emerald-500 rounded-xl">
+                        <ArrowDownCircle className="w-6 h-6 text-white" />
+                    </div>
+                </div>
 
                 {/* Pay Out */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-600 dark:text-red-400">
-                        <ArrowUpCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t('payInOut.out') || 'Total Pay Out'}</p>
-                        <h3 className="text-2xl font-bold text-red-600 mt-1">
+                <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t('payInOut.out') || 'Total Pay Out'}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             -{formatCurrency(data.totals.payOut, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
+                    <div className="p-3 bg-red-500 rounded-xl">
+                        <ArrowUpCircle className="w-6 h-6 text-white" />
+                    </div>
+                </div>
 
                 {/* Net */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600 dark:text-blue-400">
-                        <Banknote className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t('financials.net') || 'Net Cash Flow'}</p>
-                        <h3 className={`text-2xl font-bold mt-1 ${data.totals.net >= 0 ? 'text-gray-900 dark:text-white' : 'text-red-500'}`}>
+                <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t('payInOut.net') || 'Net'}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatCurrency(data.totals.net, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
+                    <div className="p-3 bg-indigo-500 rounded-xl">
+                        <Banknote className="w-6 h-6 text-white" />
+                    </div>
+                </div>
             </div>
 
-            {/* Filters */}
-            <div className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.from')}</label>
+            {/* Toolbar */}
+            <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            {i18n.language === 'ar' ? 'من' : 'From'}
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
                             value={filters.startDate}
                             onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.to')}</label>
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            {i18n.language === 'ar' ? 'إلى' : 'To'}
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
                             value={filters.endDate}
                             onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('payInOut.type') || 'Type'}</label>
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400">
+                            {i18n.language === 'ar' ? 'النوع' : 'Type'}
+                        </label>
                         <select
-                            className="input w-full"
                             value={filters.type}
                             onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                         >
-                            <option value="">{t('common.all') || 'All'}</option>
+                            <option value="">{i18n.language === 'ar' ? 'الكل' : 'All'}</option>
                             <option value="IN">{t('payInOut.in') || 'Pay In'}</option>
                             <option value="OUT">{t('payInOut.out') || 'Pay Out'}</option>
                         </select>
                     </div>
-                    <div className="flex items-end gap-2">
-                        <button onClick={fetchReport} disabled={isLoading} className="btn-secondary flex-1">
-                            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                            {t('common.refresh')}
+                    <div className="flex items-center gap-2 ml-auto">
+                        <button
+                            onClick={fetchReport}
+                            disabled={isLoading}
+                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                            <RefreshCw size={18} />
+                            {i18n.language === 'ar' ? 'تحديث' : 'Refresh'}
                         </button>
-                        <button onClick={handleExport} className="btn-primary">
-                            <Download className="w-5 h-5" />
+                        <button
+                            onClick={handleExport}
+                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
+                        >
+                            <FileSpreadsheet size={18} />
+                            {i18n.language === 'ar' ? 'تصدير' : 'Export'}
                         </button>
                     </div>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-gray-50 dark:bg-dark-700/50 text-xs uppercase text-gray-500 font-bold tracking-wider border-b border-gray-100 dark:border-dark-700">
-                                <th className="p-4">{t('payInOut.date') || 'Date'}</th>
-                                <th className="p-4">{t('payInOut.type') || 'Type'}</th>
-                                <th className="p-4">{t('payInOut.reason') || 'Reason'}</th>
-                                <th className="p-4">{t('payInOut.employee') || 'Employee'}</th>
-                                <th className="p-4 text-right">{t('payInOut.amount') || 'Amount'}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-dark-700">
-                            {isLoading ? (
+            <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 overflow-hidden">
+                {isLoading ? (
+                    <div className="py-16 flex flex-col items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
+                        <p className="text-sm text-gray-400 font-medium">Loading...</p>
+                    </div>
+                ) : data.data.length === 0 ? (
+                    <div className="py-16 flex flex-col items-center justify-center">
+                        <Banknote className="w-12 h-12 text-gray-600 mb-3" />
+                        <p className="text-sm text-gray-400 font-medium">{i18n.language === 'ar' ? 'لا توجد بيانات' : 'No data available'}</p>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-900/50 border-b border-slate-700/50">
                                 <tr>
-                                    <td colSpan="5" className="p-8 text-center text-gray-500">
-                                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                                        {t('common.loading')}
-                                    </td>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                        {i18n.language === 'ar' ? 'التاريخ' : 'Date'}
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                        {i18n.language === 'ar' ? 'النوع' : 'Type'}
+                                    </th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                        {i18n.language === 'ar' ? 'المبلغ' : 'Amount'}
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                        {i18n.language === 'ar' ? 'السبب' : 'Reason'}
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                        {i18n.language === 'ar' ? 'الموظف' : 'Employee'}
+                                    </th>
                                 </tr>
-                            ) : data.data.length === 0 ? (
-                                <tr>
-                                    <td colSpan="5" className="p-8 text-center text-gray-500">
-                                        {t('common.noData')}
-                                    </td>
-                                </tr>
-                            ) : (
-                                data.data.map(m => (
-                                    <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-dark-700/50 transition-colors">
-                                        <td className="p-4 text-sm font-mono text-gray-600 dark:text-gray-400">
-                                            {formatDateTime(m.createdAt, i18n.language)}
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${m.type === 'IN'
-                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                                }`}>
-                                                {m.type === 'IN' ? (t('payInOut.in') || 'PAY IN') : (t('payInOut.out') || 'PAY OUT')}
+                            </thead>
+                            <tbody className="divide-y divide-slate-700/50">
+                                {data.data.map((movement, idx) => (
+                                    <tr key={movement.id} className="hover:bg-slate-700/30 transition-colors">
+                                        <td className="px-4 py-3 text-white">
+                                            <span className="text-sm font-medium">
+                                                {formatDateTime(movement.createdAt, i18n.language)}
                                             </span>
                                         </td>
-                                        <td className="p-4">
-                                            <div className="font-medium text-gray-900 dark:text-white">{m.reason}</div>
-                                            {m.notes && <div className="text-xs text-gray-500 mt-0.5">{m.notes}</div>}
+                                        <td className="px-4 py-3">
+                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${movement.type === 'IN'
+                                                ? 'bg-emerald-500/20 text-emerald-400'
+                                                : 'bg-red-500/20 text-red-400'
+                                                }`}>
+                                                {movement.type === 'IN' ? (t('payInOut.in') || 'Pay In') : (t('payInOut.out') || 'Pay Out')}
+                                            </span>
                                         </td>
-                                        <td className="p-4 text-sm text-gray-600 dark:text-gray-400">
-                                            {m.employee?.firstName} {m.employee?.lastName}
+                                        <td className="px-4 py-3 text-right">
+                                            <span className={`font-mono font-semibold ${movement.type === 'IN' ? 'text-emerald-400' : 'text-red-400'
+                                                }`}>
+                                                {movement.type === 'IN' ? '+' : '-'}{formatCurrency(movement.amount, i18n.language, currencyConf)}
+                                            </span>
                                         </td>
-                                        <td className="p-4 text-right font-mono font-bold">
-                                            <span className={m.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}>
-                                                {m.type === 'OUT' ? '-' : '+'}{formatCurrency(m.amount, i18n.language, currencyConf)}
+                                        <td className="px-4 py-3">
+                                            <div>
+                                                <p className="text-sm font-medium text-white">{movement.reason}</p>
+                                                {movement.notes && (
+                                                    <p className="text-xs text-gray-400 mt-0.5">{movement.notes}</p>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className="text-sm text-gray-300">
+                                                {movement.employee?.firstName} {movement.employee?.lastName}
                                             </span>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );

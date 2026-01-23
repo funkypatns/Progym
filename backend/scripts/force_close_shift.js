@@ -43,5 +43,5 @@ async function forceCloseShift(shiftId) {
     }
 }
 
-// Execute for ID 26 as reported by user
-forceCloseShift(26);
+// Execute for ID 30 as requested by user
+forceCloseShift(30);

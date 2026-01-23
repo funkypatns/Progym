@@ -22,8 +22,10 @@ import {
     CheckCircle,
     XCircle,
     Loader2,
-    UserX,
-    MessageCircle,
+    RotateCcw,
+    PauseCircle,
+    PlayCircle,
+    Banknote
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
@@ -53,6 +55,30 @@ const MemberProfile = () => {
         }
     };
 
+    // -- Handlers --
+
+    const handlePauseToggle = async (sub) => {
+        // Simple prompt for now, or just toggle if pausing/resuming
+        const isPausing = !sub.isPaused;
+        const action = isPausing ? 'Pause' : 'Resume';
+
+        let reason = 'Manual Action';
+        if (isPausing) {
+            reason = window.prompt("Reason for pausing (optional):", "Member Request");
+            if (reason === null) return; // Cancelled
+        }
+
+        if (!window.confirm(`Are you sure you want to ${action} this subscription?`)) return;
+
+        try {
+            await api.put(`/subscriptions/${sub.id}/toggle-pause`, { reason });
+            toast.success(`Subscription ${action}d successfully`);
+            fetchMember(); // Refresh
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Action failed');
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -61,11 +87,9 @@ const MemberProfile = () => {
         );
     }
 
-    if (!member) {
-        return null;
-    }
+    if (!member) return null;
 
-    const activeSubscription = member.subscriptions?.find(s => s.status === 'active');
+    const activeSubscription = member.subscriptions?.find(s => s.status === 'active' || s.status === 'paused');
     const daysRemaining = activeSubscription
         ? Math.ceil((new Date(activeSubscription.endDate) - new Date()) / (1000 * 60 * 60 * 24))
         : 0;
@@ -113,8 +137,8 @@ const MemberProfile = () => {
                                         <p className="text-primary-400 font-medium">{member.memberId}</p>
                                         {member.gender && (
                                             <span className={`text-xs px-2 py-0.5 rounded-full border ${member.gender === 'male' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                                                    member.gender === 'female' ? 'bg-pink-500/10 text-pink-400 border-pink-500/20' :
-                                                        'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                                                member.gender === 'female' ? 'bg-pink-500/10 text-pink-400 border-pink-500/20' :
+                                                    'bg-gray-500/10 text-gray-400 border-gray-500/20'
                                                 }`}>
                                                 {member.gender.charAt(0).toUpperCase() + member.gender.slice(1)}
                                             </span>
@@ -127,6 +151,7 @@ const MemberProfile = () => {
                                         phone={member.phone}
                                         memberName={`${member.firstName} ${member.lastName}`}
                                         daysRemaining={daysRemaining}
+                                        className="!bg-emerald-500/10 !text-emerald-500 hover:!bg-emerald-500/20 border border-emerald-500/20"
                                     />
                                     <Link to={`/members/${id}/edit`} className="btn-secondary">
                                         <Edit className="w-4 h-4" />
@@ -163,51 +188,69 @@ const MemberProfile = () => {
                         </div>
                     </div>
 
-                    {/* Subscription Status */}
-                    <div className="mt-6 pt-6 border-t border-dark-700">
-                        <h3 className="text-lg font-semibold text-white mb-4">Current Subscription</h3>
+                    {/* Subscriptions List (Detailed) */}
+                    <div className="mt-8 pt-6 border-t border-dark-700">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-white">Subscriptions</h3>
+                            <Link to="/subscriptions" className="btn-primary text-xs py-1.5 h-auto">
+                                <CreditCard className="w-3 h-3" /> Assign New
+                            </Link>
+                        </div>
 
-                        {activeSubscription ? (
-                            <div className="bg-dark-900/50 rounded-xl p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg ${daysRemaining > 7 ? 'bg-emerald-500/20' :
-                                            daysRemaining > 0 ? 'bg-yellow-500/20' : 'bg-red-500/20'
-                                            }`}>
-                                            {daysRemaining > 7 ? (
-                                                <CheckCircle className="w-6 h-6 text-emerald-400" />
-                                            ) : daysRemaining > 0 ? (
-                                                <AlertTriangle className="w-6 h-6 text-yellow-400" />
-                                            ) : (
-                                                <XCircle className="w-6 h-6 text-red-400" />
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="font-medium text-white">{activeSubscription.plan.name}</p>
-                                            <p className="text-sm text-dark-400">
-                                                {new Date(activeSubscription.startDate).toLocaleDateString()} - {' '}
-                                                {new Date(activeSubscription.endDate).toLocaleDateString()}
-                                            </p>
-                                        </div>
-                                    </div>
+                        {member.subscriptions && member.subscriptions.length > 0 ? (
+                            <div className="space-y-3">
+                                {member.subscriptions.map(sub => {
+                                    const price = sub.price || sub.plan?.price || 0;
+                                    const paid = sub.paidAmount || 0;
+                                    const remaining = Math.max(0, price - paid);
+                                    const isActive = sub.status === 'active';
+                                    const isPaused = sub.isPaused || sub.status === 'paused'; // Handle both flags
 
-                                    <div className="text-right">
-                                        <p className={`text-2xl font-bold ${daysRemaining > 7 ? 'text-emerald-400' :
-                                            daysRemaining > 0 ? 'text-yellow-400' : 'text-red-400'
-                                            }`}>
-                                            {daysRemaining > 0 ? daysRemaining : 0}
-                                        </p>
-                                        <p className="text-sm text-dark-400">{t('subscriptions.daysRemaining')}</p>
-                                    </div>
-                                </div>
+                                    return (
+                                        <div key={sub.id} className={`bg-dark-900/40 border border-dark-800 rounded-xl p-4 transition-all hover:border-dark-700 ${isActive ? 'ring-1 ring-primary-500/30' : ''}`}>
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+
+                                                {/* Left: Info */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <h4 className="font-bold text-white text-base">{sub.plan?.name}</h4>
+
+                                                        <div className="flex items-center gap-1 ml-2">
+                                                            {/* Actions moved to Payments page */}
+                                                        </div>
+
+                                                        {(sub.status || '').toUpperCase() === 'ACTIVE' && <span className="badge badge-success ml-2">Active</span>}
+                                                        {(sub.status || '').toUpperCase() === 'PAUSED' && <span className="badge badge-warning">Paused</span>}
+                                                        {(sub.status || '').toUpperCase() === 'EXPIRED' && <span className="badge badge-neutral">Expired</span>}
+                                                        {(sub.status || '').toUpperCase() === 'CANCELLED' && <span className="badge badge-error">Cancelled</span>}
+
+                                                        {/* Payment Badges */}
+                                                        {(sub.paymentStatus || '').toUpperCase() === 'PAID' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold ml-1">PAID</span>}
+                                                        {(sub.paymentStatus || '').toUpperCase() === 'PARTIAL' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-bold ml-1">PARTIAL</span>}
+                                                    </div>
+                                                    <div className="text-sm text-dark-300 flex items-center gap-3">
+                                                        <span>{new Date(sub.startDate).toLocaleDateString()} - {new Date(sub.endDate).toLocaleDateString()}</span>
+                                                        {remaining > 0 && sub.status !== 'cancelled' && <span className="text-orange-500 font-bold">Due: {remaining.toLocaleString()} EGP</span>}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    {/* PAUSE / RESUME (Kept on right as standard Action) */}
+                                                    {(isActive || isPaused) && sub.status !== 'expired' && sub.status !== 'cancelled' && (
+                                                        <button onClick={() => handlePauseToggle(sub)} className={`btn-secondary text-xs px-3 py-1.5 h-auto ${isPaused ? 'text-green-400 bg-green-400/10 border-green-400/20' : 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'}`}>
+                                                            {isPaused ? <PlayCircle className="w-4 h-4 mr-1.5" /> : <PauseCircle className="w-4 h-4 mr-1.5" />}
+                                                            {isPaused ? 'Resume' : 'Pause'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         ) : (
-                            <div className="bg-dark-900/50 rounded-xl p-4 text-center">
-                                <p className="text-dark-400">{t('subscriptions.noSubscription')}</p>
-                                <Link to="/subscriptions" className="btn-primary mt-4">
-                                    <CreditCard className="w-4 h-4" />
-                                    {t('subscriptions.assignSubscription')}
-                                </Link>
+                            <div className="bg-dark-900/50 rounded-xl p-6 text-center">
+                                <p className="text-dark-400 mb-2">{t('subscriptions.noSubscription')}</p>
                             </div>
                         )}
                     </div>
@@ -294,8 +337,8 @@ const MemberProfile = () => {
                                             <td className="text-dark-300">
                                                 {new Date(payment.paidAt).toLocaleDateString()}
                                             </td>
-                                            <td className="text-emerald-400 font-medium">
-                                                ${payment.amount}
+                                            <td className={`font-medium ${payment.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                                {payment.amount}
                                             </td>
                                             <td className="text-dark-300 capitalize">{payment.method}</td>
                                             <td>
@@ -315,6 +358,8 @@ const MemberProfile = () => {
                     )}
                 </motion.div>
             </div>
+
+            {/* Payments Dialog removed for consolidation */}
         </div>
     );
 };

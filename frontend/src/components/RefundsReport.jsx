@@ -2,18 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Search,
-    Download,
     FileSpreadsheet,
     Loader2,
     Calendar,
-    User,
     Banknote,
-    Receipt,
-    Users,
-    AlertCircle,
     Info,
     RefreshCw,
-    Eye
+    Eye,
+    TrendingDown,
+    Users,
+    AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -21,7 +19,7 @@ import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency, formatNumber } from '../utils/numberFormatter';
 import { useSettingsStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import MemberDetailsModal from './MemberDetailsModal'; // Import Modal
+import MemberDetailsModal from './MemberDetailsModal';
 
 const RefundsReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
@@ -31,7 +29,7 @@ const RefundsReport = ({ isActive }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [admins, setAdmins] = useState([]);
     const [expandedRow, setExpandedRow] = useState(null);
-    const [selectedMemberId, setSelectedMemberId] = useState(null); // Modal state
+    const [selectedMemberId, setSelectedMemberId] = useState(null);
 
     // Filters
     const [filters, setFilters] = useState({
@@ -117,8 +115,7 @@ const RefundsReport = ({ isActive }) => {
     const tPath = 'reports.fields.refunds';
 
     return (
-        <div className="space-y-6">
-            {/* Modal */}
+        <div className="space-y-4">
             <MemberDetailsModal
                 isOpen={!!selectedMemberId}
                 onClose={() => setSelectedMemberId(null)}
@@ -126,83 +123,87 @@ const RefundsReport = ({ isActive }) => {
             />
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-600 dark:text-red-400">
-                        <Banknote className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t(`${tPath}.totalRefunded`)}</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Total Refunded */}
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t(`${tPath}.totalRefunded`)}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatCurrency(data?.totals?.totalRefunded || 0, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-xl text-primary-600 dark:text-primary-400">
-                        <Calendar className="w-6 h-6" />
+                    <div className="p-3 bg-red-500 rounded-xl">
+                        <TrendingDown className="w-6 h-6 text-white" />
                     </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t(`${tPath}.thisMonth`)}</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                </div>
+
+                {/* This Month */}
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t(`${tPath}.thisMonth`)}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatCurrency(data?.totals?.thisMonthTotal || 0, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-amber-600 dark:text-amber-400">
-                        <Info className="w-6 h-6" />
+                    <div className="p-3 bg-indigo-500 rounded-xl">
+                        <Calendar className="w-6 h-6 text-white" />
                     </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t(`${tPath}.resultCount`)}</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                </div>
+
+                {/* Count */}
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t(`${tPath}.resultCount`)}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatNumber(data?.totals?.count || 0, i18n.language)}
                         </h3>
                     </div>
-                </motion.div>
+                    <div className="p-3 bg-amber-500 rounded-xl">
+                        <Info className="w-6 h-6 text-white" />
+                    </div>
+                </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.from')}</label>
+            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            {t('reports.from')}
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.startDate}
                             onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.to')}</label>
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            {t('reports.to')}
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.endDate}
                             onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.filterByEmployee')}</label>
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Users size={14} />
+                            {t('reports.filterByEmployee')}
+                        </label>
                         <select
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.adminId}
                             onChange={(e) => setFilters({ ...filters, adminId: e.target.value })}
                         >
@@ -214,188 +215,187 @@ const RefundsReport = ({ isActive }) => {
                             ))}
                         </select>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('common.search')}</label>
+                    <div className="flex-1 min-w-[200px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Search size={14} />
+                            {t('common.search')}
+                        </label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
                                 type="text"
-                                className="input w-full pl-10"
-                                placeholder={t(`${tPath}.searchPlaceholder`)}
+                                className="w-full h-11 pl-10 pr-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500"
+                                placeholder={t(`${tPath}.searchPlaceholder`) || 'Search...'}
                                 value={filters.search}
                                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                                 onKeyDown={(e) => e.key === 'Enter' && fetchRefunds()}
                             />
                         </div>
                     </div>
-                </div>
-
-                <div className="mt-6 flex justify-end gap-3">
-                    <button onClick={fetchRefunds} disabled={isLoading} className="btn-secondary">
-                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                        {t('common.refresh')}
-                    </button>
-                    <button onClick={handleExport} className="btn-primary">
-                        <FileSpreadsheet className="w-5 h-5" />
-                        {t(`${tPath}.exportExcel`)}
-                    </button>
+                    <div className="flex items-center gap-2 ml-auto">
+                        <button
+                            onClick={fetchRefunds}
+                            disabled={isLoading}
+                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                            {t('common.refresh')}
+                        </button>
+                        <button
+                            onClick={handleExport}
+                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
+                        >
+                            <FileSpreadsheet className="w-5 h-5" />
+                            {t(`${tPath}.exportExcel`)}
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 overflow-hidden">
+            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-gray-50 dark:bg-dark-700/50 text-xs uppercase text-gray-500 font-bold tracking-wider border-b border-gray-100 dark:border-dark-700">
-                                <th className="p-4 w-10"></th>
-                                <th className="p-4">{t('reports.fields.paidAt')}</th>
-                                <th className="p-4">{t(`${tPath}.transactionId`)}</th>
-                                <th className="p-4">{t('reports.fields.memberName')}</th>
-                                <th className="p-4 text-right">Original Paid</th>
-                                <th className="p-4 text-right text-red-500">Refunded</th>
-                                <th className="p-4 text-right">Cumulative</th>
-                                <th className="p-4 text-right">Net Remaining</th>
-                                <th className="p-4">{t(`${tPath}.admin`)}</th>
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-900/50 border-b border-slate-700/50">
+                            <tr>
+                                <th className="px-4 py-3 w-10"></th>
+                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t('reports.fields.paidAt')}</th>
+                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t(`${tPath}.transactionId`)}</th>
+                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t('reports.fields.memberName')}</th>
+                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Original Paid</th>
+                                <th className="px-4 py-3 text-xs font-bold text-red-500 uppercase tracking-wider text-right">Refunded</th>
+                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Cumulative</th>
+                                <th className="px-4 py-3 text-xs font-bold text-emerald-500 uppercase tracking-wider text-right">Net Remaining</th>
+                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t(`${tPath}.admin`)}</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-dark-700 border-b border-gray-100 dark:border-700">
-                            <AnimatePresence mode="popLayout">
-                                {isLoading ? (
-                                    <tr>
-                                        <td colSpan="9" className="p-8 text-center text-gray-500">
-                                            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                                            {t('common.loading')}
-                                        </td>
-                                    </tr>
-                                ) : (!data?.rows || data.rows.length === 0) ? (
-                                    <tr>
-                                        <td colSpan="9" className="p-8 text-center text-gray-500">
-                                            <AlertCircle className="w-6 h-6 mx-auto mb-2 opacity-20" />
-                                            {t('common.noData')}
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    data.rows.map((row, idx) => (
-                                        <React.Fragment key={row.id}>
-                                            <motion.tr
-                                                initial={{ opacity: 0, x: -10 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: idx * 0.01 }}
-                                                className={`hover:bg-gray-50 dark:hover:bg-dark-700/50 transition-colors cursor-pointer ${expandedRow === row.id ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}
-                                                onClick={() => setExpandedRow(expandedRow === row.id ? null : row.id)}
-                                            >
-                                                <td className="p-4">
-                                                    <Info className={`w-4 h-4 transition-transform ${expandedRow === row.id ? 'text-primary-500 scale-125' : 'text-gray-300'}`} />
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                        {row.refundedAt ? formatDateTime(row.refundedAt, i18n.language).split(',')[0] : 'N/A'}
+                        <tbody className="divide-y divide-slate-700/50">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="9" className="p-12 text-center">
+                                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-indigo-500" />
+                                        <p className="text-gray-400 font-medium">{t('common.loading')}</p>
+                                    </td>
+                                </tr>
+                            ) : (!data?.rows || data.rows.length === 0) ? (
+                                <tr>
+                                    <td colSpan="9" className="p-12 text-center">
+                                        <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                                        <p className="text-gray-400 font-medium">{t('common.noData')}</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                data.rows.map((row, idx) => (
+                                    <React.Fragment key={row.id}>
+                                        <tr
+                                            className={`hover:bg-slate-700/30 transition-colors cursor-pointer ${expandedRow === row.id ? 'bg-slate-700/30' : ''}`}
+                                            onClick={() => setExpandedRow(expandedRow === row.id ? null : row.id)}
+                                        >
+                                            <td className="px-4 py-3">
+                                                <Info className={`w-4 h-4 transition-transform ${expandedRow === row.id ? 'text-indigo-400 scale-125' : 'text-gray-500'}`} />
+                                            </td>
+                                            <td className="px-4 py-3 text-white">
+                                                <div>{row.refundedAt ? formatDateTime(row.refundedAt, i18n.language).split(',')[0] : 'N/A'}</div>
+                                                <div className="text-[10px] text-gray-500 font-mono">
+                                                    {row.refundedAt ? formatDateTime(row.refundedAt, i18n.language).split(',')[1] : ''}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 font-mono text-xs text-indigo-400 font-bold">
+                                                #{row.receiptId || '0000'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2 group">
+                                                    <div className="font-medium text-white">
+                                                        {row.member?.name || t('common.unknown')}
                                                     </div>
-                                                    <div className="text-[10px] text-gray-400 font-mono">
-                                                        {row.refundedAt ? formatDateTime(row.refundedAt, i18n.language).split(',')[1] : ''}
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 font-mono text-xs text-primary-500 font-bold">
-                                                    #{row.receiptId || '0000'}
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-2 group">
-                                                        <div className="font-bold text-gray-900 dark:text-white leading-tight">
-                                                            {row.member?.name || t('common.unknown')}
-                                                        </div>
-                                                        <span className="text-[10px] px-1 bg-gray-100 dark:bg-dark-600 rounded text-gray-500 uppercase">{row.member?.code}</span>
-                                                        {row.member?.id && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setSelectedMemberId(row.member.id);
-                                                                }}
-                                                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded text-primary-500 transition-all"
-                                                                title="View Details"
-                                                            >
-                                                                <Eye size={14} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-right font-mono text-xs text-gray-500">
-                                                    {formatCurrency(row.originalPaid || 0, i18n.language, currencyConf)}
-                                                </td>
-                                                <td className="p-4 text-right font-mono font-bold text-red-600 dark:text-red-400">
-                                                    {formatCurrency(row.amount || 0, i18n.language, currencyConf)}
-                                                </td>
-                                                <td className="p-4 text-right font-mono text-xs text-gray-500">
-                                                    {formatCurrency(row.totalRefundedSoFar || 0, i18n.language, currencyConf)}
-                                                </td>
-                                                <td className="p-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                                    {formatCurrency(row.netRemaining || 0, i18n.language, currencyConf)}
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="text-xs text-gray-600 dark:text-gray-400 font-medium truncate max-w-[100px]">
-                                                        {row.processedBy?.name}
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
+                                                    <span className="text-[10px] px-1 bg-slate-700 rounded text-gray-400 uppercase">{row.member?.code}</span>
+                                                    {row.member?.id && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedMemberId(row.member.id);
+                                                            }}
+                                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-600 rounded text-indigo-400 transition-all"
+                                                        >
+                                                            <Eye size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-xs text-gray-400">
+                                                {formatCurrency(row.originalPaid || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono font-bold text-red-500">
+                                                {formatCurrency(row.amount || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-xs text-gray-500">
+                                                {formatCurrency(row.totalRefundedSoFar || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono font-bold text-emerald-500">
+                                                {formatCurrency(row.netRemaining || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-400">
+                                                {row.processedBy?.name}
+                                            </td>
+                                        </tr>
 
-                                            {/* Expansion Detail */}
-                                            <AnimatePresence>
-                                                {expandedRow === row.id && (
-                                                    <tr>
-                                                        <td colSpan="9" className="p-0 border-none bg-gray-50/50 dark:bg-dark-900/50">
-                                                            <motion.div
-                                                                initial={{ height: 0, opacity: 0 }}
-                                                                animate={{ height: 'auto', opacity: 1 }}
-                                                                exit={{ height: 0, opacity: 0 }}
-                                                                className="overflow-hidden"
-                                                            >
-                                                                <div className="p-6 border-l-4 border-primary-500 ml-4 my-2 space-y-4">
-                                                                    <div className="flex justify-between items-start">
-                                                                        <div>
-                                                                            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Refund Audit Details</h4>
-                                                                            <p className="text-xs text-gray-500">Transaction details and history for this action.</p>
-                                                                        </div>
-                                                                        <div className="bg-dark-800 p-2 rounded border border-dark-700">
-                                                                            <span className="text-[10px] text-gray-400 uppercase mr-2">Method:</span>
-                                                                            <span className="text-xs font-bold text-white capitalize">{row.method}</span>
-                                                                        </div>
+                                        {/* Expansion Detail */}
+                                        <AnimatePresence>
+                                            {expandedRow === row.id && (
+                                                <tr>
+                                                    <td colSpan="9" className="p-0 border-none bg-slate-900/30">
+                                                        <motion.div
+                                                            initial={{ height: 0, opacity: 0 }}
+                                                            animate={{ height: 'auto', opacity: 1 }}
+                                                            exit={{ height: 0, opacity: 0 }}
+                                                            className="overflow-hidden"
+                                                        >
+                                                            <div className="p-6 border-l-4 border-indigo-500 ml-4 my-2 space-y-4">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <h4 className="text-sm font-bold text-white mb-1">Refund Audit Details</h4>
+                                                                        <p className="text-xs text-gray-500">Transaction details and history.</p>
                                                                     </div>
-
-                                                                    {row.reason && (
-                                                                        <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/20">
-                                                                            <p className="text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-tighter mb-1">Reason for Refund</p>
-                                                                            <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{row.reason}"</p>
-                                                                        </div>
-                                                                    )}
-
-                                                                    <div className="grid grid-cols-4 gap-4">
-                                                                        <div className="p-3 bg-white dark:bg-dark-800 rounded-xl border border-gray-100 dark:border-dark-700">
-                                                                            <p className="text-[10px] text-gray-400 uppercase mb-1">Original Activity</p>
-                                                                            <p className="text-sm font-bold text-gray-900 dark:text-white uppercase truncate">{row.subscription?.name}</p>
-                                                                        </div>
-                                                                        <div className="p-3 bg-white dark:bg-dark-800 rounded-xl border border-gray-100 dark:border-dark-700">
-                                                                            <p className="text-[10px] text-gray-400 uppercase mb-1">Refund Issued By</p>
-                                                                            <p className="text-sm font-bold text-gray-900 dark:text-white">{row.processedBy?.name}</p>
-                                                                        </div>
-                                                                        <div className="p-3 bg-white dark:bg-dark-800 rounded-xl border border-gray-100 dark:border-dark-700">
-                                                                            <p className="text-[10px] text-gray-400 uppercase mb-1">Action Date</p>
-                                                                            <p className="text-sm font-bold text-gray-900 dark:text-white font-mono">{formatDateTime(row.refundedAt, i18n.language)}</p>
-                                                                        </div>
-                                                                        <div className="p-3 bg-white dark:bg-dark-800 rounded-xl border border-gray-100 dark:border-dark-700">
-                                                                            <p className="text-[10px] text-gray-400 uppercase mb-1">Audit Trace</p>
-                                                                            <p className="text-sm font-bold text-primary-500 font-mono">TXN-{row.id}</p>
-                                                                        </div>
+                                                                    <div className="bg-slate-800 p-2 rounded border border-slate-700">
+                                                                        <span className="text-[10px] text-gray-400 uppercase mr-2">Method:</span>
+                                                                        <span className="text-xs font-bold text-white capitalize">{row.method}</span>
                                                                     </div>
                                                                 </div>
-                                                            </motion.div>
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </AnimatePresence>
-                                        </React.Fragment>
-                                    ))
-                                )}
-                            </AnimatePresence>
+
+                                                                {row.reason && (
+                                                                    <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                                                                        <p className="text-xs font-bold text-red-400 uppercase tracking-tighter mb-1">Reason for Refund</p>
+                                                                        <p className="text-sm text-gray-300 italic">"{row.reason}"</p>
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="grid grid-cols-4 gap-4">
+                                                                    <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Original Activity</p>
+                                                                        <p className="text-sm font-bold text-white uppercase truncate">{row.subscription?.name}</p>
+                                                                    </div>
+                                                                    <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Refund Issued By</p>
+                                                                        <p className="text-sm font-bold text-white">{row.processedBy?.name}</p>
+                                                                    </div>
+                                                                    <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Action Date</p>
+                                                                        <p className="text-sm font-bold text-white font-mono">{formatDateTime(row.refundedAt, i18n.language)}</p>
+                                                                    </div>
+                                                                    <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Audit Trace</p>
+                                                                        <p className="text-sm font-bold text-indigo-400 font-mono">TXN-{row.id}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </motion.div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </AnimatePresence>
+                                    </React.Fragment>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>

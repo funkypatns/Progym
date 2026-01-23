@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-    Loader2, RefreshCcw, Download, DollarSign, Eye
+    Loader2, RefreshCcw, FileSpreadsheet, DollarSign, Eye, Calendar, Search, Users, AlertCircle, Banknote
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import apiClient from '../utils/api';
@@ -10,6 +10,7 @@ import { formatDateTime } from '../utils/dateFormatter';
 import { useAuthStore, useSettingsStore } from '../store';
 import MemberLedgerModal from './MemberLedgerModal';
 import MemberDetailsModal from './MemberDetailsModal';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Helper to normalize backend response to safe defaults
 const normalizeReportResponse = (data) => {
@@ -137,7 +138,7 @@ const PaymentRemainingReport = ({ isActive }) => {
             overpaid: { label: 'دفع زائد', class: 'bg-blue-500/20 text-blue-400' }
         };
         const cfg = configs[status] || configs.unpaid;
-        return <span className={`px-2 py-1 rounded-full text-xs font-bold ${cfg.class}`}>{cfg.label}</span>;
+        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${cfg.class}`}>{cfg.label}</span>;
     };
 
     const toggleStatus = (s) => {
@@ -152,42 +153,136 @@ const PaymentRemainingReport = ({ isActive }) => {
     if (!isActive) return null;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
+            {ledgerTarget && (
+                <MemberLedgerModal
+                    isOpen={!!ledgerTarget}
+                    onClose={() => setLedgerTarget(null)}
+                    memberId={ledgerTarget.memberId}
+                    subscriptionId={ledgerTarget.subscriptionId}
+                    memberName={ledgerTarget.memberName}
+                />
+            )}
+
+            {viewMemberId && (
+                <MemberDetailsModal
+                    isOpen={!!viewMemberId}
+                    onClose={() => setViewMemberId(null)}
+                    memberId={viewMemberId}
+                />
+            )}
+
+            {/* Summary Cards */}
+            {data && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Total Due */}
+                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                        <div className="flex-1">
+                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                                إجمالي المستحق
+                            </p>
+                            <h3 className="text-2xl font-bold text-white">
+                                {formatCurrency(data.summary.totalDue, i18n.language, currencyConf)}
+                            </h3>
+                        </div>
+                        <div className="p-3 bg-indigo-500 rounded-xl">
+                            <Banknote className="w-6 h-6 text-white" />
+                        </div>
+                    </div>
+
+                    {/* Paid */}
+                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                        <div className="flex-1">
+                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                                المدفوع
+                            </p>
+                            <h3 className="text-2xl font-bold text-white">
+                                {formatCurrency(data.summary.totalPaid, i18n.language, currencyConf)}
+                            </h3>
+                        </div>
+                        <div className="p-3 bg-emerald-500 rounded-xl">
+                            <DollarSign className="w-6 h-6 text-white" />
+                        </div>
+                    </div>
+
+                    {/* Remaining */}
+                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                        <div className="flex-1">
+                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                                المتبقي
+                            </p>
+                            <h3 className="text-2xl font-bold text-white">
+                                {formatCurrency(data.summary.totalRemaining, i18n.language, currencyConf)}
+                            </h3>
+                        </div>
+                        <div className="p-3 bg-red-500 rounded-xl">
+                            <AlertCircle className="w-6 h-6 text-white" />
+                        </div>
+                    </div>
+
+                    {/* Count */}
+                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                        <div className="flex-1">
+                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                                عدد الحالات
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-400">{data.summary.countUnpaid}</span>
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-400">{data.summary.countPartial}</span>
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400">{data.summary.countSettled}</span>
+                            </div>
+                        </div>
+                        <div className="p-3 bg-indigo-500 rounded-xl">
+                            <Users className="w-6 h-6 text-white" />
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Filters */}
-            <div className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div>
-                        <label className="label">من</label>
+            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
+                <div className="flex flex-wrap items-end gap-3 mb-4">
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            من
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.from}
                             onChange={(e) => setFilters({ ...filters, from: e.target.value })}
                         />
                     </div>
-                    <div>
-                        <label className="label">إلى</label>
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            إلى
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.to}
                             onChange={(e) => setFilters({ ...filters, to: e.target.value })}
                         />
                     </div>
-                    <div>
-                        <label className="label">بحث عن عضو</label>
+                    <div className="flex-1 min-w-[200px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Search size={14} />
+                            بحث عن عضو
+                        </label>
                         <input
                             type="text"
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500"
                             placeholder="اسم / رقم عضوية / هاتف"
                             value={filters.search}
                             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                         />
                     </div>
-                    <div>
-                        <label className="label">الباقة</label>
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400">الباقة</label>
                         <select
-                            className="input w-full"
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.planId}
                             onChange={(e) => setFilters({ ...filters, planId: e.target.value })}
                         >
@@ -204,9 +299,9 @@ const PaymentRemainingReport = ({ isActive }) => {
                             <button
                                 key={s}
                                 onClick={() => toggleStatus(s)}
-                                className={`px-3 py-1.5 text-xs rounded-md transition-all ${filters.status.includes(s)
-                                    ? 'bg-primary-500 text-white'
-                                    : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
+                                className={`px-3 py-2 text-xs rounded-lg font-bold transition-all ${filters.status.includes(s)
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
                                     }`}
                             >
                                 {s === 'unpaid' ? 'غير مسدد' : s === 'partial' ? 'جزئي' : s === 'settled' ? 'تم السداد' : 'زائد'}
@@ -216,7 +311,7 @@ const PaymentRemainingReport = ({ isActive }) => {
 
                     {/* Employee Filter */}
                     <select
-                        className="input py-2 text-sm"
+                        className="h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                         value={filters.employeeId}
                         onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}
                     >
@@ -225,153 +320,126 @@ const PaymentRemainingReport = ({ isActive }) => {
                     </select>
 
                     {/* Remaining Only Toggle */}
-                    <label className="flex items-center gap-2 text-sm text-dark-300 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm text-gray-300 font-medium cursor-pointer select-none">
                         <input
                             type="checkbox"
                             checked={filters.remainingOnly}
                             onChange={(e) => setFilters({ ...filters, remainingOnly: e.target.checked })}
-                            className="rounded"
+                            className="rounded w-4 h-4 accent-indigo-600 bg-slate-700 border-slate-600"
                         />
                         إظهار المتبقي فقط
                     </label>
 
                     <div className="flex-1" />
 
-                    <button onClick={fetchReport} disabled={isLoading} className="btn-primary">
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+                    <button
+                        onClick={fetchReport}
+                        disabled={isLoading}
+                        className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
                         تحديث
                     </button>
-                    <button onClick={exportExcel} className="btn-secondary">
-                        <Download className="w-4 h-4" />
+                    <button
+                        onClick={exportExcel}
+                        className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
+                    >
+                        <FileSpreadsheet className="w-5 h-5" />
                         تصدير Excel
                     </button>
                 </div>
             </div>
 
-            {/* Summary Cards */}
-            {data && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white dark:bg-dark-800 p-4 rounded-xl border border-gray-100 dark:border-dark-700">
-                        <p className="text-sm text-gray-500">إجمالي المستحق</p>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(data.summary.totalDue, i18n.language, currencyConf)}
-                        </p>
-                    </div>
-                    <div className="bg-white dark:bg-dark-800 p-4 rounded-xl border border-gray-100 dark:border-dark-700">
-                        <p className="text-sm text-gray-500">المدفوع</p>
-                        <p className="text-2xl font-bold text-emerald-500">
-                            {formatCurrency(data.summary.totalPaid, i18n.language, currencyConf)}
-                        </p>
-                    </div>
-                    <div className="bg-white dark:bg-dark-800 p-4 rounded-xl border border-gray-100 dark:border-dark-700">
-                        <p className="text-sm text-gray-500">المتبقي</p>
-                        <p className="text-2xl font-bold text-red-500">
-                            {formatCurrency(data.summary.totalRemaining, i18n.language, currencyConf)}
-                        </p>
-                    </div>
-                    <div className="bg-white dark:bg-dark-800 p-4 rounded-xl border border-gray-100 dark:border-dark-700">
-                        <p className="text-sm text-gray-500">عدد الحالات</p>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">{data.summary.countUnpaid}</span>
-                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{data.summary.countPartial}</span>
-                            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">{data.summary.countSettled}</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Table */}
-            {isLoading ? (
-                <div className="text-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary-500" />
-                </div>
-            ) : data && data.rows && data.rows.length > 0 ? (
-                <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 overflow-hidden">
+            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
+                {isLoading ? (
+                    <div className="py-16 flex flex-col items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                        <p className="text-sm text-gray-400 font-medium">جاري التحميل...</p>
+                    </div>
+                ) : data && data.rows && data.rows.length > 0 ? (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-dark-700/50">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-900/50 border-b border-slate-700/50">
                                 <tr>
-                                    <th className="px-4 py-3 text-right">اسم العضو</th>
-                                    <th className="px-4 py-3 text-right">رقم العضوية</th>
-                                    <th className="px-4 py-3 text-right">الباقة</th>
-                                    <th className="px-4 py-3 text-right">إجمالي</th>
-                                    <th className="px-4 py-3 text-right">مدفوع</th>
-                                    <th className="px-4 py-3 text-right">متبقي</th>
-                                    <th className="px-4 py-3 text-center">الحالة</th>
-                                    <th className="px-4 py-3 text-right">آخر دفعة</th>
-                                    <th className="px-4 py-3 text-right">تم بواسطة</th>
-                                    <th className="px-4 py-3 text-center">الإجراءات</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">اسم العضو</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">رقم العضوية</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">الباقة</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">إجمالي</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-emerald-500 uppercase tracking-wider">مدفوع</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-red-500 uppercase tracking-wider">متبقي</th>
+                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">الحالة</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">آخر دفعة</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">تم بواسطة</th>
+                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">الإجراءات</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-dark-700">
-                                {data.rows.map((row, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-dark-700/30">
-                                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.member.name}</td>
-                                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">{row.member.memberId}</td>
-                                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.plan.name}</td>
-                                        <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
-                                            {formatCurrency(row.financial.total, i18n.language, currencyConf)}
-                                        </td>
-                                        <td className="px-4 py-3 text-emerald-500 font-medium">
-                                            {formatCurrency(row.financial.paid, i18n.language, currencyConf)}
-                                        </td>
-                                        <td className="px-4 py-3 text-red-500 font-bold">
-                                            {formatCurrency(row.financial.remaining, i18n.language, currencyConf)}
-                                        </td>
-                                        <td className="px-4 py-3 text-center">{getStatusBadge(row.financial.status)}</td>
-                                        <td className="px-4 py-3 text-gray-500 text-xs">
-                                            {row.timeline.lastPaymentDate ? formatDateTime(row.timeline.lastPaymentDate, i18n.language) : '-'}
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-xs">{row.audit.collectorName || '-'}</td>
-                                        <td className="px-4 py-3 text-center">
-                                            <button
-                                                onClick={() => setLedgerTarget({
-                                                    memberId: row.member.id,
-                                                    subscriptionId: row.subscription.id,
-                                                    memberName: row.member.name
-                                                })}
-                                                className="text-primary-500 hover:text-primary-400 text-xs font-bold underline mr-3"
-                                            >
-                                                سجل العمليات
-                                            </button>
-                                            <button
-                                                onClick={() => setViewMemberId(row.member.id)}
-                                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"
-                                                title="View Details"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                            <tbody className="divide-y divide-slate-700/50">
+                                <AnimatePresence>
+                                    {data.rows.map((row, idx) => (
+                                        <motion.tr
+                                            key={row.subscriptionId}
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: idx * 0.02 }}
+                                            className="hover:bg-slate-700/30 transition-colors"
+                                        >
+                                            <td className="px-4 py-3 text-right font-medium text-white">{row.memberName}</td>
+                                            <td className="px-4 py-3 text-right text-gray-400 text-xs font-mono">{row.memberCode || '-'}</td>
+                                            <td className="px-4 py-3 text-right text-white">{row.planName}</td>
+                                            <td className="px-4 py-3 text-right font-mono text-white">
+                                                {formatCurrency(row.price, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-emerald-500">
+                                                {formatCurrency(row.paidAmount, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono font-bold text-red-500">
+                                                {formatCurrency(row.remainingAmount, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                {getStatusBadge(row.status)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-xs text-gray-400 font-mono">
+                                                {row.lastPaymentDate ? formatDateTime(row.lastPaymentDate, i18n.language) : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-xs text-gray-400">
+                                                {row.employeeName || '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => setLedgerTarget({
+                                                            memberId: row.memberId,
+                                                            subscriptionId: row.subscriptionId,
+                                                            memberName: row.memberName
+                                                        })}
+                                                        className="p-1.5 hover:bg-slate-600 rounded text-indigo-400 transition-all text-xs border border-transparent hover:border-indigo-500/20"
+                                                        title="سجل الدفعات"
+                                                    >
+                                                        سجل
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setViewMemberId(row.memberId)}
+                                                        className="p-1.5 hover:bg-slate-600 rounded text-gray-400 hover:text-white transition-all"
+                                                        title="عرض العضو"
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </motion.tr>
+                                    ))}
+                                </AnimatePresence>
                             </tbody>
                         </table>
                     </div>
-                </div>
-            ) : data ? (
-                <div className="bg-white dark:bg-dark-800 p-12 rounded-2xl text-center">
-                    <p className="text-gray-500">لا توجد نتائج</p>
-                </div>
-            ) : (
-                <div className="bg-white dark:bg-dark-800 p-12 rounded-2xl text-center">
-                    <DollarSign className="w-12 h-12 mx-auto text-gray-300 dark:text-dark-500 mb-4" />
-                    <p className="text-gray-500">اختر نطاق التاريخ ثم اضغط "تحديث"</p>
-                </div>
-            )}
-
-            {/* Ledger Modal */}
-            <MemberLedgerModal
-                isOpen={!!ledgerTarget}
-                onClose={() => setLedgerTarget(null)}
-                memberId={ledgerTarget?.memberId}
-                subscriptionId={ledgerTarget?.subscriptionId}
-                memberName={ledgerTarget?.memberName}
-            />
-            <MemberDetailsModal
-                isOpen={!!viewMemberId}
-                onClose={() => setViewMemberId(null)}
-                memberId={viewMemberId}
-            />
+                ) : (
+                    <div className="py-16 flex flex-col items-center justify-center">
+                        <AlertCircle className="w-12 h-12 text-gray-600 mb-3" />
+                        <p className="text-sm text-gray-400 font-medium">لا توجد بيانات متاحة</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

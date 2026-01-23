@@ -1,178 +1,500 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import apiClient from '../utils/api';
+import { X, Search, Check, CreditCard, Banknote, Smartphone, ScanLine, Loader2, ChevronRight, Calculator, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { X, Search, Check, User, Crown } from 'lucide-react';
+import apiClient from '../utils/api';
 
-const AssignPlanModal = ({ open, onClose, onSuccess, initialMember = null }) => {
-    const { t } = useTranslation();
+/**
+ * AssignPlanModal (Refactored State Machine)
+ * 
+ * Flow:
+ * 1. Member Search (Live, Debounced, Abortable)
+ * 2. Plan Selection (Only after member selected)
+ * 3. Payment (Only after plan selected)
+ */
+const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isRenewMode = false }) => {
+    const { t, i18n } = useTranslation();
+    const isRtl = i18n.dir() === 'rtl';
+
+    // -- 1. State Machine --
     const [step, setStep] = useState(1);
-    const [memberSearch, setMemberSearch] = useState('');
-    const [members, setMembers] = useState([]);
-    const [selectedMember, setSelectedMember] = useState(initialMember);
-    const [plans, setPlans] = useState([]);
-    const [selectedPlan, setSelectedPlan] = useState(null);
-    const [loading, setLoading] = useState(false);
 
+    // Member State
+    const [searchTerm, setSearchTerm] = useState('');
+    const [members, setMembers] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [selectedMember, setSelectedMember] = useState(null);
+    const searchAbortCtrl = useRef(null); // Requests cancellation
+
+    // Plan State
+    const [plans, setPlans] = useState([]);
+    const [isLoadingPlans, setIsLoadingPlans] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState(null);
+
+    // Payment State
+    const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash' | 'card' | 'transfer'
+    const [transactionRef, setTransactionRef] = useState('');
+    const [notes, setNotes] = useState('');
+    const [manualAmount, setManualAmount] = useState('');
+
+    // Submission State
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // -- Helper: Safe Translation --
+    const safeT = (key, fallback) => {
+        const val = t(key);
+        return (val && val !== key) ? val : fallback;
+    };
+
+    // -- 2. Lifecycle & Resets --
+
+    // Reset Everything on Open
     useEffect(() => {
-        if (open) {
-            setStep(initialMember ? 2 : 1);
+        if (isOpen) {
+            console.debug('[AssignPlan] Modal Opened - Resetting State');
+            if (initialMember) {
+                setSelectedMember(initialMember);
+                setStep(2);
+            } else {
+                setSelectedMember(null);
+                setStep(1);
+            }
+            setPaymentMethod('cash');
+            setTransactionRef('');
+            setNotes('');
+            setManualAmount('');
+            setIsSubmitting(false);
+
+            // Pre-fetch plans so they are ready
             fetchPlans();
         } else {
-            reset();
+            // Cleanup on close
+            if (searchAbortCtrl.current) searchAbortCtrl.current.abort();
         }
-    }, [open, initialMember]);
+    }, [isOpen]);
 
-    const reset = () => {
-        setStep(1);
-        setMemberSearch('');
-        setMembers([]);
-        setSelectedMember(initialMember || null);
-        setSelectedPlan(null);
-    };
+    // Cleanup on Unmount
+    useEffect(() => {
+        return () => {
+            if (searchAbortCtrl.current) searchAbortCtrl.current.abort();
+        };
+    }, []);
+
+    // -- 3. Actions & Logic --
 
     const fetchPlans = async () => {
+        setIsLoadingPlans(true);
         try {
             const res = await apiClient.get('/plans?active=true');
-            if (res.data.success) setPlans(res.data.data);
-        } catch (e) { console.error(e); }
-    };
-
-    const searchMembers = async (q) => {
-        setMemberSearch(q);
-        if (q.length > 1) {
-            try {
-                const res = await apiClient.get(`/members?search=${q}`);
-                const data = res.data.success ? (Array.isArray(res.data.data) ? res.data.data : res.data.data.docs) : [];
-                const filtered = data.filter(m =>
-                    m.firstName.toLowerCase().includes(q.toLowerCase()) ||
-                    m.lastName.toLowerCase().includes(q.toLowerCase())
-                );
-                setMembers(filtered);
-            } catch (e) {
-                setMembers([]);
+            if (res.data.success) {
+                setPlans(res.data.data || []);
             }
+        } catch (err) {
+            console.error('[AssignPlan] Fetch Plans Error:', err);
+        } finally {
+            setIsLoadingPlans(false);
         }
     };
 
-    const handleAssign = async () => {
+    const handleSearch = (val) => {
+        setSearchTerm(val);
+
+        // Cancel previous pending request
+        if (searchAbortCtrl.current) {
+            searchAbortCtrl.current.abort();
+        }
+
+        // Clear if empty
+        if (!val.trim()) {
+            setMembers([]);
+            setIsSearching(false);
+            return;
+        }
+
+        // New AbortController
+        const controller = new AbortController();
+        searchAbortCtrl.current = controller;
+
+        setIsSearching(true);
+
+        // Debounce (300ms)
+        setTimeout(async () => {
+            if (controller.signal.aborted) return;
+
+            try {
+                // Use quick search endpoint which returns flat array
+                const url = `/members/search/${encodeURIComponent(val.trim())}`;
+                const res = await apiClient.get(url, {
+                    signal: controller.signal
+                });
+
+                if (res.data.success) {
+                    const found = res.data.data || [];
+                    setMembers(found);
+
+                    // Auto-select exact match scanner logic
+                    if (found.length === 1) {
+                        const m = found[0];
+                        if (
+                            String(m.memberId) === val ||
+                            String(m.phone) === val ||
+                            val.toUpperCase() === `GYM-${m.memberId}`
+                        ) {
+                            handleSelectMember(m);
+                            toast.dismiss();
+                            toast.success(`${safeT('members.memberFound', 'Member Found')}: ${m.firstName}`);
+                        }
+                    }
+                }
+            } catch (err) {
+                if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+                    // Ignore cancelled
+                } else {
+                    console.error('[AssignPlan] Search Error:', err);
+                }
+            } finally {
+                // Only unset loading if this is still the active controller
+                if (!controller.signal.aborted) {
+                    setIsSearching(false);
+                }
+            }
+        }, 300);
+    };
+
+    const handleSelectMember = (m) => {
+        if (m.isActive) {
+            toast.error(safeT('members.alreadyActive', 'This member already has an active subscription. You cannot assign a new one while active.'));
+            return;
+        }
+
+        console.debug('[AssignPlan] Selected Member:', m.id);
+        setSelectedMember(m);
+        setSearchTerm('');
+        setMembers([]); // Clear dropdown
+        setStep(2); // Auto-advance
+    };
+
+    const handleSelectPlan = (p) => {
+        console.debug('[AssignPlan] Selected Plan:', p.id);
+        setSelectedPlan(p);
+        setManualAmount(p.price); // Default to plan price
+        setStep(3); // Auto-advance optional? User asked to "reveal", but auto-advance is smoother. 
+    };
+
+    const handleResetMember = () => {
+        setSelectedMember(null);
+        setSelectedPlan(null);
+        setStep(1); // Go back to start
+    };
+
+    const handleSubmit = async () => {
         if (!selectedMember || !selectedPlan) return;
-        setLoading(true);
+        if (isSubmitting) return; // STRICT GUARD
+
+        setIsSubmitting(true);
         try {
-            await apiClient.post('/subscriptions', {
+            const finalAmount = manualAmount && !isNaN(manualAmount) ? parseFloat(manualAmount) : selectedPlan.price;
+            let status = 'paid';
+            if (finalAmount <= 0) status = 'unpaid';
+            else if (finalAmount < selectedPlan.price) status = 'partial';
+
+            const payload = {
                 memberId: selectedMember.id,
                 planId: selectedPlan.id,
-                startDate: new Date().toISOString()
-            });
-            toast.success(t('subscriptions.success') || "Subscription Assigned");
-            onSuccess();
-            onClose();
-        } catch (e) {
-            toast.error(t('common.error'));
+                startDate: new Date().toISOString(),
+                method: paymentMethod,
+                transactionRef: transactionRef || undefined,
+                paymentStatus: status,
+                paidAmount: finalAmount,
+                notes: notes || undefined
+            };
+
+            const res = await apiClient.post('/subscriptions', payload);
+            if (res.data.success) {
+                toast.success(safeT('subscriptions.created', 'Subscription assigned successfully'));
+                if (onSuccess) onSuccess();
+                onClose();
+            }
+        } catch (err) {
+            console.error('[AssignPlan] Submit Error:', err);
+            toast.error(err.response?.data?.message || safeT('errors.serverError', 'Failed to assign subscription'));
         } finally {
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    if (!open) return null;
+    // -- 4. Render Logic (Guards) --
+
+    if (!isOpen) return null;
+
+    const isNextDisabled = () => {
+        if (step === 1) return !selectedMember;
+        if (step === 2) return !selectedPlan;
+        return false;
+    };
+
+    const isConfirmDisabled = () => {
+        if (isSubmitting) return true;
+        if ((paymentMethod === 'card' || paymentMethod === 'transfer') && !transactionRef.trim()) return true;
+        return false;
+    };
+
+    // Sub-renderers
+    const renderMemberSearch = () => (
+        <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+            <div className="relative">
+                <Search className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-3.5 text-gray-400`} size={20} />
+                <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder={safeT('members.searchPlaceholder', 'Find Member (Name, ID, Phone)...')}
+                    className={`w-full ${isRtl ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3 bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white`}
+                    autoFocus
+                />
+                {isSearching && (
+                    <div className={`absolute ${isRtl ? 'left-4' : 'right-4'} top-3.5`}>
+                        <Loader2 size={20} className="animate-spin text-blue-500" />
+                    </div>
+                )}
+            </div>
+
+            {/* Results List */}
+            {members.length > 0 && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-700 max-h-[300px] overflow-y-auto">
+                    {members.map(m => (
+                        <div
+                            key={m.id}
+                            onClick={() => handleSelectMember(m)}
+                            className={`p-4 flex justify-between items-center transition-colors group border-b border-gray-100 last:border-0 ${m.isActive
+                                ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-slate-800/50 grayscale-[0.5]'
+                                : 'hover:bg-blue-50 dark:hover:bg-slate-700 cursor-pointer'
+                                }`}
+                        >
+                            <div>
+                                <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    {m.firstName} {m.lastName}
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${m.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        {m.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                </div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400 font-mono">
+                                    ID: {m.memberId} | 📞 {m.phone}
+                                </div>
+                            </div>
+                            <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Empty State */}
+            {searchTerm.length > 1 && members.length === 0 && !isSearching && (
+                <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
+                    <p>{safeT('common.noResults', 'No members found')}</p>
+                </div>
+            )}
+        </div>
+    );
+
+    const renderPlanSelection = () => (
+        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+            {/* Selected Member Summary */}
+            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold">
+                        {selectedMember.firstName[0]}
+                    </div>
+                    <div>
+                        <div className="font-bold text-gray-900 dark:text-white">{selectedMember.firstName} {selectedMember.lastName}</div>
+                        <div className="text-xs text-blue-600 dark:text-blue-300">{selectedMember.memberId}</div>
+                    </div>
+                </div>
+                {!isRenewMode && (
+                    <button onClick={handleResetMember} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                        {safeT('common.change', 'Change')}
+                    </button>
+                )}
+            </div>
+
+            {/* Plans Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {isLoadingPlans ? (
+                    <div className="col-span-2 flex justify-center py-10">
+                        <Loader2 className="animate-spin text-blue-500" />
+                    </div>
+                ) : plans.length === 0 ? (
+                    <div className="col-span-2 text-center py-10 text-gray-500">
+                        {safeT('plans.noPlans', 'No active plans available.')}
+                    </div>
+                ) : (
+                    plans.map(plan => (
+                        <div
+                            key={plan.id}
+                            onClick={() => handleSelectPlan(plan)}
+                            className={`
+                                relative p-4 rounded-xl border-2 cursor-pointer transition-all duration-200
+                                ${selectedPlan?.id === plan.id
+                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md ring-1 ring-blue-500'
+                                    : 'border-gray-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-500 bg-white dark:bg-slate-800'}
+                            `}
+                        >
+                            <div className="flex justify-between items-start mb-2">
+                                <h3 className="font-bold text-gray-900 dark:text-white">{plan.name}</h3>
+                                {selectedPlan?.id === plan.id && (
+                                    <div className="bg-blue-500 text-white p-1 rounded-full">
+                                        <Check size={12} />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-1">
+                                {plan.price} <span className="text-sm font-normal text-gray-500">{safeT('common.currency', 'EGP')}</span>
+                            </div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                                {plan.duration} {safeT('common.days', 'Days')}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+
+    const renderPayment = () => (
+        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+            {/* Summary Box */}
+            <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-500 text-sm">Plan</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{selectedPlan.name}</span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-500 text-sm">Member</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{selectedMember.firstName} {selectedMember.lastName}</span>
+                </div>
+                <div className="my-2 border-t border-gray-200 dark:border-slate-700"></div>
+                <div className="flex justify-between items-center text-lg">
+                    <span className="font-bold text-gray-900 dark:text-white">Total</span>
+                    <span className="font-bold text-blue-600">{selectedPlan.price} EGP</span>
+                </div>
+            </div>
+
+            {/* Payment Inputs */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    {safeT('finance.amountToPay', 'Amount To Pay')}
+                </label>
+                <input
+                    type="number"
+                    value={manualAmount}
+                    onChange={(e) => setManualAmount(e.target.value)}
+                    className="block w-full rounded-xl border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-3 px-4 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+                {[
+                    { id: 'cash', icon: Banknote, label: 'Cash' },
+                    { id: 'card', icon: CreditCard, label: 'Visa / Card' },
+                    { id: 'transfer', icon: Smartphone, label: 'Transfer' }
+                ].map(method => (
+                    <button
+                        key={method.id}
+                        onClick={() => setPaymentMethod(method.id)}
+                        className={`
+                            flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all
+                            ${paymentMethod === method.id
+                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                                : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'}
+                        `}
+                    >
+                        <method.icon size={24} className="mb-2" />
+                        <span className="text-xs font-bold">{method.label}</span>
+                    </button>
+                ))}
+            </div>
+
+            {(paymentMethod === 'card' || paymentMethod === 'transfer') && (
+                <div className="animate-in fade-in slide-in-from-top-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        {paymentMethod === 'card' ? 'Transaction No.' : 'Reference ID'} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        value={transactionRef}
+                        onChange={(e) => setTransactionRef(e.target.value)}
+                        placeholder="Scan or type reference..."
+                        className="w-full rounded-xl border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-3 px-4 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white"
+                    />
+                </div>
+            )}
+        </div>
+    );
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity" dir="rtl">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="p-5 border-b dark:border-gray-700 flex justify-between items-center bg-gradient-to-r from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+
+                {/* 1. Header */}
+                <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 rounded-t-2xl z-10">
                     <div>
-                        <h3 className="font-bold text-xl dark:text-white flex items-center gap-2">
-                            <Crown className="text-yellow-500" size={24} /> {t('subscriptions.assignSubscription')}
-                        </h3>
-                        {selectedMember && step === 2 && (
-                            <p className="text-sm text-blue-600 dark:text-blue-400 font-medium mt-1">
-                                {t('subscriptions.member')}: {selectedMember.firstName} {selectedMember.lastName}
-                            </p>
-                        )}
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            {isRenewMode ? safeT('subscriptions.renewSubscription', 'Renew Subscription') : safeT('subscriptions.assignSubscription', 'Assign Subscription')}
+                        </h2>
+                        <div className="flex items-center gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
+                            {!isRenewMode && (
+                                <>
+                                    <span className={step >= 1 ? 'text-blue-600 font-bold' : ''}>1. Member</span>
+                                    <ChevronRight size={14} />
+                                </>
+                            )}
+                            <span className={step >= 2 ? 'text-blue-600 font-bold' : ''}>{isRenewMode ? '1' : '2'}. Plan</span>
+                            <ChevronRight size={14} />
+                            <span className={step >= 3 ? 'text-blue-600 font-bold' : ''}>{isRenewMode ? '2' : '3'}. Pay</span>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"><X size={20} className="text-gray-500" /></button>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
+                        <X size={20} className="text-gray-500" />
+                    </button>
                 </div>
 
-                {/* Body */}
-                <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-                    {step === 1 && !initialMember && (
-                        <div className="space-y-4">
-                            <h4 className="font-semibold text-gray-700 dark:text-gray-300">{t('members.searchPlaceholder')}</h4>
-                            <div className="relative">
-                                <Search className="absolute right-3 top-3.5 text-gray-400" size={20} />
-                                <input
-                                    className="w-full pr-10 pl-4 py-3 border rounded-xl text-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white shadow-sm transition-all"
-                                    placeholder={t('common.search') + "..."}
-                                    value={memberSearch}
-                                    onChange={e => searchMembers(e.target.value)}
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="space-y-2 max-h-[400px] overflow-auto pl-2">
-                                {members.map(m => (
-                                    <div key={m.id} onClick={() => { setSelectedMember(m); setStep(2); }}
-                                        className="p-3 border rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-200 cursor-pointer dark:border-gray-700 transition-all group flex items-center gap-3"
-                                    >
-                                        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center font-bold text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                            {m.firstName[0]}
-                                        </div>
-                                        <div>
-                                            <div className="font-bold dark:text-white group-hover:text-blue-700 transition-colors">{m.firstName} {m.lastName}</div>
-                                            <div className="text-xs text-gray-500">{m.phone}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                                {memberSearch.length > 1 && members.length === 0 && (
-                                    <div className="text-center py-10 text-gray-400">{t('common.noData')}</div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {step === 2 && (
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <h4 className="font-semibold text-gray-700 dark:text-gray-300">{t('subscriptions.plans')}</h4>
-                                {!initialMember && (
-                                    <button onClick={() => setStep(1)} className="text-xs font-bold text-blue-600 hover:underline">{t('common.edit')}</button>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-auto pl-2">
-                                {plans.map(p => (
-                                    <div key={p.id}
-                                        onClick={() => setSelectedPlan(p)}
-                                        className={`p-4 border-2 rounded-xl cursor-pointer transition-all relative ${selectedPlan?.id === p.id
-                                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md transform scale-[1.02]'
-                                                : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700'
-                                            }`}
-                                    >
-                                        {selectedPlan?.id === p.id && (
-                                            <div className="absolute top-2 left-2 text-blue-600"><Check size={20} /></div>
-                                        )}
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="font-bold text-lg dark:text-white">{p.name}</span>
-                                            <span className="font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded text-sm">{p.price} EGP</span>
-                                        </div>
-                                        <div className="text-sm text-gray-500">{p.duration} {t('common.days')}  •  {p.description}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                {/* 2. Body */}
+                <div className="p-6 overflow-y-auto flex-1 min-h-[400px]">
+                    {step === 1 && renderMemberSearch()}
+                    {step === 2 && renderPlanSelection()}
+                    {step === 3 && renderPayment()}
                 </div>
 
-                {/* Footer */}
-                <div className="p-4 border-t dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-5 py-2.5 rounded-lg font-medium text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition">{t('common.cancel')}</button>
-                    {step === 2 && (
+                {/* 3. Footer */}
+                <div className="p-6 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/50 dark:bg-slate-900/50 rounded-b-2xl">
+                    {step > (isRenewMode ? 2 : 1) ? (
                         <button
-                            onClick={handleAssign}
-                            disabled={!selectedPlan || loading}
-                            className="px-8 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
+                            onClick={() => setStep(step - 1)}
+                            className="px-6 py-2.5 text-gray-600 dark:text-gray-400 font-medium hover:text-gray-900 dark:hover:text-white"
                         >
-                            {loading ? t('common.loading') : t('common.confirm')}
+                            {safeT('common.back', 'Back')}
+                        </button>
+                    ) : (
+                        <div />
+                    )}
+
+                    {step < 3 ? (
+                        <button
+                            onClick={() => setStep(step + 1)}
+                            disabled={isNextDisabled()}
+                            className="flex items-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-lg shadow-blue-600/20 transition-all"
+                        >
+                            {safeT('common.next', 'Next')}
+                            <ChevronRight size={18} />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleSubmit}
+                            disabled={isConfirmDisabled()}
+                            className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-70 text-white rounded-xl font-bold shadow-lg shadow-green-600/20 transition-all"
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
+                            {safeT('common.confirm', 'Confirm')}
                         </button>
                     )}
                 </div>
@@ -180,4 +502,5 @@ const AssignPlanModal = ({ open, onClose, onSuccess, initialMember = null }) => 
         </div>
     );
 };
+
 export default AssignPlanModal;

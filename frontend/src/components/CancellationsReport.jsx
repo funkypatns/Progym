@@ -2,16 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Search,
-    Download,
     FileSpreadsheet,
     Loader2,
     Calendar,
-    User,
     Banknote,
-    Receipt,
-    Users,
     AlertCircle,
-    Info,
     RefreshCw,
     Eye,
     XCircle,
@@ -22,7 +17,6 @@ import api from '../utils/api';
 import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency, formatNumber } from '../utils/numberFormatter';
 import { useSettingsStore } from '../store';
-import { motion, AnimatePresence } from 'framer-motion';
 import MemberDetailsModal from './MemberDetailsModal';
 
 const CancellationsReport = ({ isActive }) => {
@@ -100,7 +94,7 @@ const CancellationsReport = ({ isActive }) => {
     if (!isActive) return null;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             <MemberDetailsModal
                 isOpen={!!selectedMemberId}
                 onClose={() => setSelectedMemberId(null)}
@@ -108,186 +102,193 @@ const CancellationsReport = ({ isActive }) => {
             />
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-600 dark:text-red-400">
-                        <XCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t(`${tPath}.totalCancellations`)}</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Total Cancellations */}
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center just ify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t(`${tPath}.totalCancellations`)}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatNumber(data?.summary?.totalCancellations || 0, i18n.language)}
                         </h3>
                     </div>
-                </motion.div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-orange-600 dark:text-orange-400">
-                        <ArrowDownRight className="w-6 h-6" />
+                    <div className="p-3 bg-red-500 rounded-xl">
+                        <XCircle className="w-6 h-6 text-white" />
                     </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t(`${tPath}.totalRefunded`)}</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                </div>
+
+                {/* Total Refunded */}
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t(`${tPath}.totalRefunded`)}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatCurrency(data?.summary?.totalRefunded || 0, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 flex items-center gap-4"
-                >
-                    <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-emerald-600 dark:text-emerald-400">
-                        <Banknote className="w-6 h-6" />
+                    <div className="p-3 bg-orange-500 rounded-xl">
+                        <ArrowDownRight className="w-6 h-6 text-white" />
                     </div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{t(`${tPath}.netRevenueImpact`)}</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                </div>
+
+                {/* Net Revenue Impact */}
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                            {t(`${tPath}.netRevenueImpact`)}
+                        </p>
+                        <h3 className="text-2xl font-bold text-white">
                             {formatCurrency(data?.summary?.netRevenueImpact || 0, i18n.language, currencyConf)}
                         </h3>
                     </div>
-                </motion.div>
+                    <div className="p-3 bg-emerald-500 rounded-xl">
+                        <Banknote className="w-6 h-6 text-white" />
+                    </div>
+                </div>
             </div>
 
-            {/* Filters */}
-            <div className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.from')}</label>
+            {/* Toolbar */}
+            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            {i18n.language === 'ar' ? 'من' : 'From'}
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
                             value={filters.startDate}
                             onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('reports.to')}</label>
+                    <div className="flex-1 min-w-[160px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Calendar size={14} />
+                            {i18n.language === 'ar' ? 'إلى' : 'To'}
+                        </label>
                         <input
                             type="date"
-                            className="input w-full"
                             value={filters.endDate}
                             onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('common.search')}</label>
+                    <div className="flex-1 min-w-[200px] space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
+                            <Search size={14} />
+                            {i18n.language === 'ar' ? 'بحث' : 'Search'}
+                        </label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
                                 type="text"
-                                className="input w-full pl-10"
-                                placeholder={t(`${tPath}.searchPlaceholder`)}
                                 value={filters.search}
                                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                                onKeyDown={(e) => e.key === 'Enter' && fetchCancellations()}
+                                placeholder={i18n.language === 'ar' ? 'ابحث بالاسم...' : 'Search by name...'}
+                                className="w-full h-11 pl-10 pr-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500"
                             />
                         </div>
                     </div>
-                </div>
-
-                <div className="mt-6 flex justify-end gap-3">
-                    <button onClick={fetchCancellations} disabled={isLoading} className="btn-secondary">
-                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                        {t('common.refresh')}
-                    </button>
-                    <button onClick={handleExport} className="btn-primary">
-                        <FileSpreadsheet className="w-5 h-5" />
-                        {t(`${tPath}.exportExcel`)}
-                    </button>
+                    <div className="flex items-center gap-2 ml-auto">
+                        <button
+                            onClick={fetchCancellations}
+                            disabled={isLoading}
+                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                            <RefreshCw size={18} />
+                            {i18n.language === 'ar' ? 'تحديث' : 'Refresh'}
+                        </button>
+                        <button
+                            onClick={handleExport}
+                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
+                        >
+                            <FileSpreadsheet size={18} />
+                            {i18n.language === 'ar' ? 'تصدير' : 'Export'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-gray-50 dark:bg-dark-700/50 text-xs uppercase text-gray-500 font-bold tracking-wider border-b border-gray-100 dark:border-dark-700">
-                                <th className="p-4">{t(`${tPath}.canceledAt`)}</th>
-                                <th className="p-4">{t(`${tPath}.member`)}</th>
-                                <th className="p-4">{t(`${tPath}.phone`)}</th>
-                                <th className="p-4">{t(`${tPath}.plan`)}</th>
-                                <th className="p-4">{t(`${tPath}.status`)}</th>
-                                <th className="p-4 text-right">{t(`${tPath}.paid`)}</th>
-                                <th className="p-4 text-right">{t(`${tPath}.refunded`)}</th>
-                                <th className="p-4 text-right">{t(`${tPath}.net`)}</th>
-                                <th className="p-4">{t(`${tPath}.by`)}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-dark-700 border-b border-gray-100 dark:border-700">
-                            {isLoading ? (
+            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
+                {isLoading ? (
+                    <div className="py-16 flex flex-col items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
+                        <p className="text-sm text-gray-400 font-medium">Loading...</p>
+                    </div>
+                ) : data.report.length === 0 ? (
+                    <div className="py-16 flex flex-col items-center justify-center">
+                        <AlertCircle className="w-12 h-12 text-gray-600 mb-3" />
+                        <p className="text-sm text-gray-400 font-medium">{i18n.language === 'ar' ? 'لا توجد بيانات' : 'No data available'}</p>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-900/50 border-b border-slate-700/50">
                                 <tr>
-                                    <td colSpan="9" className="p-8 text-center text-gray-500">
-                                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                                        {t('common.loading')}
-                                    </td>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'تاريخ الإلغاء' : 'Date'}</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'العضو' : 'Member'}</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'الباقة' : 'Plan'}</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'الحالة' : 'Status'}</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-emerald-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'مدفوع' : 'Paid'}</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-red-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'مسترد' : 'Refunded'}</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'صافي' : 'Net'}</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'الإجراء' : 'Action'}</th>
                                 </tr>
-                            ) : (!data?.report || data.report.length === 0) ? (
-                                <tr>
-                                    <td colSpan="9" className="p-8 text-center text-gray-500">
-                                        {t('common.noData')}
-                                    </td>
-                                </tr>
-                            ) : (
-                                data.report.map((row, idx) => (
-                                    <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-dark-700/50 transition-colors">
-                                        <td className="p-4">
-                                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                {formatDateTime(row.canceledAt, i18n.language)}
+                            </thead>
+                            <tbody className="divide-y divide-slate-700/50">
+                                {data.report.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-700/30 transition-colors group">
+                                        <td className="px-4 py-3 text-white">
+                                            <span className="text-sm font-medium">{formatDateTime(item.canceledAt, i18n.language)}</span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div>
+                                                <p className="text-sm font-medium text-white">{item.member?.firstName} {item.member?.lastName}</p>
+                                                <p className="text-xs text-gray-400">{item.member?.phone}</p>
                                             </div>
                                         </td>
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="font-bold text-gray-900 dark:text-white leading-tight">
-                                                    {row.member?.name}
-                                                </div>
-                                                <span className="text-[10px] px-1 bg-gray-100 dark:bg-dark-600 rounded text-gray-500 uppercase">{row.member?.memberId}</span>
-                                                <button
-                                                    onClick={() => setSelectedMemberId(row.member.id)}
-                                                    className="p-1 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded text-primary-500 transition-all"
-                                                >
-                                                    <Eye size={14} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-sm text-gray-500">{row.member?.phone}</td>
-                                        <td className="p-4 text-sm text-gray-700 dark:text-gray-300">{row.plan?.name}</td>
-                                        <td className="p-4">
-                                            <span className={`badge ${row.status === 'cancelled' ? 'badge-danger' : 'badge-warning'}`}>
-                                                {row.status === 'cancelled' ? 'CANCELED' : 'ENDED'}
+                                        <td className="px-4 py-3 text-white text-sm">{item.plan?.name_ar || item.plan?.name_en}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${item.status === 'cancelled'
+                                                ? 'bg-red-500/20 text-red-400'
+                                                : 'bg-gray-500/20 text-gray-400'
+                                                }`}>
+                                                {item.status === 'cancelled' ? (i18n.language === 'ar' ? 'ملغي' : 'Cancelled') : (i18n.language === 'ar' ? 'منتهي' : 'Ended')}
                                             </span>
-                                            <div className="text-[10px] text-gray-400 mt-1 uppercase">{row.cancelSource}</div>
                                         </td>
-                                        <td className="p-4 text-right font-mono text-sm">
-                                            {formatCurrency(row.financials.paidAmount, i18n.language, currencyConf)}
+                                        <td className="px-4 py-3 text-right">
+                                            <span className="font-mono font-semibold text-emerald-400">
+                                                {formatCurrency(item.paid, i18n.language, currencyConf)}
+                                            </span>
                                         </td>
-                                        <td className="p-4 text-right font-mono text-sm text-red-500">
-                                            -{formatCurrency(row.financials.refundedAmount, i18n.language, currencyConf)}
+                                        <td className="px-4 py-3 text-right">
+                                            <span className="font-mono font-semibold text-red-400">
+                                                {formatCurrency(item.refunded, i18n.language, currencyConf)}
+                                            </span>
                                         </td>
-                                        <td className="p-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                            {formatCurrency(row.financials.netRevenue, i18n.language, currencyConf)}
+                                        <td className="px-4 py-3 text-right">
+                                            <span className="font-mono font-semibold text-white">
+                                                {formatCurrency(item.net, i18n.language, currencyConf)}
+                                            </span>
                                         </td>
-                                        <td className="p-4 text-sm text-gray-600 dark:text-gray-400">
-                                            {row.processedBy}
+                                        <td className="px-4 py-3">
+                                            <button
+                                                onClick={() => setSelectedMemberId(item.member?.id)}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-slate-600 rounded-lg"
+                                            >
+                                                <Eye className="w-4 h-4 text-gray-300" />
+                                            </button>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );

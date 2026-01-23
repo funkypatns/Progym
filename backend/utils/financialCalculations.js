@@ -17,19 +17,20 @@ function calculateSubscriptionFinancials(subscription, payments = []) {
     const subscriptionPrice = subscription.price || 0;
 
     // Separate payments by type
-    const paymentRecords = payments.filter(p =>
-        p.status === 'completed' ||
-        p.status === 'refunded' ||
-        p.status === 'Partial Refund'
-    );
+    const paymentRecords = payments.filter(p => {
+        const s = (p.status || '').toUpperCase();
+        return s === 'PAID' || s === 'COMPLETED' || s === 'REFUNDED' || s === 'PARTIAL' || s === 'PARTIAL REFUND';
+    });
 
     // Calculate totals
     const totalPaid = paymentRecords.reduce((sum, p) => {
-        return sum + (p.amount || 0);
+        return sum + (p.amount > 0 ? p.amount : 0);
     }, 0);
 
     const totalRefunded = paymentRecords.reduce((sum, p) => {
-        return sum + (p.refundedTotal || 0);
+        // Old style: p.refundedTotal | New style: p.amount < 0
+        const negativeAmount = p.amount < 0 ? Math.abs(p.amount) : 0;
+        return sum + (p.refundedTotal || 0) + negativeAmount;
     }, 0);
 
     const netPaid = totalPaid - totalRefunded;
@@ -57,7 +58,7 @@ function determinePaymentStatus(remaining, netPaid) {
     }
 
     if (netPaid <= 0) {
-        return 'REFUNDED';
+        return 'REFUNDED'; // Or 'CANCELLED' / 'VOID'
     }
 
     if (remaining > 0 && netPaid > 0) {
@@ -74,7 +75,7 @@ function determinePaymentStatus(remaining, netPaid) {
  */
 function calculateMemberTotals(subscriptions = []) {
     let totalSubscriptionPrice = 0;
-    let totalPaid = 0;
+    let totalPaid = 0; // Gross Paid
     let totalRefunded = 0;
     let totalNetPaid = 0;
     let totalRemaining = 0;
@@ -158,14 +159,19 @@ function getOutstandingSubscriptions(subscriptions = []) {
  * @returns {Object} Revenue breakdown
  */
 function calculateDailyRevenue(payments = []) {
-    const completedPayments = payments.filter(p =>
-        p.status === 'completed' ||
-        p.status === 'refunded' ||
-        p.status === 'Partial Refund'
-    );
+    const completedPayments = payments.filter(p => {
+        const s = (p.status || '').toUpperCase();
+        return s === 'PAID' || s === 'COMPLETED' || s === 'REFUNDED' || s === 'PARTIAL' || s === 'PARTIAL REFUND';
+    });
 
-    const grossRevenue = completedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const totalRefunded = completedPayments.reduce((sum, p) => sum + (p.refundedTotal || 0), 0);
+    const grossRevenue = completedPayments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0);
+
+    const totalRefunded = completedPayments.reduce((sum, p) => {
+        // Sum explicit refunds plus negative amounts
+        const negativeAmount = p.amount < 0 ? Math.abs(p.amount) : 0;
+        return sum + (p.refundedTotal || 0) + negativeAmount;
+    }, 0);
+
     const netRevenue = grossRevenue - totalRefunded;
 
     return {
@@ -184,16 +190,34 @@ function calculateDailyRevenue(payments = []) {
  * @returns {Promise<Object>} Revenue stats
  */
 async function calculateNetRevenue(prisma, startDate, endDate) {
-    // Get gross payments
+    // Get ALL payments in range (positive and negative)
     const payments = await prisma.payment.findMany({
         where: {
             paidAt: { gte: startDate, lte: endDate },
-            status: { in: ['completed', 'refunded', 'Partial Refund'] }
+            status: { in: ['completed', 'refunded', 'Partial Refund', 'PAID', 'REFUNDED', 'PARTIAL', 'PARTIAL REFUND'] }
         },
-        select: { amount: true }
+        select: { amount: true, refundedTotal: true }
     });
 
-    // Get executed refunds
+    // Gross = Only Sum Positive Amounts
+    const grossRevenue = payments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0);
+
+    // Refunds = Sum Negative Amounts (abs) + refundedTotal (old style)
+    // NOTE: Explicit "Refund" table entries are synced with negative payments now.
+    // If we rely on payments table, we don't need to query Refund table separately for the sum, 
+    // unless there are refunds that DON'T have a negative payment (Old system?).
+    // Safe bet: Query Refund table for total, AND use payments for Gross.
+    // But wait, if I use Refund Table, I should ignore negative payments in "Refunds" sum to avoid double counting?
+    // No, Refund Table is the source of truth for "Refund Events".
+    // Negative Payments are the ledger representation.
+    // So: Gross = Sum(Payments > 0). Total Refunds = Sum(Refund Table). Net = Gross - Total Refunds.
+    // This assumes every Refund Entry has a corresponding Negative Payment (which I implemented).
+    // And assumes NO negative payments exist without a Refund Entry.
+
+    // Let's stick to the decoupled robust approach:
+    // Gross = Sum(Payments where amount > 0)
+    // Refunds = Sum(Refund Table) -> This is cleaner for "Refunds issued in this period".
+
     const refunds = await prisma.refund.findMany({
         where: {
             createdAt: { gte: startDate, lte: endDate }
@@ -201,7 +225,6 @@ async function calculateNetRevenue(prisma, startDate, endDate) {
         select: { amount: true }
     });
 
-    const grossRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
     const totalRefunds = refunds.reduce((sum, r) => sum + (r.amount || 0), 0);
 
     return {
@@ -225,7 +248,7 @@ async function calculateNetRevenue(prisma, startDate, endDate) {
 async function calculateCashClosingStats(prisma, startDate, endDate, employeeId = null) {
     const paymentWhere = {
         paidAt: { gte: startDate, lte: endDate },
-        status: { in: ['completed', 'refunded', 'Partial Refund'] }
+        status: { in: ['completed', 'refunded', 'Partial Refund', 'PAID', 'REFUNDED', 'PARTIAL', 'PARTIAL REFUND'] }
     };
 
     const refundWhere = {

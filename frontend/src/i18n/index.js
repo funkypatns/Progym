@@ -27,6 +27,15 @@ i18n
         interpolation: {
             escapeValue: false,
         },
+        // Safety net: valid fallback if key missing
+        parseMissingKeyHandler: (key) => {
+            if (import.meta.env.DEV) {
+                console.warn(`[i18n] Missing key: "${key}"`);
+            }
+            // Return readable English-like fallback from key (e.g. 'common.cancel' -> 'cancel')
+            return key.split('.').pop().replace(/([A-Z])/g, ' $1').trim();
+        },
+        saveMissing: true, // Optional, helps dev
     });
 
 // Update document direction based on language

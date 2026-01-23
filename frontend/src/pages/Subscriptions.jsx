@@ -11,6 +11,7 @@ const Subscriptions = () => {
     const [subscriptions, setSubscriptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [renewMember, setRenewMember] = useState(null);
     const [stats, setStats] = useState({ active: 0, expiring: 0 });
     const [filter, setFilter] = useState('all');
 
@@ -21,9 +22,20 @@ const Subscriptions = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const res = await apiClient.get('/subscriptions');
+            // Request distinct members to prevent duplicates
+            const res = await apiClient.get('/subscriptions', { params: { distinctMembers: true } });
             if (res.data.success) {
-                const subs = Array.isArray(res.data.data.subscriptions) ? res.data.data.subscriptions : (res.data.data.docs || []);
+                const rawSubs = Array.isArray(res.data.data.subscriptions) ? res.data.data.subscriptions : (res.data.data.docs || []);
+
+                // Frontend Safety Layer: Deduplicate by memberId just in case
+                const uniqueMap = new Map();
+                rawSubs.forEach(sub => {
+                    if (!uniqueMap.has(sub.memberId)) {
+                        uniqueMap.set(sub.memberId, sub);
+                    }
+                });
+                const subs = Array.from(uniqueMap.values());
+
                 setSubscriptions(subs);
                 setStats({
                     active: subs.filter(s => s.status === 'active').length,
@@ -42,7 +54,7 @@ const Subscriptions = () => {
     const handleCancel = async (id) => {
         if (!window.confirm("Are you sure you want to cancel this subscription?")) return;
         try {
-            await apiClient.patch(`/subscriptions/${id}/cancel`);
+            await apiClient.put(`/subscriptions/${id}/cancel`);
             toast.success("Subscription Cancelled");
             fetchData();
         } catch (e) {
@@ -53,25 +65,37 @@ const Subscriptions = () => {
     return (
         <div className="max-w-[1600px] mx-auto space-y-8 animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{t('subscriptions.title')}</h1>
                     <p className="text-gray-500 dark:text-gray-400 mt-1">Manage member plans, renewals, and expirations.</p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <button className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm">
-                        <Search size={20} className="text-gray-500" />
-                    </button>
-                    <button className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm">
-                        <Filter size={20} className="text-gray-500" />
-                    </button>
-                    <button
-                        onClick={() => setShowModal(true)}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
-                    >
-                        <Plus size={20} /> Assign Plan
-                    </button>
+                <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
+                    {/* Filter Chips */}
+                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1.5 rounded-xl overflow-x-auto self-start sm:self-auto">
+                        {['all', 'active', 'expired', 'paused'].map(f => (
+                            <button
+                                key={f}
+                                onClick={() => setFilter(f)}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold capitalize transition-all whitespace-nowrap ${filter === f
+                                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                    }`}
+                            >
+                                {f}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+                        >
+                            <Plus size={20} /> Assign Plan
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -100,16 +124,31 @@ const Subscriptions = () => {
             {/* Main Content */}
             <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-xl shadow-gray-200/50 dark:shadow-black/20 overflow-hidden">
                 <SubscriptionsList
-                    subscriptions={subscriptions}
+                    subscriptions={subscriptions.filter(s => {
+                        if (filter === 'all') return true;
+                        if (filter === 'paused') return s.isPaused;
+                        if (filter === 'active') return s.status === 'active' && !s.isPaused;
+                        if (filter === 'expired') return s.status === 'expired';
+                        return true;
+                    })}
                     onCancel={handleCancel}
-                    onRenew={() => setShowModal(true)}
+                    onRenew={(sub) => {
+                        setRenewMember(sub.member);
+                        setShowModal(true);
+                    }}
+                    onRefresh={fetchData}
                 />
             </div>
 
             <AssignPlanModal
-                open={showModal}
-                onClose={() => setShowModal(false)}
+                isOpen={showModal}
+                onClose={() => {
+                    setShowModal(false);
+                    setRenewMember(null);
+                }}
                 onSuccess={fetchData}
+                initialMember={renewMember}
+                isRenewMode={!!renewMember}
             />
         </div>
     );
