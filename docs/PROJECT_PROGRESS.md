@@ -42,7 +42,7 @@ Phase 2 - Follow-ups (if needed)
 | Date       | Commit   | Summary |
 |------------|----------|---------|
 | 2026-01-24 | 4280c22  | Quick payment toggle, receipt route, reports refresh, payment validation, audit script. |
-| 2026-01-24 | PENDING  | Add AGENTS.md and progress tracker docs. |
+| 2026-01-24 | 2266548  | Add AGENTS.md and progress tracker docs. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
