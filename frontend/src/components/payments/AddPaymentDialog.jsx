@@ -48,6 +48,8 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const [transactionRef, setTransactionRef] = useState('');
     const [receiptPayment, setReceiptPayment] = useState(null);
     const [receiptLoading, setReceiptLoading] = useState(false);
+    const [lastReceiptError, setLastReceiptError] = useState('');
+    const [autoPrintReceipt, setAutoPrintReceipt] = useState(false);
 
     // Camera
     const [showCamera, setShowCamera] = useState(false);
@@ -117,6 +119,16 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         return () => stopCamera();
     }, [showCamera]);
 
+    useEffect(() => {
+        if (!autoPrintReceipt) return;
+        if (!receiptPayment || !receiptRef.current) return;
+        const timeoutId = setTimeout(() => {
+            handlePrintReceipt();
+            setAutoPrintReceipt(false);
+        }, 0);
+        return () => clearTimeout(timeoutId);
+    }, [autoPrintReceipt, receiptPayment]);
+
     // -- Logic --
     const resetForm = () => {
         setStep(initialMember ? 2 : 1);
@@ -134,6 +146,8 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setShowCamera(false);
         setReceiptPayment(null);
         setReceiptLoading(false);
+        setLastReceiptError('');
+        setAutoPrintReceipt(false);
     };
 
     const fetchInitialMembers = async () => {
@@ -190,6 +204,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         const meta = getSubscriptionMeta(sub);
         setTotalDue(meta.remaining);
         setPaymentMode('full');
+        setLastReceiptError('');
     };
 
     const startCamera = async () => {
@@ -252,8 +267,35 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         }, 1000);
     };
 
+    const fetchLatestReceipt = async (options = {}) => {
+        const { autoPrint = false } = options;
+        const query = selectedSubscriptionId
+            ? `subscriptionId=${selectedSubscriptionId}`
+            : (selectedMember?.id ? `memberId=${selectedMember.id}` : '');
+        if (!query) return;
+        setLastReceiptError('');
+        setReceiptLoading(true);
+        try {
+            const res = await apiClient.get(`/payments/latest?${query}`);
+            if (res.data.success && res.data.data) {
+                setReceiptPayment(res.data.data);
+                setStep(3);
+                if (autoPrint) setAutoPrintReceipt(true);
+            } else {
+                setReceiptPayment(null);
+                setLastReceiptError(t('payments.noReceiptAvailable', 'No receipt available'));
+            }
+        } catch (err) {
+            setReceiptPayment(null);
+            setLastReceiptError(t('payments.noReceiptAvailable', 'No receipt available'));
+        } finally {
+            setReceiptLoading(false);
+        }
+    };
+
     const handleSubmit = async () => {
         if (!selectedMember) return;
+        setLastReceiptError('');
         if (!selectedSubscriptionId) {
             toast.error(t('payments.selectSubscription', 'Select a subscription first'));
             return;
@@ -311,6 +353,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             }
             setReceiptPayment(receiptData);
             setStep(3);
+            setAutoPrintReceipt(false);
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('payments:updated'));
             }
@@ -644,6 +687,22 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                             >
                                 {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <div className="flex items-center gap-2 tracking-tighter font-black uppercase">Confirm Payment <Check size={18} strokeWidth={4} /></div>}
                             </button>
+                        )}
+                        {step === 2 && isFullyPaid && isSubscriptionSelected && (
+                            <div className="space-y-1">
+                                <button
+                                    onClick={() => fetchLatestReceipt({ autoPrint: true })}
+                                    disabled={receiptLoading}
+                                    className="w-full py-2.5 text-[10px] font-black text-emerald-400 hover:text-emerald-300 uppercase tracking-widest transition-colors"
+                                >
+                                    {t('payments.printLastReceipt', 'Print Last Receipt')}
+                                </button>
+                                {lastReceiptError && (
+                                    <div className="text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                        {lastReceiptError}
+                                    </div>
+                                )}
+                            </div>
                         )}
                         {step === 3 && (
                             <div className="flex gap-3">

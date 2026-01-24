@@ -20,9 +20,15 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
     const paidNow = Math.abs(Number(payment.amount || 0));
     const isRefund = Number(payment.amount) < 0 || String(payment.status || '').toLowerCase().includes('refund');
     const paymentMode = String(payment.paymentMode || payment.mode || '').toLowerCase();
+    const subscriptionStatus = String(payment.subscription?.status || '').toLowerCase();
+    const isCancelled = subscriptionStatus === 'cancelled' || subscriptionStatus === 'canceled';
 
     let paidToDate = Number.isFinite(Number(rawPaidToDate)) ? Number(rawPaidToDate) : null;
     let remainingAmount = Number.isFinite(Number(rawRemaining)) ? Number(rawRemaining) : null;
+    const refundedFromList = Array.isArray(payment.refunds)
+        ? payment.refunds.reduce((sum, refund) => sum + (Number(refund.amount) || 0), 0)
+        : 0;
+    const refundedTotal = Number.isFinite(Number(payment.refundedTotal)) ? Number(payment.refundedTotal) : refundedFromList;
 
     if (paidToDate === null && Number.isFinite(Number(totalPrice)) && Number.isFinite(Number(remainingAmount))) {
         paidToDate = Math.max(0, Number(totalPrice) - Number(remainingAmount));
@@ -38,6 +44,8 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
         && paidToDate < Number(totalPrice) - 0.01)
         || paymentMode === 'partial';
     const isFull = !isRefund && !isPartial;
+    const paidToDateDisplay = Number.isFinite(Number(paidToDate)) ? Number(paidToDate) : paidNow;
+    const refundBaseAmount = Number.isFinite(Number(totalPrice)) ? Number(totalPrice) : paidNow;
 
     const reference = payment.externalReference || payment.transactionRef || null;
     const staffName = payment.collectorName || (payment.creator ? `${payment.creator.firstName} ${payment.creator.lastName}` : 'System');
@@ -72,6 +80,11 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
                     {isFull && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100">
                             {t('receipt.fullPayment', 'FULL PAYMENT')}
+                        </span>
+                    )}
+                    {isCancelled && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-600 border border-slate-200">
+                            {t('common.cancelled', 'Cancelled')}
                         </span>
                     )}
                 </div>
@@ -156,6 +169,26 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
                         <div className="flex justify-between font-bold">
                             <span>{t('receipt.remainingAfter', 'Remaining after')}:</span>
                             <span>{formatMoney(remainingAmount, i18n.language, currencyConf)}</span>
+                        </div>
+                    )}
+                    {(isPartial || refundedTotal > 0) && (
+                        <div className="mt-2 space-y-1 text-[10px] font-bold">
+                            {isPartial && Number.isFinite(Number(totalPrice)) && (
+                                <div className="text-amber-600">
+                                    {t('receipt.paidOutOf', 'Paid {{paid}} of {{total}}', {
+                                        paid: formatMoney(paidToDateDisplay, i18n.language, currencyConf),
+                                        total: formatMoney(totalPrice, i18n.language, currencyConf)
+                                    })}
+                                </div>
+                            )}
+                            {refundedTotal > 0 && (
+                                <div className="text-red-600">
+                                    {t('receipt.refundedOutOf', 'Refunded {{refunded}} of {{total}}', {
+                                        refunded: formatMoney(refundedTotal, i18n.language, currencyConf),
+                                        total: formatMoney(refundBaseAmount, i18n.language, currencyConf)
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

@@ -54,6 +54,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const [receiptPayment, setReceiptPayment] = useState(null);
     const [receiptLoading, setReceiptLoading] = useState(false);
     const [showReceipt, setShowReceipt] = useState(false);
+    const [lastReceiptError, setLastReceiptError] = useState('');
+    const [autoPrintReceipt, setAutoPrintReceipt] = useState(false);
 
     // Submission State
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,6 +94,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             setReceiptPayment(null);
             setReceiptLoading(false);
             setShowReceipt(false);
+            setLastReceiptError('');
+            setAutoPrintReceipt(false);
 
             // Pre-fetch plans so they are ready
             fetchPlans();
@@ -180,6 +184,16 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         }
         setDraftApplied(true);
     }, [isOpen, selectedMember, paymentDraft, draftApplied]);
+
+    useEffect(() => {
+        if (!autoPrintReceipt) return;
+        if (!receiptPayment || !receiptRef.current) return;
+        const timeoutId = setTimeout(() => {
+            handlePrintReceipt();
+            setAutoPrintReceipt(false);
+        }, 0);
+        return () => clearTimeout(timeoutId);
+    }, [autoPrintReceipt, receiptPayment]);
     // -- 3. Actions & Logic --
 
     const fetchPlans = async () => {
@@ -311,6 +325,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const handleSubmit = async () => {
         if (!selectedMember || !selectedPlan) return;
         if (isSubmitting) return; // STRICT GUARD
+        setLastReceiptError('');
 
         try {
             const resolvedMemberId = Number.parseInt(selectedMember.id ?? selectedMember.memberId, 10);
@@ -409,6 +424,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                     } finally {
                         setReceiptLoading(false);
                     }
+                    setAutoPrintReceipt(false);
                     return;
                 }
                 onClose();
@@ -445,6 +461,13 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         if ((paymentMethod === 'card' || paymentMethod === 'transfer') && hasPayment && !transactionRef.trim()) return true;
         return false;
     };
+
+    const totalValue = Number(selectedPlan?.price || 0);
+    const amountValue = paymentMode === 'full'
+        ? totalValue
+        : (manualAmount === '' || manualAmount === null ? 0 : Number(manualAmount));
+    const hasPayment = Number.isFinite(amountValue) && amountValue > 0;
+    const canPrintLastReceipt = step === 3 && !showReceipt && selectedMember && !hasPayment;
 
     // Sub-renderers
     const renderMemberSearch = () => (
@@ -704,6 +727,28 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         }, 1000);
     };
 
+    const fetchLatestReceipt = async (options = {}) => {
+        const { autoPrint = false } = options;
+        if (!selectedMember?.id) return;
+        setLastReceiptError('');
+        setReceiptLoading(true);
+        try {
+            const res = await apiClient.get(`/payments/latest?memberId=${selectedMember.id}`);
+            if (res.data.success && res.data.data) {
+                setReceiptPayment(res.data.data);
+                setShowReceipt(true);
+                if (autoPrint) setAutoPrintReceipt(true);
+            } else {
+                setReceiptPayment(null);
+                setLastReceiptError(safeT('payments.noReceiptAvailable', 'No receipt available'));
+            }
+        } catch (err) {
+            setReceiptPayment(null);
+            setLastReceiptError(safeT('payments.noReceiptAvailable', 'No receipt available'));
+        } finally {
+            setReceiptLoading(false);
+        }
+    };
     const renderReceipt = () => (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -810,14 +855,32 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                             </button>
                         </div>
                     ) : (
-                        <button
-                            onClick={handleSubmit}
-                            disabled={isConfirmDisabled()}
-                            className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-70 text-white rounded-xl font-bold shadow-lg shadow-green-600/20 transition-all"
-                        >
-                            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
-                            {safeT('common.confirm', 'Confirm')}
-                        </button>
+                        <div className="flex flex-col items-end gap-2">
+                            <button
+                                onClick={handleSubmit}
+                                disabled={isConfirmDisabled()}
+                                className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-70 text-white rounded-xl font-bold shadow-lg shadow-green-600/20 transition-all"
+                            >
+                                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
+                                {safeT('common.confirm', 'Confirm')}
+                            </button>
+                            {canPrintLastReceipt && (
+                                <div className="w-full space-y-1">
+                                    <button
+                                        onClick={() => fetchLatestReceipt({ autoPrint: true })}
+                                        disabled={receiptLoading}
+                                        className="w-full px-4 py-2 text-[10px] font-black text-emerald-600 hover:text-emerald-500 uppercase tracking-widest transition-colors"
+                                    >
+                                        {safeT('payments.printLastReceipt', 'Print Last Receipt')}
+                                    </button>
+                                    {lastReceiptError && (
+                                        <div className="text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                                            {lastReceiptError}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

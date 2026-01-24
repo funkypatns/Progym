@@ -804,6 +804,65 @@ router.get('/receipt/:receiptNumber', requirePermission('payments.view'), async 
 });
 
 /**
+ * GET /api/payments/latest
+ * Fetch the most recent receipt for a subscription or member
+ */
+router.get('/latest', async (req, res) => {
+    try {
+        const { subscriptionId, memberId } = req.query;
+        const parsedSubscriptionId = subscriptionId ? parseInt(subscriptionId, 10) : null;
+        const parsedMemberId = memberId ? parseInt(memberId, 10) : null;
+
+        if (!Number.isInteger(parsedSubscriptionId) && !Number.isInteger(parsedMemberId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'subscriptionId or memberId is required'
+            });
+        }
+
+        const where = {
+            status: { not: 'pending' }
+        };
+
+        if (Number.isInteger(parsedSubscriptionId)) {
+            where.subscriptionId = parsedSubscriptionId;
+        } else if (Number.isInteger(parsedMemberId)) {
+            where.memberId = parsedMemberId;
+        }
+
+        const payment = await req.prisma.payment.findFirst({
+            where,
+            orderBy: { paidAt: 'desc' },
+            include: {
+                member: {
+                    select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
+                },
+                subscription: {
+                    include: { plan: true }
+                },
+                creator: {
+                    select: { id: true, firstName: true, lastName: true, role: true }
+                },
+                refunds: {
+                    include: {
+                        user: { select: { firstName: true, lastName: true } }
+                    }
+                }
+            }
+        });
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Receipt not found' });
+        }
+
+        res.json({ success: true, data: payment });
+    } catch (error) {
+        console.error('Get latest receipt error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch latest receipt' });
+    }
+});
+
+/**
  * GET /api/payments/:id
  * Get single payment details
  */
