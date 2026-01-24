@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Search, Check, CreditCard, Banknote, Smartphone, ScanLine, Loader2, ChevronRight, Calculator, Camera } from 'lucide-react';
+import { X, Search, Check, CreditCard, Banknote, Smartphone, ScanLine, Loader2, ChevronRight, Calculator, Camera, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../utils/api';
+import { useSettingsStore } from '../store';
+import { PaymentReceipt } from './payments/ReceiptTemplates';
 
 /**
  * AssignPlanModal (Refactored State Machine)
@@ -15,6 +17,13 @@ import apiClient from '../utils/api';
 const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isRenewMode = false, initialPlanId = null }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
+    const { getSetting } = useSettingsStore();
+    const currencyConf = {
+        code: getSetting('currency_code', 'EGP'),
+        symbol: getSetting('currency_symbol', 'EGP')
+    };
+    const gymName = getSetting('gym_name', t('receipt.companyName', 'GYM MANAGEMENT'));
+    const gymLogoUrl = getSetting('gym_logo', '');
 
     // -- 1. State Machine --
     const [step, setStep] = useState(1);
@@ -41,8 +50,15 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const [notes, setNotes] = useState('');
     const [manualAmount, setManualAmount] = useState('');
 
+    // Receipt State
+    const [receiptPayment, setReceiptPayment] = useState(null);
+    const [receiptLoading, setReceiptLoading] = useState(false);
+    const [showReceipt, setShowReceipt] = useState(false);
+
     // Submission State
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const receiptRef = useRef(null);
 
     // -- Helper: Safe Translation --
     const safeT = (key, fallback) => {
@@ -73,6 +89,9 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             setPreferredPlanId(null);
             setPaymentDraft(null);
             setDraftApplied(false);
+            setReceiptPayment(null);
+            setReceiptLoading(false);
+            setShowReceipt(false);
 
             // Pre-fetch plans so they are ready
             fetchPlans();
@@ -370,13 +389,28 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                 }
                 toast.success(safeT('subscriptions.created', 'Subscription assigned successfully'));
                 const paymentId = res.data?.data?.payment?.id;
-                if (paymentId && typeof window !== 'undefined') {
-                    window.open(`/payments/${paymentId}/receipt`, '_blank', 'noopener');
-                }
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(new Event('payments:updated'));
                 }
                 if (onSuccess) onSuccess();
+                if (paymentId) {
+                    setReceiptLoading(true);
+                    setShowReceipt(true);
+                    try {
+                        const detailRes = await apiClient.get(`/payments/${paymentId}`);
+                        if (detailRes.data.success) {
+                            setReceiptPayment(detailRes.data.data);
+                        } else {
+                            setReceiptPayment(null);
+                        }
+                    } catch (err) {
+                        toast.error(safeT('payments.receiptNotFound', 'Receipt not found'));
+                        setReceiptPayment(null);
+                    } finally {
+                        setReceiptLoading(false);
+                    }
+                    return;
+                }
                 onClose();
             }
         } catch (err) {
@@ -636,6 +670,72 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         );
     };
 
+    const handlePrintReceipt = () => {
+        if (!receiptRef.current) return;
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.setAttribute('title', 'receipt-print');
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(node => node.outerHTML)
+            .join('');
+        const printStyles = `
+            @page { margin: 12mm; }
+            body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        `;
+
+        doc.open();
+        doc.write(`<!doctype html><html><head>${styles}<style>${printStyles}</style></head><body dir="${isRtl ? 'rtl' : 'ltr'}">${receiptRef.current.innerHTML}</body></html>`);
+        doc.close();
+
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 1000);
+    };
+
+    const renderReceipt = () => (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest">
+                    {safeT('payments.receipt', 'Receipt')}
+                </h3>
+                {receiptPayment?.receiptNumber && (
+                    <span className="text-xs font-mono text-gray-400">{receiptPayment.receiptNumber}</span>
+                )}
+            </div>
+            {receiptLoading ? (
+                <div className="flex items-center justify-center py-12">
+                    <Loader2 className="animate-spin text-blue-500" />
+                </div>
+            ) : receiptPayment ? (
+                <div ref={receiptRef} className="bg-white rounded-xl p-4 border border-gray-200">
+                    <PaymentReceipt
+                        payment={receiptPayment}
+                        currencyConf={currencyConf}
+                        gymName={gymName}
+                        gymLogoUrl={gymLogoUrl}
+                        className="max-w-full"
+                    />
+                </div>
+            ) : (
+                <div className="text-center text-xs text-gray-500">
+                    {safeT('payments.receiptNotFound', 'Receipt not found')}
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
@@ -667,12 +767,12 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                 <div className="p-6 overflow-y-auto flex-1 min-h-[400px]">
                     {step === 1 && renderMemberSearch()}
                     {step === 2 && renderPlanSelection()}
-                    {step === 3 && renderPayment()}
+                    {step === 3 && (showReceipt ? renderReceipt() : renderPayment())}
                 </div>
 
                 {/* 3. Footer */}
                 <div className="p-6 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/50 dark:bg-slate-900/50 rounded-b-2xl">
-                    {step > (isRenewMode ? 2 : 1) ? (
+                    {step > (isRenewMode ? 2 : 1) && !showReceipt ? (
                         <button
                             onClick={() => setStep(step - 1)}
                             className="px-6 py-2.5 text-gray-600 dark:text-gray-400 font-medium hover:text-gray-900 dark:hover:text-white"
@@ -692,6 +792,23 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                             {safeT('common.next', 'Next')}
                             <ChevronRight size={18} />
                         </button>
+                    ) : showReceipt ? (
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handlePrintReceipt}
+                                disabled={!receiptPayment || receiptLoading}
+                                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 transition-all"
+                            >
+                                <Printer size={18} />
+                                {safeT('payments.printReceipt', 'Print Receipt')}
+                            </button>
+                            <button
+                                onClick={onClose}
+                                className="px-6 py-3 bg-slate-600 hover:bg-slate-700 text-white rounded-xl font-bold transition-all"
+                            >
+                                {safeT('common.close', 'Done')}
+                            </button>
+                        </div>
                     ) : (
                         <button
                             onClick={handleSubmit}
