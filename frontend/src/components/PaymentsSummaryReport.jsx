@@ -52,7 +52,9 @@ const PaymentsSummaryReport = ({ isActive }) => {
                 scope: filters.scope
             });
             params.append('_ts', Date.now().toString());
-            const response = await apiClient.get(`/reports/payments/summary?${params}`);
+            const response = await apiClient.get(`/reports/payments/summary?${params}`, {
+                headers: { 'Cache-Control': 'no-cache' }
+            });
             if (response.data.success) {
                 setData(response.data.data);
             } else {

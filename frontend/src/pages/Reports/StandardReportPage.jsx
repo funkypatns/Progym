@@ -80,6 +80,23 @@ const StandardReportPage = ({ type }) => {
     const reportTitle = i18n.language === 'ar' ? config?.titleAr : config?.titleEn;
     const reportDesc = i18n.language === 'ar' ? config?.descriptionAr : config?.descriptionEn;
 
+    const normalizePaymentsSummary = (payload) => {
+        const reportData = payload?.data || {};
+        const summary = {
+            successCount: reportData.successCount ?? reportData.total?.count ?? 0,
+            successAmountTotal: reportData.successAmountTotal ?? reportData.total?.amount ?? 0,
+            successNetTotal: reportData.successNetTotal ?? reportData.total?.net ?? 0,
+            refundedTotal: reportData.total?.refunded ?? 0
+        };
+        const rows = Object.entries(reportData.byMethod || {}).map(([method, stats]) => ({
+            method,
+            count: stats?.count ?? 0,
+            amount: stats?.amount ?? 0
+        }));
+
+        return { data: { summary, rows } };
+    };
+
     const fetchReport = async () => {
         if (!config?.endpoint) {
             setError('Report endpoint configuration missing');
@@ -96,8 +113,15 @@ const StandardReportPage = ({ type }) => {
             if (paymentMethod) params.append('method', paymentMethod);
             if (config?.id === 'payments-summary') params.append('_ts', Date.now().toString());
 
-            const response = await apiClient.get(`/reports${config.endpoint}?${params}`);
-            setReportData(response.data);
+            const requestConfig = config?.id === 'payments-summary'
+                ? { headers: { 'Cache-Control': 'no-cache' } }
+                : undefined;
+            const response = await apiClient.get(`/reports${config.endpoint}?${params}`, requestConfig);
+            if (config?.id === 'payments-summary') {
+                setReportData(normalizePaymentsSummary(response.data));
+            } else {
+                setReportData(response.data);
+            }
             toast.success(i18n.language === 'ar' ? 'تم إنشاء التقرير' : 'Report generated');
         } catch (err) {
             console.error(`Failed to fetch report:`, err);
