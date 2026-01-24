@@ -148,6 +148,9 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                         {paginatedGroups.map(group => {
                             const isExpanded = expandedGroups[group.subscription.id];
                             const hasHistory = group.payments && group.payments.length > 0;
+                            const subscriptionStatus = String(group.subscription?.status || '').toLowerCase();
+                            const isCancelled = ['cancelled', 'canceled', 'terminated'].includes(subscriptionStatus);
+                            const cancelledAt = group.subscription?.canceledAt ? new Date(group.subscription.canceledAt) : null;
 
                             return (
                                 <React.Fragment key={group.subscription.id}>
@@ -168,12 +171,22 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                         <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase rounded-md border border-indigo-100/50">
                                                             {group.subscription.plan?.name}
                                                         </span>
+                                                        {isCancelled && (
+                                                            <span className="px-2 py-0.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 text-[10px] font-black uppercase rounded-md border border-rose-100/50">
+                                                                {t('common.cancelled', 'CANCELLED')}
+                                                            </span>
+                                                        )}
                                                         {group.isPaused && (
                                                             <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase rounded-md border border-amber-100/50 flex items-center gap-1">
                                                                 <PauseCircle size={10} /> Frozen
                                                             </span>
                                                         )}
                                                     </div>
+                                                    {isCancelled && cancelledAt && (
+                                                        <span className="text-[10px] font-bold text-rose-500">
+                                                            {t('common.cancelled', 'Cancelled')}: {cancelledAt.toLocaleDateString('ar-EG')}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>
