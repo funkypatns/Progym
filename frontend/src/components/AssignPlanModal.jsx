@@ -467,7 +467,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         ? totalValue
         : (manualAmount === '' || manualAmount === null ? 0 : Number(manualAmount));
     const hasPayment = Number.isFinite(amountValue) && amountValue > 0;
-    const canPrintLastReceipt = step === 3 && !showReceipt && selectedMember && !hasPayment;
+    const canPrintLastReceipt = step === 3 && !showReceipt && selectedMember;
 
     // Sub-renderers
     const renderMemberSearch = () => (
