@@ -25,6 +25,27 @@ export const formatCurrency = (value, locale = 'en', currencyConf = { code: 'USD
     if (code === 'EGP') return `EGP ${formattedNum}`;
     return `${symbol}${formattedNum}`;
 };
+
+export const formatMoney = (value, locale = 'en', currencyConf = { code: 'USD', symbol: '$' }) => {
+    const num = Number(value);
+    const safe = Number.isFinite(num) ? num : 0;
+    const formatted = safe.toLocaleString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+    const formattedNum = locale === 'ar' ? toArabicNumerals(formatted) : formatted;
+    const { code, symbol } = currencyConf || {};
+    const currencyCode = code || 'USD';
+    const currencySymbol = symbol || '$';
+
+    if (locale === 'ar') {
+        if (currencyCode === 'EGP') return `${formattedNum} ج.م`;
+        return `${formattedNum} ${currencySymbol}`;
+    }
+
+    if (currencyCode === 'EGP') return `EGP ${formattedNum}`;
+    return `${currencySymbol}${formattedNum}`;
+};
 export function formatDateTime(value, locale = "en", timeZone) {
     if (!value) return "-";
 

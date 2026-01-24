@@ -430,6 +430,16 @@
         "refRequired": "مطلوب للسجلات"
     },
     "receipt": {
+        "paymentTitle": "إيصال الدفع",
+        "partialPayment": "دفعة جزئية",
+        "paidToDate": "المدفوع حتى الآن",
+        "remainingAfter": "المتبقي بعد الدفع",
+        "subscriptionDetails": "تفاصيل الاشتراك",
+        "period": "المدة",
+        "reference": "المرجع",
+        "notes": "ملاحظات",
+        "refundLabel": "استرداد",
+        "refundedWatermark": "تم الاسترداد",
         "total": "الإجمالي",
         "paidNow": "المدفوع الآن",
         "remaining": "المتبقي"

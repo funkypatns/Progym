@@ -490,6 +490,16 @@
         "refRequired": "Required for records"
     },
     "receipt": {
+        "paymentTitle": "Payment Receipt",
+        "partialPayment": "Partial Payment",
+        "paidToDate": "Paid to date",
+        "remainingAfter": "Remaining after",
+        "subscriptionDetails": "Subscription Details",
+        "period": "Period",
+        "reference": "Reference",
+        "notes": "Notes",
+        "refundLabel": "Refund",
+        "refundedWatermark": "REFUNDED",
         "total": "Total",
         "paidNow": "Paid now",
         "remaining": "Remaining"

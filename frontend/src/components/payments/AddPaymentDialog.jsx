@@ -4,13 +4,22 @@ import apiClient from '../../utils/api';
 import toast from 'react-hot-toast';
 import {
     X, Search, Check, CreditCard, User, Banknote, Camera,
-    Smartphone, ScanLine, Clock, ChevronRight, UserCircle
+    Smartphone, ScanLine, Clock, ChevronRight, UserCircle, Printer
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useSettingsStore } from '../../store';
+import { PaymentReceipt } from './ReceiptTemplates';
 
 const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubscriptionId }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
+    const { getSetting } = useSettingsStore();
+    const currencyConf = {
+        code: getSetting('currency_code', 'EGP'),
+        symbol: getSetting('currency_symbol', 'EGP')
+    };
+    const gymName = getSetting('gym_name', t('receipt.companyName', 'GYM MANAGEMENT'));
+    const gymLogoUrl = getSetting('gym_logo', '');
     const roundMoney = (value) => {
         const num = Number(value);
         if (!Number.isFinite(num)) return 0;
@@ -37,11 +46,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const [payNowAmount, setPayNowAmount] = useState('');
     const [method, setMethod] = useState('cash');
     const [transactionRef, setTransactionRef] = useState('');
+    const [receiptPayment, setReceiptPayment] = useState(null);
+    const [receiptLoading, setReceiptLoading] = useState(false);
 
     // Camera
     const [showCamera, setShowCamera] = useState(false);
     const videoRef = useRef(null);
     const [cameraStream, setCameraStream] = useState(null);
+    const receiptRef = useRef(null);
 
     // Metadata
     const [loading, setLoading] = useState(false);
@@ -120,6 +132,8 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setTransactionRef('');
         setLoading(false);
         setShowCamera(false);
+        setReceiptPayment(null);
+        setReceiptLoading(false);
     };
 
     const fetchInitialMembers = async () => {
@@ -204,6 +218,40 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setShowCamera(false);
     };
 
+    const handlePrintReceipt = () => {
+        if (!receiptRef.current) return;
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.setAttribute('title', 'receipt-print');
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(node => node.outerHTML)
+            .join('');
+        const printStyles = `
+            @page { margin: 12mm; }
+            body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        `;
+
+        doc.open();
+        doc.write(`<!doctype html><html><head>${styles}<style>${printStyles}</style></head><body dir="${isRtl ? 'rtl' : 'ltr'}">${receiptRef.current.innerHTML}</body></html>`);
+        doc.close();
+
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 1000);
+    };
+
     const handleSubmit = async () => {
         if (!selectedMember) return;
         if (!selectedSubscriptionId) {
@@ -246,15 +294,27 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
 
             const response = await apiClient.post('/payments', payload);
             toast.success(t('payments.paymentRecorded'));
-            const paymentId = response?.data?.data?.id;
+            let receiptData = response?.data?.data || null;
+            const paymentId = receiptData?.id;
             if (paymentId) {
-                window.open(`/payments/${paymentId}/receipt`, '_blank', 'noopener');
+                setReceiptLoading(true);
+                try {
+                    const detailRes = await apiClient.get(`/payments/${paymentId}`);
+                    if (detailRes.data.success) {
+                        receiptData = detailRes.data.data;
+                    }
+                } catch (err) {
+                    toast.error(t('payments.receiptNotFound', 'Receipt not found'));
+                } finally {
+                    setReceiptLoading(false);
+                }
             }
+            setReceiptPayment(receiptData);
+            setStep(3);
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('payments:updated'));
             }
             if (onSuccess) onSuccess();
-            onClose();
         } catch (e) {
             const msg = e.response?.data?.message || t('common.error');
             toast.error(msg);
@@ -277,6 +337,36 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             <button onClick={handleSimulateScan} className="mt-8 px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold flex items-center gap-3 shadow-lg shadow-blue-900/40 transition-all transform hover:scale-105">
                 <ScanLine size={24} /> Simulate Scan
             </button>
+        </div>
+    );
+
+    const renderReceipt = () => (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">{t('payments.receipt', 'Receipt')}</h3>
+                {receiptPayment?.receiptNumber && (
+                    <span className="text-xs font-mono text-slate-400">{receiptPayment.receiptNumber}</span>
+                )}
+            </div>
+            {receiptLoading ? (
+                <div className="flex items-center justify-center py-12">
+                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                </div>
+            ) : receiptPayment ? (
+                <div ref={receiptRef} className="bg-white rounded-2xl p-4">
+                    <PaymentReceipt
+                        payment={receiptPayment}
+                        currencyConf={currencyConf}
+                        gymName={gymName}
+                        gymLogoUrl={gymLogoUrl}
+                        className="max-w-full"
+                    />
+                </div>
+            ) : (
+                <div className="text-center text-xs text-slate-400">
+                    {t('payments.receiptNotFound', 'Receipt not found')}
+                </div>
+            )}
         </div>
     );
 
@@ -539,6 +629,9 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                 </div>
                             </div>
                         )}
+
+                        {/* STEP 3: Receipt */}
+                        {step === 3 && renderReceipt()}
                     </div>
 
                     {/* Footer */}
@@ -552,9 +645,28 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                 {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <div className="flex items-center gap-2 tracking-tighter font-black uppercase">Confirm Payment <Check size={18} strokeWidth={4} /></div>}
                             </button>
                         )}
-                        <button onClick={onClose} className="w-full py-2 text-[10px] font-black text-slate-500 hover:text-slate-300 uppercase tracking-widest transition-colors">
-                            Cancel & Exit
-                        </button>
+                        {step === 3 && (
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handlePrintReceipt}
+                                    disabled={!receiptPayment || receiptLoading}
+                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-900/30 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Printer size={16} /> {t('common.print', 'Print')}
+                                </button>
+                                <button
+                                    onClick={onClose}
+                                    className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    {t('common.close', 'Done')}
+                                </button>
+                            </div>
+                        )}
+                        {step !== 3 && (
+                            <button onClick={onClose} className="w-full py-2 text-[10px] font-black text-slate-500 hover:text-slate-300 uppercase tracking-widest transition-colors">
+                                Cancel & Exit
+                            </button>
+                        )}
                     </div>
 
                 </motion.div>
