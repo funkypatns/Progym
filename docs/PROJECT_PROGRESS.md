@@ -55,6 +55,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-24 | 10bfeaf  | Show cancelled badge in Payments list rows when subscription is cancelled. |
 | 2026-01-24 | c4263b0  | Embed receipt preview in Record Payment modal with print support. |
 | 2026-01-24 | 3e7185c  | Add full payment badge on receipt and label Print Receipt button. |
+| 2026-01-24 | bc3532a  | Embed receipt preview and print inside Assign Subscription modal. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
