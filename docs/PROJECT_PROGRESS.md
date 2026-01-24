@@ -23,6 +23,7 @@ Context recovery checklist:
 ## Current Focus
 - Quick payment in Assign Subscription flow, receipt fix, and reports refresh. Status: done, needs manual verification.
 - Payments list cancelled badge. Status: done, needs manual verification.
+- Record Payment modal embedded receipt + print. Status: done, needs manual verification.
 
 ## Phase Plan
 
@@ -39,6 +40,12 @@ Phase 2 - Follow-ups (if needed)
 - Address any issues from manual testing. Status: pending.
 - Backfill or fix any orphan payments identified. Status: pending.
 
+Phase 3 - Payments modal receipt embed
+- Remove receipt navigation on confirm. Status: done.
+- Render receipt preview inside modal with Print/Done actions. Status: done.
+- Use settings currency formatting for receipt. Status: done.
+- Manual test checklist for receipt. Status: pending.
+
 ## Work Log (Commit Ledger)
 
 | Date       | Commit   | Summary |
@@ -46,11 +53,13 @@ Phase 2 - Follow-ups (if needed)
 | 2026-01-24 | 4280c22  | Quick payment toggle, receipt route, reports refresh, payment validation, audit script. |
 | 2026-01-24 | 2266548  | Add AGENTS.md and progress tracker docs. |
 | 2026-01-24 | 10bfeaf  | Show cancelled badge in Payments list rows when subscription is cancelled. |
+| 2026-01-24 | c4263b0  | Embed receipt preview in Record Payment modal with print support. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
 - Confirm receipt page opens without auth error.
 - Confirm Payments Summary and Outstanding reports refresh correctly.
+- Run receipt modal flow tests (no redirect, print works, currency matches settings).
 
 ## Notes for new sessions
 - If there are uncommitted changes, capture them in "Current Focus" and do not redo work.
