@@ -22,6 +22,7 @@ Context recovery checklist:
 
 ## Current Focus
 - Quick payment in Assign Subscription flow, receipt fix, and reports refresh. Status: done, needs manual verification.
+- Payments list cancelled badge. Status: done, needs manual verification.
 
 ## Phase Plan
 
@@ -31,6 +32,7 @@ Phase 1 - Subscriptions quick payment and receipts
 - Fix receipt flow to use authenticated frontend route. Status: done.
 - Refresh Payments list and Reports summary after payment. Status: done.
 - Add orphan payments audit script. Status: done.
+- Add cancelled badge in Payments list rows when subscription status is cancelled. Status: done.
 - Manual test checklist. Status: pending.
 
 Phase 2 - Follow-ups (if needed)
@@ -43,6 +45,7 @@ Phase 2 - Follow-ups (if needed)
 |------------|----------|---------|
 | 2026-01-24 | 4280c22  | Quick payment toggle, receipt route, reports refresh, payment validation, audit script. |
 | 2026-01-24 | 2266548  | Add AGENTS.md and progress tracker docs. |
+| 2026-01-24 | 10bfeaf  | Show cancelled badge in Payments list rows when subscription is cancelled. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
