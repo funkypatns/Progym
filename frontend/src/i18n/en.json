@@ -173,6 +173,7 @@
         "transfer": "Transfer",
         "transactionRef": "Transaction Reference",
         "receipt": "Receipt",
+        "receiptNotFound": "Receipt not found",
         "downloadReceipt": "Download Receipt",
         "paymentRecorded": "Payment recorded successfully",
         "totalRevenue": "Total Revenue",
@@ -391,6 +392,7 @@
         "invalidPhone": "Invalid phone",
         "minLength": "Min {{count}} chars",
         "maxLength": "Max {{count}} chars",
+        "partialAmountRange": "Partial payment must be less than total",
         "serverError": "Server error. Please try again.",
         "networkError": "Network error. Check connection."
     },
@@ -476,10 +478,20 @@
     },
     "finance": {
         "amountToPay": "Amount To Pay",
+        "paymentMode": "Payment mode",
+        "fullPayment": "Full",
+        "partialPayment": "Partial",
+        "amountPaidNow": "Amount paid now",
+        "amountPaidNowPlaceholder": "0",
         "paymentMethod": "Payment Method",
         "transactionRef": "Transaction Reference",
         "transferRef": "Reference / Receipt #",
         "refPlaceholder": "Scan or type reference...",
         "refRequired": "Required for records"
+    },
+    "receipt": {
+        "total": "Total",
+        "paidNow": "Paid now",
+        "remaining": "Remaining"
     }
 }

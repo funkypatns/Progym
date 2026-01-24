@@ -18,6 +18,7 @@ import { useSettingsStore, useAuthStore } from '../store';
 
 const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     const { t, i18n } = useTranslation();
+    const isRTL = i18n.language === 'ar';
     const { getSetting } = useSettingsStore();
     const { user } = useAuthStore();
 
@@ -50,6 +51,14 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     const [employees, setEmployees] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetchingExpected, setIsFetchingExpected] = useState(false);
+
+    const getErrorMessage = (error, fallback) => {
+        const response = error?.response?.data;
+        if (response?.message) return response.message;
+        if (Array.isArray(response?.errors) && response.errors[0]?.msg) return response.errors[0].msg;
+        if (error?.message) return error.message;
+        return fallback;
+    };
 
     // Fetch employees on mount
     useEffect(() => {
@@ -110,7 +119,7 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
             });
         } catch (error) {
             console.error('Failed to fetch expected amounts:', error);
-            toast.error('Failed to calculate expected amounts');
+            toast.error(getErrorMessage(error, 'Failed to calculate expected amounts'));
             // Reset to zero on error
             setExpectedAmounts({
                 expectedCashAmount: 0,
@@ -128,27 +137,40 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     // Calculate declared total and differences
     // Treat empty string as 0 for calculation, but keep raw for status check
     const rawDeclaredCash = formData.declaredCashAmount;
+    const rawDeclaredNonCash = formData.declaredNonCashAmount;
     const valDeclaredCash = rawDeclaredCash === '' ? 0 : parseFloat(rawDeclaredCash);
-    const valDeclaredNonCash = formData.declaredNonCashAmount === '' ? 0 : parseFloat(formData.declaredNonCashAmount);
+    const valDeclaredNonCash = rawDeclaredNonCash === '' ? 0 : parseFloat(rawDeclaredNonCash);
 
     const declaredTotal = valDeclaredCash + valDeclaredNonCash;
     const differenceCash = valDeclaredCash - expectedAmounts.expectedCashAmount;
     const differenceNonCash = valDeclaredNonCash - expectedAmounts.expectedNonCashAmount;
-    const differenceTotal = differenceCash; // Strict: Difference is only based on Cash for the main status
+    const differenceTotal = declaredTotal - expectedAmounts.expectedTotalAmount;
+    const hasDeclaredCash = rawDeclaredCash !== '';
+    const diffNonCashColor = differenceNonCash < -0.01 ? 'text-red-500' : differenceNonCash > 0.01 ? 'text-orange-500' : 'text-emerald-500';
+    const diffTotalColor = differenceTotal < -0.01 ? 'text-red-500' : differenceTotal > 0.01 ? 'text-orange-500' : 'text-emerald-500';
+    const formatSignedDiff = (value) => {
+        if (!hasDeclaredCash) return '--';
+        const safeValue = Number.isFinite(value) ? value : 0;
+        const sign = safeValue > 0 ? '+' : '';
+        return `${sign}${formatCurrency(safeValue, i18n.language, currencyConf)}`;
+    };
+    const declaredTotalDisplay = hasDeclaredCash
+        ? formatCurrency(declaredTotal || 0, i18n.language, currencyConf)
+        : '--';
 
     // Determine status
     let status = 'pending';
     let statusColor = 'text-gray-400';
     let StatusIcon = AlertTriangle; // Neutral icon
-    let statusText = 'لم يتم الإدخال بعد';
+    let statusText = t('common.pending') || 'Pending';
 
-    if (rawDeclaredCash !== '') {
-        if (differenceTotal < -0.01) { // Tolerance
+    if (hasDeclaredCash) {
+        if (differenceCash < -0.01) { // Tolerance
             status = 'shortage';
             statusColor = 'text-red-500';
             StatusIcon = TrendingDown;
             statusText = t('cashClosing.status.shortage') || 'Shortage';
-        } else if (differenceTotal > 0.01) {
+        } else if (differenceCash > 0.01) {
             status = 'overage';
             statusColor = 'text-orange-500';
             StatusIcon = TrendingUp;
@@ -189,7 +211,7 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
             handleClose();
         } catch (error) {
             console.error('Failed to create closing:', error);
-            toast.error(t('cashClosing.closingFailed'));
+            toast.error(getErrorMessage(error, t('cashClosing.closingFailed')));
         } finally {
             setIsLoading(false);
         }
@@ -315,26 +337,30 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                             </h4>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm">
-                                    <p className="text-xs text-gray-500 mb-1">Expected Net Cash</p>
+                                    <p className="text-xs text-gray-500 mb-1">{t('cashClosing.expectedCash')}</p>
                                     <p className="text-lg font-bold text-emerald-500">
                                         {formatCurrency(expectedAmounts.expectedCashAmount || 0, i18n.language, currencyConf)}
                                     </p>
                                     <p className="text-[10px] text-gray-400">Cash In - Cash Out</p>
                                 </div>
                                 <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm border-l-2 border-blue-400">
-                                    <p className="text-xs text-gray-500 mb-1">Card Total (Ref)</p>
+                                    <p className="text-xs text-gray-500 mb-1">{t('cashClosing.expectedNonCash')}</p>
                                     <p className="text-lg font-bold text-blue-500">
-                                        {formatCurrency(expectedAmounts.cardTotal || 0, i18n.language, currencyConf)}
+                                        {formatCurrency(expectedAmounts.expectedNonCashAmount || 0, i18n.language, currencyConf)}
+                                    </p>
+                                    <p className="text-[10px] text-gray-400">
+                                        {t('payments.card')}: {formatCurrency(expectedAmounts.cardTotal || 0, i18n.language, currencyConf)} • {t('payments.transfer')}: {formatCurrency(expectedAmounts.transferTotal || 0, i18n.language, currencyConf)}
                                     </p>
                                 </div>
-                                <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm border-l-2 border-purple-400">
-                                    <p className="text-xs text-gray-500 mb-1">Transfer Total (Ref)</p>
-                                    <p className="text-lg font-bold text-purple-500">
-                                        {formatCurrency(expectedAmounts.transferTotal || 0, i18n.language, currencyConf)}
+                                <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm border-l-2 border-indigo-400">
+                                    <p className="text-xs text-gray-500 mb-1">{t('cashClosing.expectedTotal')}</p>
+                                    <p className="text-lg font-bold text-gray-700 dark:text-white">
+                                        {formatCurrency(expectedAmounts.expectedTotalAmount || 0, i18n.language, currencyConf)}
                                     </p>
+                                    <p className="text-[10px] text-gray-400">{t('cashClosing.total') || 'Total'}</p>
                                 </div>
                                 <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm text-center flex flex-col justify-center">
-                                    <p className="text-xs text-gray-500 mb-1">Operations</p>
+                                    <p className="text-xs text-gray-500 mb-1">{t('cashClosing.paymentsCount') || 'Payments'}</p>
                                     <p className="text-lg font-bold text-gray-700 dark:text-white">
                                         {expectedAmounts.paymentCount || 0}
                                     </p>
@@ -401,21 +427,39 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-xs text-dark-500 mb-1">{t('cashClosing.differenceTotal')}</p>
+                                    <p className="text-xs text-dark-500 mb-1">{t('cashClosing.differenceCash')}</p>
                                     <p className={`text-3xl font-black ${statusColor}`}>
-                                        {status === 'pending' ? '--' : (
-                                            <>
-                                                {differenceTotal > 0 ? '+' : ''}
-                                                {formatCurrency(differenceTotal || 0, i18n.language, currencyConf)}
-                                            </>
-                                        )}
+                                        {formatSignedDiff(differenceCash)}
                                     </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="flex items-center justify-between bg-white/70 dark:bg-dark-900/50 border border-gray-200/70 dark:border-dark-700/70 rounded-lg px-3 py-2">
+                                    <span className="text-xs text-gray-500">{t('cashClosing.declaredTotal')}</span>
+                                    <span className={`text-sm font-bold ${hasDeclaredCash ? 'text-gray-700 dark:text-white' : 'text-gray-400'}`}>
+                                        {declaredTotalDisplay}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between bg-white/70 dark:bg-dark-900/50 border border-gray-200/70 dark:border-dark-700/70 rounded-lg px-3 py-2">
+                                    <span className="text-xs text-gray-500">{t('cashClosing.differenceNonCash')}</span>
+                                    <span className={`text-sm font-bold ${hasDeclaredCash ? diffNonCashColor : 'text-gray-400'}`}>
+                                        {formatSignedDiff(differenceNonCash)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between bg-white/70 dark:bg-dark-900/50 border border-gray-200/70 dark:border-dark-700/70 rounded-lg px-3 py-2">
+                                    <span className="text-xs text-gray-500">{t('cashClosing.differenceTotal')}</span>
+                                    <span className={`text-sm font-bold ${hasDeclaredCash ? diffTotalColor : 'text-gray-400'}`}>
+                                        {formatSignedDiff(differenceTotal)}
+                                    </span>
                                 </div>
                             </div>
 
                             {status === 'pending' && (
                                 <p className="text-sm text-center text-gray-500 italic bg-white dark:bg-dark-900/50 p-2 rounded-lg">
-                                    سيتم تحديد العجز أو الزيادة تلقائياً بعد إدخال المبلغ الموجود فعلياً في الدرج.
+                                    {isRTL
+                                        ? 'سيتم تحديد العجز أو الزيادة تلقائياً بعد إدخال المبلغ الموجود فعلياً في الدرج.'
+                                        : 'Shortage or overage is calculated after entering the cash on hand.'}
                                 </p>
                             )}
                         </div>

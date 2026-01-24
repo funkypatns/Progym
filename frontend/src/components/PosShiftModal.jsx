@@ -3,7 +3,7 @@ import { usePosStore } from '../store';
 import { Loader2, AlertTriangle, Calculator, DollarSign, CreditCard, ArrowRightLeft } from 'lucide-react';
 
 const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
-    const { machine, currentShift, openShift, closeShift, getShiftSummary, isLoading: storeLoading } = usePosStore();
+    const { machine, currentShift, openShift, closeShift, closeShiftById, getShiftSummary, isLoading: storeLoading } = usePosStore();
     const currencySymbol = '$'; // Default, ideally from settings
     const [amount, setAmount] = useState('');
     const [error, setError] = useState(null);
@@ -11,6 +11,9 @@ const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
     const [closedShiftResult, setClosedShiftResult] = useState(null);
     const [shiftSummary, setShiftSummary] = useState(null);
     const [calculating, setCalculating] = useState(false);
+    const [forceCloseShiftId, setForceCloseShiftId] = useState(null);
+    const [forceCloseMachineId, setForceCloseMachineId] = useState(null);
+    const [forceCloseCash, setForceCloseCash] = useState('0');
 
     useEffect(() => {
         if (isOpen) {
@@ -19,6 +22,9 @@ const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
             setSuccessMsg(null);
             setClosedShiftResult(null);
             setShiftSummary(null);
+            setForceCloseShiftId(null);
+            setForceCloseMachineId(null);
+            setForceCloseCash('0');
 
             // Fetch summary if closing shift
             if (currentShift) {
@@ -34,6 +40,17 @@ const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
             }
         }
     }, [isOpen, currentShift]);
+
+    const parseExistingShiftError = (message) => {
+        if (!message) return null;
+        const idMatch = message.match(/open shift \(ID:\s*(\d+)\)/i);
+        if (!idMatch) return null;
+        const machineMatch = message.match(/Machine\s*(\d+)/i);
+        return {
+            shiftId: parseInt(idMatch[1], 10),
+            machineId: machineMatch ? parseInt(machineMatch[1], 10) : null
+        };
+    };
 
     const handleOpenShift = async (e) => {
         e.preventDefault();
@@ -52,6 +69,14 @@ const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
             setTimeout(() => onClose(), 1500);
         } else {
             setError(result.message);
+            const existingShift = parseExistingShiftError(result.message);
+            if (existingShift) {
+                setForceCloseShiftId(existingShift.shiftId);
+                setForceCloseMachineId(existingShift.machineId);
+            } else {
+                setForceCloseShiftId(null);
+                setForceCloseMachineId(null);
+            }
         }
     };
 
@@ -69,6 +94,29 @@ const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
         if (result.success) {
             setClosedShiftResult(result.data);
             if (onSuccess) onSuccess('close');
+        } else {
+            setError(result.message);
+        }
+    };
+
+    const handleForceCloseShift = async () => {
+        if (!forceCloseShiftId) return;
+        setError(null);
+
+        const closingCash = parseFloat(forceCloseCash);
+        if (forceCloseCash === '' || isNaN(closingCash) || closingCash < 0) {
+            setError('Please enter a valid closing cash amount (0 or more)');
+            return;
+        }
+
+        const confirmed = window.confirm(`Force close shift #${forceCloseShiftId}?`);
+        if (!confirmed) return;
+
+        const result = await closeShiftById(forceCloseShiftId, closingCash);
+        if (result.success) {
+            setSuccessMsg('Previous shift closed. You can open a new shift now.');
+            setForceCloseShiftId(null);
+            setForceCloseMachineId(null);
         } else {
             setError(result.message);
         }
@@ -161,6 +209,40 @@ const PosShiftModal = ({ isOpen, onClose, onSuccess, onLogoutOnly }) => {
                     <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded text-sm flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4" />
                         {error}
+                    </div>
+                )}
+
+                {!currentShift && forceCloseShiftId && (
+                    <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/60 rounded text-sm">
+                        <div className="flex items-center justify-between gap-2 text-yellow-800 dark:text-yellow-200 font-medium">
+                            <span>
+                                Existing open shift detected{forceCloseMachineId ? ` on Machine ${forceCloseMachineId}` : ''}.
+                            </span>
+                            <span className="text-xs text-yellow-700 dark:text-yellow-300">Shift #{forceCloseShiftId}</span>
+                        </div>
+                        <label className="block text-xs text-yellow-700 dark:text-yellow-300 mt-3 mb-1">
+                            Closing Cash for Shift #{forceCloseShiftId}
+                        </label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-yellow-600 dark:text-yellow-300 font-bold">
+                                {currencySymbol}
+                            </span>
+                            <input
+                                type="number"
+                                step="0.01"
+                                value={forceCloseCash}
+                                onChange={(e) => setForceCloseCash(e.target.value)}
+                                className="w-full pl-8 pr-4 py-2 text-sm border rounded-md bg-white dark:bg-gray-800 border-yellow-200 dark:border-yellow-800/60 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
+                                placeholder="0.00"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleForceCloseShift}
+                            className="mt-3 w-full py-2 px-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md font-medium transition-colors"
+                        >
+                            Force Close Shift
+                        </button>
                     </div>
                 )}
 

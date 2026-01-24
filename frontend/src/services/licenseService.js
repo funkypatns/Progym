@@ -9,31 +9,48 @@
 
 import api from '../utils/api';
 
+let lastCheckAt = 0;
+let lastResult = null;
+const LICENSE_CHECK_BACKOFF_MS = 5000;
+
 export const licenseService = {
     /**
      * Initialize and check license status
      */
     initialize: async () => {
         try {
+            const now = Date.now();
+            if (lastResult && (now - lastCheckAt) < LICENSE_CHECK_BACKOFF_MS) {
+                return lastResult;
+            }
             const response = await api.get('/license/status');
-            const data = response.data.data;
+            const payload = response.data || {};
+            const data = payload.data || {};
+            const valid = typeof data.valid === 'boolean' ? data.valid : data.status === 'active';
 
-            return {
-                valid: data.status === 'active',
-                status: data.status,
+            const result = {
+                valid,
+                status: data.status || (valid ? 'active' : 'invalid'),
                 mode: data.mode,
                 license: data.license,
                 graceRemaining: data.graceRemaining,
                 code: data.code,
-                message: data.message
+                message: data.message || payload.message
             };
+
+            lastResult = result;
+            lastCheckAt = now;
+            return result;
         } catch (error) {
             console.error('License check failed:', error);
-            return {
+            const result = {
                 valid: false,
                 status: 'error',
                 message: error.response?.data?.message || 'Failed to check license'
             };
+            lastResult = result;
+            lastCheckAt = Date.now();
+            return result;
         }
     },
 

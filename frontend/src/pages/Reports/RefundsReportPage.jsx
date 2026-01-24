@@ -7,8 +7,9 @@ const RefundsReportPage = () => {
     const { t } = useTranslation();
     return (
         <ReportsShell
-            title={t('reports.refundsReport') || "Refunds Log"}
-            subtitle="Track refund transactions and history"
+            title={t('reports.refundsReport', 'Refunds log')}
+            subtitle={t('reports.refundsReport.subtitle', 'Track refund transactions and history')}
+            centerHeader
         >
             <RefundsReport isActive={true} />
         </ReportsShell>

@@ -19,6 +19,13 @@ router.use(authenticate);
 router.get('/unread-count', async (req, res) => {
     try {
         const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const notifyDaysSetting = await req.prisma.setting.findUnique({
+            where: { key: 'notify_expiry_days' }
+        });
+        const notifyDays = parseInt(notifyDaysSetting?.value || 7);
+        const expiryCutoff = new Date(todayStart);
+        expiryCutoff.setDate(expiryCutoff.getDate() + notifyDays);
 
         // Count expired but unacknowledged
         const expiredCount = await req.prisma.subscription.count({
@@ -37,13 +44,26 @@ router.get('/unread-count', async (req, res) => {
             }
         });
 
+        // Count expiring soon (acknowledged per day)
+        const expiringSoonCount = await req.prisma.subscription.count({
+            where: {
+                status: 'active',
+                endDate: { gte: todayStart, lte: expiryCutoff },
+                OR: [
+                    { alertAcknowledgedAt: null },
+                    { alertAcknowledgedAt: { lt: todayStart } }
+                ]
+            }
+        });
+
         res.json({
             success: true,
             data: {
-                count: expiredCount + cancelledCount,
+                count: expiredCount + cancelledCount + expiringSoonCount,
                 breakdown: {
                     expired: expiredCount,
-                    cancelled: cancelledCount
+                    cancelled: cancelledCount,
+                    expiringSoon: expiringSoonCount
                 }
             }
         });
@@ -60,6 +80,13 @@ router.get('/unread-count', async (req, res) => {
 router.get('/unread', async (req, res) => {
     try {
         const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const notifyDaysSetting = await req.prisma.setting.findUnique({
+            where: { key: 'notify_expiry_days' }
+        });
+        const notifyDays = parseInt(notifyDaysSetting?.value || 7);
+        const expiryCutoff = new Date(todayStart);
+        expiryCutoff.setDate(expiryCutoff.getDate() + notifyDays);
 
         const alerts = await req.prisma.subscription.findMany({
             where: {
@@ -74,28 +101,55 @@ router.get('/unread', async (req, res) => {
                     {
                         status: 'cancelled',
                         alertAcknowledged: false
+                    },
+                    // Expiring soon (acknowledged per day)
+                    {
+                        status: 'active',
+                        endDate: { gte: todayStart, lte: expiryCutoff },
+                        OR: [
+                            { alertAcknowledgedAt: null },
+                            { alertAcknowledgedAt: { lt: todayStart } }
+                        ]
                     }
                 ]
             },
             include: {
                 member: {
-                    select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
+                    select: { id: true, memberId: true, firstName: true, lastName: true, phone: true, email: true }
                 },
-                plan: { select: { name: true } }
+                plan: { select: { name: true, price: true } },
+                payments: {
+                    where: { status: { in: ['completed', 'refunded', 'Partial Refund'] } },
+                    select: { amount: true, refundedTotal: true }
+                }
             },
             orderBy: { endDate: 'asc' }, // Oldest expirations first
-            take: 100
+            take: 150
         });
 
         res.json({
             success: true,
             data: alerts.map(sub => ({
                 id: sub.id,
-                type: sub.status === 'cancelled' ? 'cancelled' : 'expired',
+                type: sub.status === 'cancelled'
+                    ? 'cancelled'
+                    : (new Date(sub.endDate) < now ? 'expired' : 'expiring'),
                 member: sub.member,
                 planName: sub.plan.name,
+                totalAmount: sub.plan?.price || 0,
+                paidAmount: sub.payments.reduce((sum, p) => {
+                    const gross = p.amount || 0;
+                    const refunded = p.refundedTotal || 0;
+                    return sum + (gross - refunded);
+                }, 0),
+                remainingAmount: Math.max(0, (sub.plan?.price || 0) - sub.payments.reduce((sum, p) => {
+                    const gross = p.amount || 0;
+                    const refunded = p.refundedTotal || 0;
+                    return sum + (gross - refunded);
+                }, 0)),
                 endDate: sub.endDate,
-                daysOverdue: Math.ceil((now - new Date(sub.endDate)) / (1000 * 60 * 60 * 24))
+                daysOverdue: Math.ceil((now - new Date(sub.endDate)) / (1000 * 60 * 60 * 24)),
+                daysRemaining: Math.max(0, Math.ceil((new Date(sub.endDate) - now) / (1000 * 60 * 60 * 24)))
             }))
         });
     } catch (error) {
@@ -112,29 +166,34 @@ router.post('/mark-read', async (req, res) => {
     try {
         const { ids } = req.body; // Optional: array of string IDs
         const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const notifyDaysSetting = await req.prisma.setting.findUnique({
+            where: { key: 'notify_expiry_days' }
+        });
+        const notifyDays = parseInt(notifyDaysSetting?.value || 7);
+        const expiryCutoff = new Date(todayStart);
+        expiryCutoff.setDate(expiryCutoff.getDate() + notifyDays);
 
-        const where = {};
+        const idFilter = ids && Array.isArray(ids) && ids.length > 0
+            ? { id: { in: ids } }
+            : {};
 
-        // If specific IDs provided
-        if (ids && Array.isArray(ids) && ids.length > 0) {
-            where.id = { in: ids };
-        } else {
-            // Otherwise match all unacknowledged expired/cancelled
-            where.OR = [
-                {
-                    status: { in: ['expired', 'active'] },
-                    endDate: { lt: now },
-                    alertAcknowledged: false
-                },
-                {
-                    status: 'cancelled',
-                    alertAcknowledged: false
-                }
-            ];
-        }
-
+        // Mark expired/cancelled as acknowledged (permanent)
         const result = await req.prisma.subscription.updateMany({
-            where,
+            where: {
+                ...idFilter,
+                OR: [
+                    {
+                        status: { in: ['expired', 'active'] },
+                        endDate: { lt: now },
+                        alertAcknowledged: false
+                    },
+                    {
+                        status: 'cancelled',
+                        alertAcknowledged: false
+                    }
+                ]
+            },
             data: {
                 alertAcknowledged: true,
                 alertAcknowledgedAt: now,
@@ -142,10 +201,22 @@ router.post('/mark-read', async (req, res) => {
             }
         });
 
+        // Mark expiring-soon as acknowledged for the day only
+        const expiringResult = await req.prisma.subscription.updateMany({
+            where: {
+                ...idFilter,
+                status: 'active',
+                endDate: { gte: todayStart, lte: expiryCutoff }
+            },
+            data: {
+                alertAcknowledgedAt: now
+            }
+        });
+
         res.json({
             success: true,
             message: 'Alerts marked as read',
-            count: result.count
+            count: result.count + expiringResult.count
         });
     } catch (error) {
         console.error('Mark read error:', error);

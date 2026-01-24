@@ -25,7 +25,8 @@ const ReportsShell = ({
     filters,
     kpiCards,
     chart,
-    maxWidth = 'full'
+    maxWidth = 'full',
+    centerHeader = false
 }) => {
     const { t, i18n } = useTranslation();
     const theme = useTheme();
@@ -33,10 +34,15 @@ const ReportsShell = ({
 
     return (
         <Box sx={{
-            height: 'calc(100vh - 140px)',
+            height: '100%',
+            minHeight: '100%',
             display: 'flex',
             flexDirection: 'column',
             direction: isRtl ? 'rtl' : 'ltr',
+            width: '100%',
+            maxWidth: '100%',
+            alignSelf: 'stretch',
+            boxSizing: 'border-box',
             px: { xs: 2, md: 3 },
             pb: 2
         }}>
@@ -82,12 +88,18 @@ const ReportsShell = ({
 
                 <Box sx={{
                     display: 'flex',
-                    flexDirection: { xs: 'column', md: 'row' },
-                    justifyContent: 'space-between',
-                    alignItems: { xs: 'flex-start', md: 'center' },
+                    flexDirection: centerHeader ? 'column' : { xs: 'column', md: 'row' },
+                    justifyContent: centerHeader ? 'center' : 'space-between',
+                    alignItems: centerHeader ? 'center' : { xs: 'flex-start', md: 'center' },
+                    textAlign: centerHeader ? 'center' : (isRtl ? 'right' : 'left'),
                     gap: 2
                 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                        flexDirection: centerHeader ? 'column' : 'row'
+                    }}>
                         <Box sx={{
                             width: 48,
                             height: 48,

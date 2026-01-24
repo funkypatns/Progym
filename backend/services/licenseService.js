@@ -68,8 +68,9 @@ function generateHardwareId() {
 
     } catch (error) {
         console.error('Hardware ID generation failed:', error);
-        // Fallback to random ID (not ideal but prevents crash)
-        return crypto.randomBytes(32).toString('hex');
+        // Deterministic fallback to avoid changing IDs on every boot
+        const fallback = `${os.hostname()}|${os.platform()}|${os.arch()}|${os.totalmem()}`;
+        return crypto.createHash('sha256').update(fallback).digest('hex');
     }
 }
 
@@ -263,8 +264,11 @@ const licenseService = {
      */
     validate: async (licenseKey = null) => {
         try {
-            // 🔓 DEV MODE BYPASS: Always return valid license in development
-            if (process.env.NODE_ENV === 'development') {
+            const isDev = process.env.NODE_ENV === 'development';
+            const licenseBypass = String(process.env.LICENSE_BYPASS || '').toLowerCase() === 'true';
+
+            // 🔓 DEV MODE BYPASS: Only when explicitly enabled
+            if (isDev && licenseBypass) {
                 return {
                     valid: true,
                     license: {

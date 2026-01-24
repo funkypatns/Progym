@@ -18,10 +18,16 @@ import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency, formatNumber } from '../utils/numberFormatter';
 import { useSettingsStore } from '../store';
 import MemberDetailsModal from './MemberDetailsModal';
+import ReportSummaryCards from './ReportSummaryCards';
 
 const CancellationsReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
+    const isRTL = i18n.language === 'ar';
+    const alignStart = isRTL ? 'text-right' : 'text-left';
+    const alignEnd = isRTL ? 'text-left' : 'text-right';
+    const searchIconPosition = isRTL ? 'right-3' : 'left-3';
+    const searchPadding = isRTL ? 'pr-10' : 'pl-10';
 
     const [data, setData] = useState({ report: [], summary: { totalCancellations: 0, totalRefunded: 0, netRevenueImpact: 0 } });
     const [isLoading, setIsLoading] = useState(false);
@@ -53,11 +59,10 @@ const CancellationsReport = ({ isActive }) => {
             if (response.data.success) {
                 setData(response.data.data);
             } else {
-                toast.error(response.data.message || t('common.error'));
+                toast.error(response.data.message || t('common.error', 'Error'));
             }
         } catch (error) {
-            console.error('Failed to fetch cancellations report', error);
-            toast.error(t('reports.errors.serverError') || 'Failed to load cancellations report');
+            toast.error(t('reports.errors.serverError', 'Failed to load cancellations report'));
         } finally {
             setIsLoading(false);
         }
@@ -85,9 +90,9 @@ const CancellationsReport = ({ isActive }) => {
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success(t('common.success'));
+            toast.success(t('common.success', 'Success'));
         } catch (error) {
-            toast.error(t('common.error'));
+            toast.error(t('common.error', 'Error'));
         }
     };
 
@@ -102,52 +107,29 @@ const CancellationsReport = ({ isActive }) => {
             />
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Total Cancellations */}
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center just ify-between">
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                            {t(`${tPath}.totalCancellations`)}
-                        </p>
-                        <h3 className="text-2xl font-bold text-white">
-                            {formatNumber(data?.summary?.totalCancellations || 0, i18n.language)}
-                        </h3>
-                    </div>
-                    <div className="p-3 bg-red-500 rounded-xl">
-                        <XCircle className="w-6 h-6 text-white" />
-                    </div>
-                </div>
-
-                {/* Total Refunded */}
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                            {t(`${tPath}.totalRefunded`)}
-                        </p>
-                        <h3 className="text-2xl font-bold text-white">
-                            {formatCurrency(data?.summary?.totalRefunded || 0, i18n.language, currencyConf)}
-                        </h3>
-                    </div>
-                    <div className="p-3 bg-orange-500 rounded-xl">
-                        <ArrowDownRight className="w-6 h-6 text-white" />
-                    </div>
-                </div>
-
-                {/* Net Revenue Impact */}
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                            {t(`${tPath}.netRevenueImpact`)}
-                        </p>
-                        <h3 className="text-2xl font-bold text-white">
-                            {formatCurrency(data?.summary?.netRevenueImpact || 0, i18n.language, currencyConf)}
-                        </h3>
-                    </div>
-                    <div className="p-3 bg-emerald-500 rounded-xl">
-                        <Banknote className="w-6 h-6 text-white" />
-                    </div>
-                </div>
-            </div>
+            <ReportSummaryCards
+                gridClassName="md:grid-cols-3"
+                items={[
+                    {
+                        label: t(`${tPath}.totalCancellations`, 'Total cancellations'),
+                        value: formatNumber(data?.summary?.totalCancellations || 0, i18n.language),
+                        icon: XCircle,
+                        iconClassName: 'bg-red-500'
+                    },
+                    {
+                        label: t(`${tPath}.totalRefunded`, 'Total refunded'),
+                        value: formatCurrency(data?.summary?.totalRefunded || 0, i18n.language, currencyConf),
+                        icon: ArrowDownRight,
+                        iconClassName: 'bg-orange-500'
+                    },
+                    {
+                        label: t(`${tPath}.netRevenueImpact`, 'Net revenue impact'),
+                        value: formatCurrency(data?.summary?.netRevenueImpact || 0, i18n.language, currencyConf),
+                        icon: Banknote,
+                        iconClassName: 'bg-emerald-500'
+                    }
+                ]}
+            />
 
             {/* Toolbar */}
             <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
@@ -155,7 +137,7 @@ const CancellationsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[160px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Calendar size={14} />
-                            {i18n.language === 'ar' ? 'من' : 'From'}
+                            {t('reports.from', 'From')}
                         </label>
                         <input
                             type="date"
@@ -167,7 +149,7 @@ const CancellationsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[160px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Calendar size={14} />
-                            {i18n.language === 'ar' ? 'إلى' : 'To'}
+                            {t('reports.to', 'To')}
                         </label>
                         <input
                             type="date"
@@ -179,16 +161,16 @@ const CancellationsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[200px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Search size={14} />
-                            {i18n.language === 'ar' ? 'بحث' : 'Search'}
+                            {t('common.search', 'Search')}
                         </label>
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <Search className={`absolute ${searchIconPosition} top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400`} />
                             <input
                                 type="text"
                                 value={filters.search}
                                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                                placeholder={i18n.language === 'ar' ? 'ابحث بالاسم...' : 'Search by name...'}
-                                className="w-full h-11 pl-10 pr-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500"
+                                placeholder={t(`${tPath}.searchPlaceholder`, 'Search by name...')}
+                                className={`w-full h-11 ${searchPadding} bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500`}
                             />
                         </div>
                     </div>
@@ -199,14 +181,14 @@ const CancellationsReport = ({ isActive }) => {
                             className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
                         >
                             <RefreshCw size={18} />
-                            {i18n.language === 'ar' ? 'تحديث' : 'Refresh'}
+                            {t('common.refresh', 'Refresh')}
                         </button>
                         <button
                             onClick={handleExport}
                             className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
                         >
                             <FileSpreadsheet size={18} />
-                            {i18n.language === 'ar' ? 'تصدير' : 'Export'}
+                            {t(`${tPath}.exportExcel`, t('reports.export', 'Export'))}
                         </button>
                     </div>
                 </div>
@@ -217,65 +199,67 @@ const CancellationsReport = ({ isActive }) => {
                 {isLoading ? (
                     <div className="py-16 flex flex-col items-center justify-center">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">Loading...</p>
+                        <p className="text-sm text-gray-400 font-medium">{t('common.loading', 'Loading...')}</p>
                     </div>
                 ) : data.report.length === 0 ? (
                     <div className="py-16 flex flex-col items-center justify-center">
                         <AlertCircle className="w-12 h-12 text-gray-600 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">{i18n.language === 'ar' ? 'لا توجد بيانات' : 'No data available'}</p>
+                        <p className="text-sm text-gray-400 font-medium">{t('common.noResults', 'No data available')}</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-slate-900/50 border-b border-slate-700/50">
+                            <thead className="bg-slate-900/70 border-b border-slate-700/50 sticky top-0">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'تاريخ الإلغاء' : 'Date'}</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'العضو' : 'Member'}</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'الباقة' : 'Plan'}</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'الحالة' : 'Status'}</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-emerald-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'مدفوع' : 'Paid'}</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-red-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'مسترد' : 'Refunded'}</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'صافي' : 'Net'}</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{i18n.language === 'ar' ? 'الإجراء' : 'Action'}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t(`${tPath}.canceledAt`, 'Date')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t(`${tPath}.member`, 'Member')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t(`${tPath}.plan`, 'Plan')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t(`${tPath}.status`, 'Status')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-emerald-400 uppercase tracking-wider ${alignEnd}`}>{t(`${tPath}.paid`, 'Paid')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-red-400 uppercase tracking-wider ${alignEnd}`}>{t(`${tPath}.refunded`, 'Refunded')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t(`${tPath}.net`, 'Net')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('common.actions', 'Action')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-700/50">
                                 {data.report.map((item, idx) => (
                                     <tr key={idx} className="hover:bg-slate-700/30 transition-colors group">
-                                        <td className="px-4 py-3 text-white">
+                                        <td className={`px-4 py-3 text-white ${alignStart}`}>
                                             <span className="text-sm font-medium">{formatDateTime(item.canceledAt, i18n.language)}</span>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className={`px-4 py-3 ${alignStart}`}>
                                             <div>
                                                 <p className="text-sm font-medium text-white">{item.member?.firstName} {item.member?.lastName}</p>
                                                 <p className="text-xs text-gray-400">{item.member?.phone}</p>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-white text-sm">{item.plan?.name_ar || item.plan?.name_en}</td>
-                                        <td className="px-4 py-3">
+                                        <td className={`px-4 py-3 text-white text-sm ${alignStart}`}>{item.plan?.name_ar || item.plan?.name_en}</td>
+                                        <td className={`px-4 py-3 ${alignStart}`}>
                                             <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${item.status === 'cancelled'
                                                 ? 'bg-red-500/20 text-red-400'
                                                 : 'bg-gray-500/20 text-gray-400'
                                                 }`}>
-                                                {item.status === 'cancelled' ? (i18n.language === 'ar' ? 'ملغي' : 'Cancelled') : (i18n.language === 'ar' ? 'منتهي' : 'Ended')}
+                                                {item.status === 'cancelled'
+                                                    ? t('reports.status.cancelled', 'Cancelled')
+                                                    : t('reports.status.ended', 'Ended')}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-emerald-400">
                                                 {formatCurrency(item.paid, i18n.language, currencyConf)}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-red-400">
                                                 {formatCurrency(item.refunded, i18n.language, currencyConf)}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-white">
                                                 {formatCurrency(item.net, i18n.language, currencyConf)}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className={`px-4 py-3 ${alignStart}`}>
                                             <button
                                                 onClick={() => setSelectedMemberId(item.member?.id)}
                                                 className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-slate-600 rounded-lg"

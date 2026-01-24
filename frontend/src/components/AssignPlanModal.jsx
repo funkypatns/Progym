@@ -12,7 +12,7 @@ import apiClient from '../utils/api';
  * 2. Plan Selection (Only after member selected)
  * 3. Payment (Only after plan selected)
  */
-const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isRenewMode = false }) => {
+const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isRenewMode = false, initialPlanId = null }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
 
@@ -30,9 +30,13 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const [plans, setPlans] = useState([]);
     const [isLoadingPlans, setIsLoadingPlans] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState(null);
+    const [preferredPlanId, setPreferredPlanId] = useState(null);
+    const [paymentDraft, setPaymentDraft] = useState(null);
+    const [draftApplied, setDraftApplied] = useState(false);
 
     // Payment State
     const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash' | 'card' | 'transfer'
+    const [paymentMode, setPaymentMode] = useState('full'); // 'full' | 'partial'
     const [transactionRef, setTransactionRef] = useState('');
     const [notes, setNotes] = useState('');
     const [manualAmount, setManualAmount] = useState('');
@@ -60,10 +64,15 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                 setStep(1);
             }
             setPaymentMethod('cash');
+            setPaymentMode('full');
             setTransactionRef('');
             setNotes('');
             setManualAmount('');
             setIsSubmitting(false);
+            setSelectedPlan(null);
+            setPreferredPlanId(null);
+            setPaymentDraft(null);
+            setDraftApplied(false);
 
             // Pre-fetch plans so they are ready
             fetchPlans();
@@ -80,6 +89,78 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         };
     }, []);
 
+    useEffect(() => {
+        if (!isOpen) return;
+        const storedPlanId = initialMember?.id
+            ? parseInt(localStorage.getItem(`gym:memberPlanPref:${initialMember.id}`) || '', 10)
+            : null;
+        const parsedInitial = initialPlanId ? parseInt(initialPlanId, 10) : null;
+        const resolved = Number.isFinite(parsedInitial) ? parsedInitial : (Number.isFinite(storedPlanId) ? storedPlanId : null);
+        setPreferredPlanId(resolved);
+        if (initialMember?.id) {
+            try {
+                const draftRaw = localStorage.getItem(`gym:memberPaymentPref:${initialMember.id}`);
+                setPaymentDraft(draftRaw ? JSON.parse(draftRaw) : null);
+            } catch (err) {
+                setPaymentDraft(null);
+            }
+        }
+    }, [isOpen, initialPlanId, initialMember]);
+
+    useEffect(() => {
+        if (!selectedPlan) return;
+        const totalValue = Number(selectedPlan.price);
+        const amountValue = paymentMode === 'full'
+            ? totalValue
+            : (manualAmount === '' || manualAmount === null ? 0 : Number(manualAmount));
+        const hasPayment = Number.isFinite(amountValue) && amountValue > 0;
+
+        if ((!hasPayment || paymentMethod === 'cash') && transactionRef) {
+            setTransactionRef('');
+        }
+    }, [manualAmount, paymentMethod, paymentMode, selectedPlan, transactionRef]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (selectedPlan || plans.length === 0) return;
+        const fallbackStored = selectedMember?.id
+            ? parseInt(localStorage.getItem(`gym:memberPlanPref:${selectedMember.id}`) || '', 10)
+            : null;
+        const targetId = Number.isFinite(preferredPlanId) ? preferredPlanId : (Number.isFinite(fallbackStored) ? fallbackStored : null);
+        if (!Number.isFinite(targetId)) return;
+        const match = plans.find(p => p.id === targetId);
+        if (!match) return;
+        setSelectedPlan(match);
+        const totalPrice = Number(match.price);
+        const safeTotal = Number.isFinite(totalPrice) ? totalPrice : 0;
+        const draftAmount = paymentDraft && paymentDraft.paidAmount !== null && paymentDraft.paidAmount !== undefined
+            ? Number(paymentDraft.paidAmount)
+            : null;
+        if (Number.isFinite(draftAmount)) {
+            const cappedDraft = safeTotal > 0 && draftAmount > safeTotal ? safeTotal : draftAmount;
+            const isPartial = safeTotal > 0 && cappedDraft < safeTotal;
+            const nextMode = isPartial ? 'partial' : 'full';
+            setPaymentMode(nextMode);
+            setManualAmount(nextMode === 'full' ? safeTotal : cappedDraft);
+        } else {
+            setPaymentMode('full');
+            setManualAmount(safeTotal);
+        }
+    }, [isOpen, plans, preferredPlanId, selectedMember, selectedPlan, paymentDraft]);
+
+    useEffect(() => {
+        if (!isOpen || !selectedMember || draftApplied) return;
+        if (paymentDraft?.method) {
+            const normalized = ['cash', 'card', 'transfer', 'other'].includes(paymentDraft.method)
+                ? paymentDraft.method
+                : 'cash';
+            setPaymentMethod(normalized);
+        }
+        if (paymentDraft?.transactionRef && String(paymentDraft.transactionRef).trim()) {
+            setTransactionRef(String(paymentDraft.transactionRef).trim());
+        }
+        setDraftApplied(true);
+    }, [isOpen, selectedMember, paymentDraft, draftApplied]);
     // -- 3. Actions & Logic --
 
     const fetchPlans = async () => {
@@ -169,6 +250,15 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
         console.debug('[AssignPlan] Selected Member:', m.id);
         setSelectedMember(m);
+        const storedPlanId = parseInt(localStorage.getItem(`gym:memberPlanPref:${m.id}`) || '', 10);
+        setPreferredPlanId(Number.isFinite(storedPlanId) ? storedPlanId : null);
+        try {
+            const draftRaw = localStorage.getItem(`gym:memberPaymentPref:${m.id}`);
+            setPaymentDraft(draftRaw ? JSON.parse(draftRaw) : null);
+        } catch (err) {
+            setPaymentDraft(null);
+        }
+        setDraftApplied(false);
         setSearchTerm('');
         setMembers([]); // Clear dropdown
         setStep(2); // Auto-advance
@@ -177,7 +267,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const handleSelectPlan = (p) => {
         console.debug('[AssignPlan] Selected Plan:', p.id);
         setSelectedPlan(p);
-        setManualAmount(p.price); // Default to plan price
+        setPaymentMode('full');
+        setManualAmount(p.price);
         setStep(3); // Auto-advance optional? User asked to "reveal", but auto-advance is smoother. 
     };
 
@@ -187,23 +278,85 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         setStep(1); // Go back to start
     };
 
+    const handlePaymentModeChange = (mode) => {
+        if (mode === paymentMode) return;
+        setPaymentMode(mode);
+        if (!selectedPlan) return;
+        if (mode === 'full') {
+            setManualAmount(Number(selectedPlan.price));
+        } else {
+            setManualAmount('');
+        }
+    };
+
     const handleSubmit = async () => {
         if (!selectedMember || !selectedPlan) return;
         if (isSubmitting) return; // STRICT GUARD
 
-        setIsSubmitting(true);
         try {
-            const finalAmount = manualAmount && !isNaN(manualAmount) ? parseFloat(manualAmount) : selectedPlan.price;
-            let status = 'paid';
-            if (finalAmount <= 0) status = 'unpaid';
-            else if (finalAmount < selectedPlan.price) status = 'partial';
+            const resolvedMemberId = Number.parseInt(selectedMember.id ?? selectedMember.memberId, 10);
+            const resolvedPlanId = Number.parseInt(selectedPlan.id ?? selectedPlan.planId, 10);
+            const planPrice = Number(selectedPlan.price);
 
+            if (!Number.isInteger(resolvedMemberId) || !Number.isInteger(resolvedPlanId)) {
+                toast.error(safeT('errors.invalidSelection', 'Invalid member or plan selection'));
+                return;
+            }
+
+            if (!Number.isFinite(planPrice)) {
+                toast.error(safeT('errors.invalidPlanPrice', 'Invalid plan price'));
+                return;
+            }
+
+            const amountInput = paymentMode === 'full'
+                ? planPrice
+                : (manualAmount === '' || manualAmount === null ? 0 : Number(manualAmount));
+            const finalAmount = Number.isFinite(amountInput) ? amountInput : NaN;
+            if (!Number.isFinite(finalAmount)) {
+                toast.error(safeT('errors.invalidAmount', 'Invalid payment amount'));
+                return;
+            }
+
+            if (paymentMode === 'partial' && planPrice > 0) {
+                if (finalAmount < 0) {
+                    toast.error(safeT('errors.invalidAmount', 'Invalid payment amount'));
+                    return;
+                }
+                if (finalAmount >= planPrice) {
+                    toast.error(safeT('errors.partialAmountRange', 'Partial payment must be less than total'));
+                    return;
+                }
+            }
+
+            let status = 'paid';
+            if (planPrice === 0) status = 'paid';
+            else if (finalAmount <= 0) status = 'unpaid';
+            else if (finalAmount < planPrice) status = 'partial';
+
+            if (finalAmount > planPrice) {
+                toast.error(safeT('errors.invalidAmount', 'Paid amount cannot exceed total price'));
+                return;
+            }
+
+            const normalizedMethod = ['cash', 'card', 'transfer', 'other'].includes(paymentMethod)
+                ? paymentMethod
+                : 'cash';
+            const hasPayment = finalAmount > 0;
+            if (normalizedMethod !== 'cash' && hasPayment && !transactionRef.trim()) {
+                toast.error(safeT('errors.missingReference', 'Transaction reference is required for non-cash payments'));
+                return;
+            }
+            const cleanedTransactionRef = normalizedMethod !== 'cash' && hasPayment && transactionRef.trim()
+                ? transactionRef.trim()
+                : undefined;
+
+            setIsSubmitting(true);
             const payload = {
-                memberId: selectedMember.id,
-                planId: selectedPlan.id,
+                memberId: resolvedMemberId,
+                planId: resolvedPlanId,
                 startDate: new Date().toISOString(),
-                method: paymentMethod,
-                transactionRef: transactionRef || undefined,
+                method: normalizedMethod,
+                transactionRef: cleanedTransactionRef,
                 paymentStatus: status,
                 paidAmount: finalAmount,
                 notes: notes || undefined
@@ -211,7 +364,18 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
             const res = await apiClient.post('/subscriptions', payload);
             if (res.data.success) {
+                if (selectedMember?.id) {
+                    localStorage.removeItem(`gym:memberPlanPref:${selectedMember.id}`);
+                    localStorage.removeItem(`gym:memberPaymentPref:${selectedMember.id}`);
+                }
                 toast.success(safeT('subscriptions.created', 'Subscription assigned successfully'));
+                const paymentId = res.data?.data?.payment?.id;
+                if (paymentId && typeof window !== 'undefined') {
+                    window.open(`/payments/${paymentId}/receipt`, '_blank', 'noopener');
+                }
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event('payments:updated'));
+                }
                 if (onSuccess) onSuccess();
                 onClose();
             }
@@ -235,7 +399,16 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
     const isConfirmDisabled = () => {
         if (isSubmitting) return true;
-        if ((paymentMethod === 'card' || paymentMethod === 'transfer') && !transactionRef.trim()) return true;
+        const totalValue = Number(selectedPlan?.price || 0);
+        const amountValue = paymentMode === 'full'
+            ? totalValue
+            : (manualAmount === '' || manualAmount === null ? 0 : Number(manualAmount));
+        const hasPayment = Number.isFinite(amountValue) && amountValue > 0;
+        if (paymentMode === 'partial' && Number.isFinite(totalValue) && Number.isFinite(amountValue)) {
+            if (amountValue < 0) return true;
+            if (totalValue > 0 && amountValue >= totalValue) return true;
+        }
+        if ((paymentMethod === 'card' || paymentMethod === 'transfer') && hasPayment && !transactionRef.trim()) return true;
         return false;
     };
 
@@ -360,8 +533,10 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         </div>
     );
 
-    const renderPayment = () => (
-        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+    const renderPayment = () => {
+        if (!selectedPlan || !selectedMember) return null;
+        return (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
             {/* Summary Box */}
             <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
                 <div className="flex justify-between items-center mb-2">
@@ -380,17 +555,46 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             </div>
 
             {/* Payment Inputs */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    {safeT('finance.amountToPay', 'Amount To Pay')}
+            <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {safeT('finance.paymentMode', 'Payment mode')}
                 </label>
-                <input
-                    type="number"
-                    value={manualAmount}
-                    onChange={(e) => setManualAmount(e.target.value)}
-                    className="block w-full rounded-xl border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-3 px-4 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                    <button
+                        type="button"
+                        onClick={() => handlePaymentModeChange('full')}
+                        className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${paymentMode === 'full'
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                            : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'}`}
+                    >
+                        {safeT('finance.fullPayment', 'Full')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handlePaymentModeChange('partial')}
+                        className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${paymentMode === 'partial'
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                            : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'}`}
+                    >
+                        {safeT('finance.partialPayment', 'Partial')}
+                    </button>
+                </div>
             </div>
+
+            {paymentMode === 'partial' && (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        {safeT('finance.amountPaidNow', 'Amount paid now')} ({safeT('common.currency', 'EGP')})
+                    </label>
+                    <input
+                        type="number"
+                        value={manualAmount}
+                        onChange={(e) => setManualAmount(e.target.value)}
+                        placeholder={safeT('finance.amountPaidNowPlaceholder', '0')}
+                        className="block w-full rounded-xl border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-3 px-4 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white"
+                    />
+                </div>
+            )}
 
             <div className="grid grid-cols-3 gap-3">
                 {[
@@ -428,8 +632,9 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                     />
                 </div>
             )}
-        </div>
-    );
+            </div>
+        );
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">

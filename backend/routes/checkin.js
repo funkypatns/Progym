@@ -190,14 +190,34 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
 router.post('/checkout', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res) => {
     try {
         const { memberId } = req.body;
+        if (memberId === undefined || memberId === null || memberId === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Member ID is required'
+            });
+        }
+
+        const parsedMemberId = Number.parseInt(memberId, 10);
+        const memberIdString = typeof memberId === 'string' ? memberId.trim() : '';
+        const memberLookup = [];
+
+        if (Number.isInteger(parsedMemberId)) {
+            memberLookup.push({ id: parsedMemberId });
+        }
+        if (memberIdString) {
+            memberLookup.push({ memberId: memberIdString });
+        }
+        if (memberLookup.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid member ID format'
+            });
+        }
 
         // Find member
         const member = await req.prisma.member.findFirst({
             where: {
-                OR: [
-                    { id: parseInt(memberId) || 0 },
-                    { memberId: memberId }
-                ]
+                OR: memberLookup
             }
         });
 
@@ -208,16 +228,13 @@ router.post('/checkout', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (
             });
         }
 
-        // Find active check-in
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-
+        // Find latest open check-in (avoid date boundary issues)
         const checkIn = await req.prisma.checkIn.findFirst({
             where: {
                 memberId: member.id,
-                checkInTime: { gte: todayStart },
                 checkOutTime: null
-            }
+            },
+            orderBy: { checkInTime: 'desc' }
         });
 
         if (!checkIn) {

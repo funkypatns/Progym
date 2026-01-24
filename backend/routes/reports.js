@@ -59,9 +59,9 @@ router.use(authenticate);
  */
 router.get('/revenue', async (req, res) => {
     try {
-        const { from, to, collectorId } = req.query;
+        const { from, to, startDate: startDateParam, endDate: endDateParam, collectorId } = req.query;
         // Parse dates
-        const { startDate, endDate, error } = parseDateRange(from, to);
+        const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
         if (error) {
             return res.status(400).json({ success: false, message: error });
         }
@@ -285,6 +285,9 @@ const handlePaymentRemaining = async (req, res) => {
             return sendExcelResponse(res, excelRows, 'payment-remaining-report.xlsx');
         }
 
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
         res.json({
             success: true,
             data: {
@@ -313,21 +316,331 @@ router.get('/payment-remaining', async (req, res) => {
 });
 
 /**
+ * GET /api/reports/settled-payments
+ * Payments that reduced an outstanding balance (full or partial)
+ */
+router.get('/settled-payments', async (req, res) => {
+    try {
+        const { from, to, staffId, q, method, type } = req.query;
+
+        if (!from || !to) {
+            return res.status(400).json({
+                success: false,
+                message: 'Date range is required'
+            });
+        }
+
+        const { startDate, endDate, error } = parseDateRange(from, to);
+        if (error) {
+            return res.status(400).json({ success: false, message: error });
+        }
+
+        const allowedMethods = ['cash', 'card', 'transfer', 'other'];
+        const normalizedMethod = method ? String(method).toLowerCase() : null;
+        if (normalizedMethod && normalizedMethod !== 'all' && !allowedMethods.includes(normalizedMethod)) {
+            return res.status(400).json({ success: false, message: 'Invalid payment method' });
+        }
+
+        const normalizedType = type ? String(type).toLowerCase() : null;
+        if (normalizedType && normalizedType !== 'all' && normalizedType !== 'full' && normalizedType !== 'partial') {
+            return res.status(400).json({ success: false, message: 'Invalid settlement type' });
+        }
+
+        const paymentWhere = {
+            paidAt: { gte: startDate, lte: endDate },
+            amount: { gt: 0 },
+            subscriptionId: { not: null },
+            status: { in: ['completed', 'COMPLETED', 'paid', 'PAID'] }
+        };
+
+        if (normalizedMethod && normalizedMethod !== 'all') {
+            paymentWhere.method = normalizedMethod;
+        }
+
+        if (staffId && staffId !== 'all') {
+            const parsedStaffId = parseInt(staffId, 10);
+            if (!Number.isInteger(parsedStaffId)) {
+                return res.status(400).json({ success: false, message: 'Invalid staff ID' });
+            }
+            paymentWhere.createdBy = parsedStaffId;
+        }
+
+        if (q && String(q).trim()) {
+            const search = String(q).trim();
+            paymentWhere.member = {
+                OR: [
+                    { firstName: { contains: search } },
+                    { lastName: { contains: search } },
+                    { phone: { contains: search } },
+                    { memberId: { contains: search } },
+                    { email: { contains: search } }
+                ]
+            };
+        }
+
+        const candidatePayments = await req.prisma.payment.findMany({
+            where: paymentWhere,
+            include: {
+                member: {
+                    select: {
+                        id: true,
+                        memberId: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        email: true
+                    }
+                },
+                subscription: {
+                    select: {
+                        id: true,
+                        price: true,
+                        plan: { select: { name: true, price: true } }
+                    }
+                },
+                creator: {
+                    select: { id: true, firstName: true, lastName: true }
+                }
+            },
+            orderBy: { paidAt: 'asc' }
+        });
+
+        if (candidatePayments.length === 0) {
+            return res.json({
+                success: true,
+                data: {
+                    rows: [],
+                    summary: {
+                        totalPaid: 0,
+                        paymentCount: 0,
+                        fullySettledCount: 0,
+                        partiallySettledCount: 0
+                    }
+                }
+            });
+        }
+
+        const candidateMap = new Map();
+        const subscriptionInfo = new Map();
+        const subscriptionIds = new Set();
+        const memberIds = new Set();
+
+        candidatePayments.forEach((payment) => {
+            candidateMap.set(payment.id, payment);
+            if (payment.subscriptionId) {
+                subscriptionIds.add(payment.subscriptionId);
+            }
+            if (payment.member?.id) {
+                memberIds.add(payment.member.id);
+            }
+            if (payment.subscription) {
+                const price = payment.subscription.price != null
+                    ? payment.subscription.price
+                    : (payment.subscription.plan?.price || 0);
+                subscriptionInfo.set(payment.subscription.id, {
+                    price,
+                    planName: payment.subscription.plan?.name || null
+                });
+            }
+        });
+
+        const subscriptionIdList = Array.from(subscriptionIds);
+        const memberIdList = Array.from(memberIds);
+
+        const allPayments = await req.prisma.payment.findMany({
+            where: {
+                subscriptionId: { in: subscriptionIdList },
+                amount: { gt: 0 },
+                status: { in: ['completed', 'COMPLETED', 'paid', 'PAID'] },
+                paidAt: { lte: endDate }
+            },
+            select: {
+                id: true,
+                subscriptionId: true,
+                amount: true,
+                paidAt: true,
+                createdAt: true
+            }
+        });
+
+        const refunds = await req.prisma.refund.findMany({
+            where: {
+                createdAt: { lte: endDate },
+                payment: { subscriptionId: { in: subscriptionIdList } }
+            },
+            select: {
+                id: true,
+                amount: true,
+                createdAt: true,
+                payment: { select: { subscriptionId: true } }
+            }
+        });
+
+        const checkIns = await req.prisma.checkIn.findMany({
+            where: {
+                memberId: { in: memberIdList }
+            },
+            select: { memberId: true, checkInTime: true }
+        });
+
+        const visitMap = new Map();
+        checkIns.forEach((checkIn) => {
+            const entry = visitMap.get(checkIn.memberId) || { count: 0, lastVisit: null };
+            entry.count += 1;
+            if (!entry.lastVisit || new Date(checkIn.checkInTime) > new Date(entry.lastVisit)) {
+                entry.lastVisit = checkIn.checkInTime;
+            }
+            visitMap.set(checkIn.memberId, entry);
+        });
+
+        const eventsBySubscription = new Map();
+        allPayments.forEach((payment) => {
+            const list = eventsBySubscription.get(payment.subscriptionId) || [];
+            list.push({
+                type: 'payment',
+                at: payment.paidAt || payment.createdAt,
+                amount: Number(payment.amount) || 0,
+                paymentId: payment.id
+            });
+            eventsBySubscription.set(payment.subscriptionId, list);
+        });
+
+        refunds.forEach((refund) => {
+            const subscriptionId = refund.payment?.subscriptionId;
+            if (!subscriptionId) return;
+            const list = eventsBySubscription.get(subscriptionId) || [];
+            list.push({
+                type: 'refund',
+                at: refund.createdAt,
+                amount: Number(refund.amount) || 0
+            });
+            eventsBySubscription.set(subscriptionId, list);
+        });
+
+        const rows = [];
+
+        eventsBySubscription.forEach((events, subscriptionId) => {
+            const info = subscriptionInfo.get(subscriptionId) || { price: 0, planName: null };
+            let netPaid = 0;
+
+            events.sort((a, b) => {
+                const aTime = new Date(a.at).getTime();
+                const bTime = new Date(b.at).getTime();
+                if (aTime !== bTime) return aTime - bTime;
+                if (a.type === b.type) return (a.paymentId || 0) - (b.paymentId || 0);
+                return a.type === 'payment' ? -1 : 1;
+            });
+
+            events.forEach((event) => {
+                if (event.type === 'payment') {
+                    const dueBefore = Math.max(0, info.price - netPaid);
+                    const payment = candidateMap.get(event.paymentId);
+                    if (payment && dueBefore > 0) {
+                        const remainingAfter = Math.max(0, dueBefore - event.amount);
+                        const settlementType = remainingAfter <= 0 ? 'full' : 'partial';
+
+                        if (normalizedType && normalizedType !== 'all' && normalizedType !== settlementType) {
+                            netPaid += event.amount;
+                            return;
+                        }
+
+                        const memberName = payment.member
+                            ? `${payment.member.firstName} ${payment.member.lastName}`
+                            : 'Unknown';
+                        const staffName = payment.creator
+                            ? `${payment.creator.firstName} ${payment.creator.lastName}`
+                            : (payment.collectorName || null);
+                        const visitInfo = payment.member?.id ? visitMap.get(payment.member.id) : null;
+
+                        rows.push({
+                            id: payment.id,
+                            paidAt: payment.paidAt || payment.createdAt,
+                            member: {
+                                id: payment.member?.id || null,
+                                memberId: payment.member?.memberId || null,
+                                name: memberName,
+                                phone: payment.member?.phone || null,
+                                email: payment.member?.email || null
+                            },
+                            subscription: {
+                                id: payment.subscription?.id || subscriptionId,
+                                planName: info.planName
+                            },
+                            dueBefore,
+                            paidAmount: event.amount,
+                            remainingAfter,
+                            method: (payment.method || 'cash').toLowerCase(),
+                            staff: {
+                                id: payment.creator?.id || null,
+                                name: staffName
+                            },
+                            reference: {
+                                receiptNumber: payment.receiptNumber || null,
+                                externalReference: payment.externalReference || null,
+                                transactionRef: payment.transactionRef || null
+                            },
+                            visits: {
+                                count: visitInfo?.count || 0,
+                                lastVisit: visitInfo?.lastVisit || null
+                            },
+                            settlementType
+                        });
+                    }
+                    netPaid += event.amount;
+                } else {
+                    netPaid = Math.max(0, netPaid - event.amount);
+                }
+            });
+        });
+
+        const totalPaid = rows.reduce((sum, row) => sum + (row.paidAmount || 0), 0);
+        const fullySettledCount = rows.filter(row => row.settlementType === 'full').length;
+        const partiallySettledCount = rows.filter(row => row.settlementType === 'partial').length;
+
+        res.json({
+            success: true,
+            data: {
+                rows,
+                summary: {
+                    totalPaid,
+                    paymentCount: rows.length,
+                    fullySettledCount,
+                    partiallySettledCount
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Settled payments error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to generate report'
+        });
+    }
+});
+
+/**
  * GET /api/reports/refunds
  * Refunds report with filters
  */
 router.get('/refunds', async (req, res) => {
     try {
-        const { from, to, search, adminId, format } = req.query;
+        const { from, to, startDate: startDateParam, endDate: endDateParam, search, adminId, format } = req.query;
 
         // Build where clause
         const where = {};
 
-        if (from && to) {
-            const { startDate, endDate, error } = parseDateRange(from, to);
-            if (error) {
-                return res.status(400).json({ success: false, message: error });
+        const rangeFrom = from || startDateParam;
+        const rangeTo = to || endDateParam;
+        let startDate;
+        let endDate;
+
+        if (rangeFrom && rangeTo) {
+            const parsed = parseDateRange(rangeFrom, rangeTo);
+            if (parsed.error) {
+                return res.status(400).json({ success: false, message: parsed.error });
             }
+            startDate = parsed.startDate;
+            endDate = parsed.endDate;
             where.createdAt = {
                 gte: startDate,
                 lte: endDate
@@ -374,39 +687,103 @@ router.get('/refunds', async (req, res) => {
             }
         });
 
-        // Apply search filter
-        let filteredRefunds = refunds;
-        if (search) {
-            const searchLower = search.toLowerCase();
-            filteredRefunds = refunds.filter(r => {
-                const memberName = r.payment?.member ?
-                    `${r.payment.member.firstName} ${r.payment.member.lastName}`.toLowerCase() : '';
-                const memberId = r.payment?.member?.memberId?.toLowerCase() || '';
-                return memberName.includes(searchLower) || memberId.includes(searchLower);
+        // Also include legacy refund entries stored as negative payments
+        const paymentWhere = {
+            amount: { lt: 0 }
+        };
+        if (startDate && endDate) {
+            paymentWhere.paidAt = {
+                gte: startDate,
+                lte: endDate
+            };
+        }
+        if (adminId && adminId !== 'all') {
+            paymentWhere.createdBy = parseInt(adminId);
+        }
+
+        const negativePayments = await req.prisma.payment.findMany({
+            where: paymentWhere,
+            include: {
+                member: {
+                    select: {
+                        id: true,
+                        memberId: true,
+                        firstName: true,
+                        lastName: true,
+                        gender: true
+                    }
+                },
+                subscription: {
+                    include: {
+                        plan: {
+                            select: { name: true }
+                        }
+                    }
+                },
+                creator: {
+                    select: {
+                        firstName: true,
+                        lastName: true
+                    }
+                }
+            },
+            orderBy: {
+                paidAt: 'desc'
+            }
+        });
+
+        const extractReason = (notes) => {
+            if (!notes) return null;
+            const match = notes.match(/Reason:\s*(.*)$/i);
+            return match ? match[1].trim() : notes;
+        };
+
+        // Build subscription totals for negative payments when possible
+        const subscriptionTotals = new Map();
+        const subscriptionIds = Array.from(new Set(
+            negativePayments.map(p => p.subscriptionId).filter(id => Number.isInteger(id))
+        ));
+
+        if (subscriptionIds.length > 0) {
+            const subscriptionPayments = await req.prisma.payment.findMany({
+                where: {
+                    subscriptionId: { in: subscriptionIds }
+                },
+                select: {
+                    subscriptionId: true,
+                    amount: true,
+                    refunds: {
+                        select: { amount: true }
+                    }
+                }
+            });
+
+            subscriptionPayments.forEach(payment => {
+                if (!payment.subscriptionId) return;
+                const totals = subscriptionTotals.get(payment.subscriptionId) || { paid: 0, refunded: 0 };
+
+                if (payment.amount > 0) {
+                    totals.paid += payment.amount;
+                } else if (payment.amount < 0) {
+                    totals.refunded += Math.abs(payment.amount);
+                }
+
+                if (payment.refunds && payment.refunds.length > 0) {
+                    totals.refunded += payment.refunds.reduce((sum, r) => sum + (r.amount || 0), 0);
+                }
+
+                subscriptionTotals.set(payment.subscriptionId, totals);
             });
         }
 
         // Calculate summary
-        // Calculate summary
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const thisMonthRefunds = filteredRefunds.filter(r => r.createdAt >= startOfMonth);
-
-        const summary = {
-            totalRefunded: filteredRefunds.reduce((sum, r) => sum + r.amount, 0),
-            thisMonthTotal: thisMonthRefunds.reduce((sum, r) => sum + r.amount, 0),
-            count: filteredRefunds.length
-        };
-
-        // Format response
-        const rows = filteredRefunds.map(refund => ({
-            id: refund.id,
+        const refundRows = refunds.map(refund => ({
+            id: `refund-${refund.id}`,
             amount: refund.amount,
             reason: refund.reason,
             refundedAt: refund.createdAt, // Frontend expects this key
             member: refund.payment?.member ? {
                 id: refund.payment.member.id,
-                memberId: refund.payment.member.memberId,
                 memberId: refund.payment.member.memberId,
                 name: `${refund.payment.member.firstName} ${refund.payment.member.lastName}`,
                 gender: refund.payment.member.gender || 'unknown',
@@ -425,6 +802,62 @@ router.get('/refunds', async (req, res) => {
             receiptId: refund.payment?.receiptNumber
         }));
 
+        const negativePaymentRows = negativePayments.map(payment => {
+            const totals = payment.subscriptionId ? subscriptionTotals.get(payment.subscriptionId) : null;
+            const totalPaid = totals?.paid || 0;
+            const totalRefunded = totals?.refunded || Math.abs(payment.amount || 0);
+            const netRemaining = Math.max(0, totalPaid - totalRefunded);
+
+            return {
+                id: `payment-${payment.id}`,
+                amount: Math.abs(payment.amount || 0),
+                reason: extractReason(payment.notes),
+                refundedAt: payment.paidAt || payment.createdAt,
+                member: payment.member ? {
+                    id: payment.member.id,
+                    memberId: payment.member.memberId,
+                    name: `${payment.member.firstName} ${payment.member.lastName}`,
+                    gender: payment.member.gender || 'unknown',
+                    code: payment.member.memberId
+                } : { name: 'Unknown', code: '---' },
+                subscription: payment.subscription ? {
+                    name: payment.subscription.plan?.name || 'Unknown Plan'
+                } : { name: 'N/A' },
+                processedBy: payment.creator ? {
+                    name: `${payment.creator.firstName} ${payment.creator.lastName}`
+                } : { name: payment.collectorName || 'System' },
+                method: (payment.method || 'cash').toLowerCase(),
+                originalPaid: totalPaid,
+                totalRefundedSoFar: totalRefunded,
+                netRemaining,
+                receiptId: payment.receiptNumber
+            };
+        });
+
+        let rows = [...refundRows, ...negativePaymentRows];
+
+        if (search) {
+            const searchLower = search.toLowerCase();
+            rows = rows.filter(r => {
+                const memberName = r.member?.name?.toLowerCase() || '';
+                const memberId = r.member?.memberId?.toLowerCase() || '';
+                return memberName.includes(searchLower) || memberId.includes(searchLower);
+            });
+        }
+
+        rows.sort((a, b) => new Date(b.refundedAt) - new Date(a.refundedAt));
+
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const thisMonthRefunds = rows.filter(r => r.refundedAt && new Date(r.refundedAt) >= startOfMonth);
+
+        const summary = {
+            totalRefunded: rows.reduce((sum, r) => sum + (r.amount || 0), 0),
+            thisMonthTotal: thisMonthRefunds.reduce((sum, r) => sum + (r.amount || 0), 0),
+            count: rows.length
+        };
+        const totals = summary;
+
         if (req.query.format === 'excel') {
             const excelRows = rows.map(r => flattenRow(r));
             return sendExcelResponse(res, excelRows, 'refunds-report.xlsx');
@@ -434,7 +867,8 @@ router.get('/refunds', async (req, res) => {
             success: true,
             data: {
                 rows,
-                summary
+                summary,
+                totals
             }
         });
 
@@ -460,12 +894,14 @@ router.get('/payments/summary', async (req, res) => {
             return res.status(400).json({ success: false, message: error });
         }
 
+        const statusFilter = ['completed', 'refunded', 'Partial Refund', 'COMPLETED', 'REFUNDED', 'PARTIAL REFUND'];
+        const dateRange = { gte: startDate, lte: endDate };
         const where = {
-            paidAt: {
-                gte: startDate,
-                lte: endDate
-            },
-            status: { in: ['completed', 'refunded', 'Partial Refund'] }
+            status: { in: statusFilter },
+            OR: [
+                { paidAt: dateRange },
+                { createdAt: dateRange }
+            ]
         };
 
         if (employeeId && employeeId !== 'all') {
@@ -520,6 +956,9 @@ router.get('/payments/summary', async (req, res) => {
 
         data.total.net = data.total.amount - data.total.refunded;
 
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
         res.json({
             success: true,
             data: {
@@ -546,9 +985,9 @@ router.get('/payments/summary', async (req, res) => {
  */
 router.get('/members', async (req, res) => {
     try {
-        const { startDate, endDate, search } = req.query;
+        const { startDate, endDate, from, to, search } = req.query;
         // Default to last 30 days if no date provided
-        const { startDate: start, endDate: end, error } = parseDateRange(startDate, endDate);
+        const { startDate: start, endDate: end, error } = parseDateRange(startDate || from, endDate || to);
 
         if (error) {
             // Fallback to safe defaults if dates are invalid
@@ -628,8 +1067,8 @@ router.get('/members', async (req, res) => {
  */
 router.get('/attendance', async (req, res) => {
     try {
-        const { startDate, endDate, search } = req.query;
-        const { startDate: start, endDate: end, error } = parseDateRange(startDate, endDate);
+        const { startDate, endDate, from, to, search } = req.query;
+        const { startDate: start, endDate: end, error } = parseDateRange(startDate || from, endDate || to);
 
         if (error) return res.status(400).json({ success: false, message: error });
 
@@ -708,8 +1147,8 @@ router.get('/attendance', async (req, res) => {
  */
 router.get('/subscriptions', async (req, res) => {
     try {
-        const { startDate, endDate, search, method } = req.query;
-        const { startDate: start, endDate: end, error } = parseDateRange(startDate, endDate);
+        const { startDate, endDate, from, to, search, method } = req.query;
+        const { startDate: start, endDate: end, error } = parseDateRange(startDate || from, endDate || to);
 
         if (error) return res.status(400).json({ success: false, message: error });
 
@@ -778,8 +1217,8 @@ router.get('/subscriptions', async (req, res) => {
  */
 router.get('/cancellations', async (req, res) => {
     try {
-        const { from, to, search } = req.query;
-        const { startDate, endDate, error } = parseDateRange(from, to);
+        const { from, to, startDate: startDateParam, endDate: endDateParam, search } = req.query;
+        const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
         if (error) return res.status(400).json({ success: false, message: error });
 
         const where = {
@@ -1077,9 +1516,9 @@ router.get('/ledger', async (req, res) => {
  */
 router.get('/payInOut', async (req, res) => {
     try {
-        const { from, to, type, shiftId, scope } = req.query;
+        const { from, to, startDate: startDateParam, endDate: endDateParam, type, shiftId, scope } = req.query;
         // Support flexible date params
-        const { startDate, endDate, error } = parseDateRange(from || req.query.startDate, to || req.query.endDate);
+        const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
 
         if (error) {
             return res.status(400).json({ success: false, message: error });
@@ -1178,8 +1617,8 @@ router.get('/payInOut', async (req, res) => {
  */
 router.get('/employee-collections', async (req, res) => {
     try {
-        const { startDate, endDate, employeeId, method } = req.query;
-        const { startDate: start, endDate: end, error } = parseDateRange(startDate, endDate);
+        const { startDate, endDate, from, to, employeeId, method } = req.query;
+        const { startDate: start, endDate: end, error } = parseDateRange(startDate || from, endDate || to);
 
         if (error) return res.status(400).json({ success: false, message: error });
 
@@ -1270,6 +1709,7 @@ router.get('/receipts/lookup', async (req, res) => {
                 OR: [
                     { receiptNumber: { equals: query, mode: 'insensitive' } },
                     { transactionRef: { equals: query, mode: 'insensitive' } },
+                    { externalReference: { equals: query, mode: 'insensitive' } },
                     // Maybe ID?
                     ...(parseInt(query) ? [{ id: parseInt(query) }] : [])
                 ]

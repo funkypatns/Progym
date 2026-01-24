@@ -57,7 +57,8 @@ async function getMembersWithRemainingPayments() {
                     memberId: true,
                     firstName: true,
                     lastName: true,
-                    phone: true
+                    phone: true,
+                    email: true
                 }
             },
             plan: {
@@ -88,6 +89,20 @@ async function getMembersWithRemainingPayments() {
         const financials = calculateSubscriptionFinancials(sub, sub.payments);
 
         if (financials.remaining > 0) {
+            const subVisitsCount = await prisma.checkIn.count({
+                where: {
+                    memberId: sub.member.id,
+                    checkInTime: {
+                        gte: sub.startDate,
+                        lte: sub.endDate
+                    }
+                }
+            });
+
+            const allTimeVisitsCount = await prisma.checkIn.count({
+                where: { memberId: sub.member.id }
+            });
+
             const lastPayment = sub.payments.length > 0
                 ? sub.payments.sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt))[0]
                 : null;
@@ -96,17 +111,24 @@ async function getMembersWithRemainingPayments() {
 
             results.push({
                 memberId: sub.member.id,
+                memberCode: sub.member.memberId,
                 memberName: `${sub.member.firstName} ${sub.member.lastName}`,
                 memberPhone: sub.member.phone,
+                memberEmail: sub.member.email,
                 subscriptionId: sub.id,
                 planName: sub.plan?.name,
                 durationType: sub.plan?.durationType || 'days',
+                startDate: sub.startDate,
                 total: financials.subscriptionPrice,
                 paid: financials.netPaid,
                 remaining: financials.remaining,
                 endDate: sub.endDate,
                 lastPaymentDate: lastPayment?.paidAt || null,
-                status
+                status,
+                visits: {
+                    subscription: subVisitsCount,
+                    allTime: allTimeVisitsCount
+                }
             });
         }
     }
@@ -228,16 +250,71 @@ async function createStaffNotifications(reminder, priority = 'NORMAL') {
 
     const member = await prisma.member.findUnique({
         where: { id: reminder.memberId },
-        select: { firstName: true, lastName: true }
+        select: {
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+            memberId: true
+        }
     });
 
+    const subscription = reminder.subscriptionId
+        ? await prisma.subscription.findUnique({
+            where: { id: reminder.subscriptionId },
+            include: {
+                plan: { select: { name: true, price: true } },
+                payments: {
+                    where: { status: { in: ['completed', 'refunded', 'Partial Refund'] } },
+                    select: { amount: true, refundedTotal: true }
+                }
+            }
+        })
+        : null;
+
     const memberName = member ? `${member.firstName} ${member.lastName}` : 'Member';
+    const memberContact = [
+        member?.phone ? `Phone: ${member.phone}` : null,
+        member?.email ? `Email: ${member.email}` : null
+    ].filter(Boolean).join(' | ') || 'Contact: N/A';
+
+    let amountsText = 'Amounts: N/A';
+    let planText = 'Plan: N/A';
+    let visitsText = 'Visits: N/A';
+
+    if (subscription) {
+        const financials = calculateSubscriptionFinancials(subscription, subscription.payments);
+        const totalAmount = financials.subscriptionPrice || 0;
+        const paidAmount = financials.netPaid || 0;
+        const remainingAmount = financials.remaining || 0;
+        const planName = subscription.plan?.name || 'Plan';
+        const endDate = subscription.endDate
+            ? new Date(subscription.endDate).toLocaleDateString('en-US')
+            : '-';
+
+        amountsText = `Total: ${totalAmount.toFixed(2)} | Paid: ${paidAmount.toFixed(2)} | Remaining: ${remainingAmount.toFixed(2)}`;
+        planText = `Plan: ${planName} | Ends: ${endDate}`;
+
+        const subVisits = await prisma.checkIn.count({
+            where: {
+                memberId: reminder.memberId,
+                checkInTime: {
+                    gte: subscription.startDate,
+                    lte: subscription.endDate
+                }
+            }
+        });
+        const allVisits = await prisma.checkIn.count({
+            where: { memberId: reminder.memberId }
+        });
+        visitsText = `Visits: ${subVisits} (sub) / ${allVisits} (all)`;
+    }
 
     const typeLabels = {
-        DUE_SOON: 'موعد السداد قريب',
-        OVERDUE: 'مبلغ متأخر',
-        END_OF_MONTH: 'نهاية الشهر',
-        INSTALLMENT: 'موعد القسط'
+        DUE_SOON: 'Payment Due Soon',
+        OVERDUE: 'Payment Overdue',
+        END_OF_MONTH: 'End of Month',
+        INSTALLMENT: 'Installment Due'
     };
 
     const notifications = await prisma.staffNotification.createMany({
@@ -245,8 +322,8 @@ async function createStaffNotifications(reminder, priority = 'NORMAL') {
             userId: u.id,
             reminderId: reminder.id,
             type: reminder.type === 'OVERDUE' ? 'PAYMENT_OVERDUE' : 'PAYMENT_DUE',
-            title: typeLabels[reminder.type] || 'تنبيه سداد',
-            message: `${memberName}: ${reminder.message?.substring(0, 100)}...`,
+            title: typeLabels[reminder.type] || 'Payment Alert',
+            message: `${memberName} (${member?.memberId || 'ID N/A'}) | ${memberContact} | ${amountsText} | ${planText} | ${visitsText}`,
             priority
         }))
     });
@@ -379,3 +456,4 @@ module.exports = {
     generateMessage,
     MESSAGE_TEMPLATES
 };
+

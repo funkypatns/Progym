@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Loader2, Receipt, Banknote, CreditCard, ArrowLeftRight } from 'lucide-react';
@@ -42,7 +42,7 @@ const PaymentsSummaryReport = ({ isActive }) => {
         if (isActive) fetchEmployees();
     }, [isActive, user?.role]);
 
-    const fetchSummary = async () => {
+    const fetchSummary = useCallback(async () => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams({
@@ -51,6 +51,7 @@ const PaymentsSummaryReport = ({ isActive }) => {
                 employeeId: filters.employeeId,
                 scope: filters.scope
             });
+            params.append('_ts', Date.now().toString());
             const response = await apiClient.get(`/reports/payments/summary?${params}`);
             if (response.data.success) {
                 setData(response.data.data);
@@ -63,11 +64,20 @@ const PaymentsSummaryReport = ({ isActive }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [filters, t]);
 
     useEffect(() => {
         if (isActive) fetchSummary();
-    }, [isActive]);
+    }, [isActive, fetchSummary]);
+
+    useEffect(() => {
+        if (!isActive) return;
+        const handlePaymentsUpdated = () => {
+            fetchSummary();
+        };
+        window.addEventListener('payments:updated', handlePaymentsUpdated);
+        return () => window.removeEventListener('payments:updated', handlePaymentsUpdated);
+    }, [isActive, fetchSummary]);
 
     if (!isActive) return null;
 

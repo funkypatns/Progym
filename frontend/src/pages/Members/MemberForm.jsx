@@ -57,6 +57,7 @@ const MemberForm = () => {
         price: '',
         paidAmount: '',
         method: 'cash',
+        transactionRef: '',
     });
 
     useEffect(() => {
@@ -89,6 +90,20 @@ const MemberForm = () => {
             }
         }
     }, [subData.planId, subData.startDate, plans]);
+
+    useEffect(() => {
+        const paidVal = parseFloat(subData.paidAmount);
+        const hasPayment = Number.isFinite(paidVal) && paidVal > 0;
+
+        if (!hasPayment && subData.method !== 'cash') {
+            setSubData(prev => ({ ...prev, method: 'cash', transactionRef: '' }));
+            return;
+        }
+
+        if (subData.method === 'cash' && subData.transactionRef) {
+            setSubData(prev => ({ ...prev, transactionRef: '' }));
+        }
+    }, [subData.paidAmount, subData.method, subData.transactionRef]);
 
     const fetchMember = async () => {
         setIsLoading(true);
@@ -176,39 +191,53 @@ const MemberForm = () => {
                 toast.success(t('members.memberCreated'));
             }
 
-            // 2. Create Subscription (Only for new members if plan selected)
+            // 2. Store subscription draft and redirect to Subscriptions for finalization
             if (!isEdit && subData.planId && memberIdResponse) {
-                try {
-                    // Combine Date and Time
-                    const startDateTime = new Date(`${subData.startDate}T${subData.startTime}`);
-                    const endDateTime = new Date(`${subData.endDate}T${subData.endTime}`);
-
-                    const paid = parseFloat(subData.paidAmount || 0);
-                    const total = parseFloat(subData.price);
-                    let status = 'unpaid';
-                    if (paid >= total) status = 'paid';
-                    else if (paid > 0) status = 'partial';
-
-                    await api.post('/subscriptions', {
-                        memberId: memberIdResponse,
-                        planId: subData.planId,
-                        startDate: startDateTime.toISOString(),
-                        endDate: endDateTime.toISOString(),
-                        price: total,
-                        paidAmount: paid,
-                        paymentStatus: status,
-                        method: subData.method
-                    });
-                    toast.success('Subscription assigned');
-                } catch (subError) {
-                    toast.error('Member created but failed to assign subscription');
-                    console.error(subError);
+                const selectedPlan = plans.find(p => p.id === parseInt(subData.planId));
+                const priceInput = parseFloat(subData.price);
+                const total = Number.isFinite(priceInput) ? priceInput : selectedPlan?.price;
+                if (!Number.isFinite(total)) {
+                    toast.error('Invalid plan price');
+                    setIsSaving(false);
+                    return;
                 }
+
+                const paidInput = parseFloat(subData.paidAmount);
+                const paid = Number.isFinite(paidInput) ? paidInput : null;
+                if (Number.isFinite(paid) && paid > total) {
+                    toast.error('Paid amount cannot exceed total price');
+                    setIsSaving(false);
+                    return;
+                }
+
+                const allowedMethods = ['cash', 'card', 'transfer', 'other'];
+                const normalizedMethod = allowedMethods.includes(subData.method) ? subData.method : 'cash';
+
+                localStorage.setItem(`gym:memberPlanPref:${memberIdResponse}`, String(subData.planId));
+                localStorage.setItem(
+                    `gym:memberPaymentPref:${memberIdResponse}`,
+                    JSON.stringify({
+                        paidAmount: Number.isFinite(paid) ? paid : null,
+                        method: normalizedMethod,
+                        transactionRef: subData.transactionRef ? subData.transactionRef.trim() : null
+                    })
+                );
+
+                navigate('/subscriptions', {
+                    state: {
+                        memberId: memberIdResponse,
+                        planId: subData.planId
+                    }
+                });
+                return;
             }
 
             navigate('/members');
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to save member');
+            const message = error.response?.data?.message
+                || error.response?.data?.errors?.[0]?.msg
+                || 'Failed to save member';
+            toast.error(message);
         } finally {
             setIsSaving(false);
         }
@@ -474,6 +503,20 @@ const MemberForm = () => {
                                     <option value="other">Other</option>
                                 </select>
                             </div>
+
+                            {subData.method !== 'cash' && parseFloat(subData.paidAmount) > 0 && (
+                                <div className="lg:col-span-12">
+                                    <label className="label">Transaction Reference *</label>
+                                    <input
+                                        type="text"
+                                        name="transactionRef"
+                                        className="input"
+                                        value={subData.transactionRef}
+                                        onChange={handleSubChange}
+                                        placeholder="Enter reference number"
+                                    />
+                                </div>
+                            )}
                         </div>
                         <div className="border-t border-gray-200 dark:border-dark-700 mt-6"></div>
                     </div>

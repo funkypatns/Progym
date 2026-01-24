@@ -24,6 +24,7 @@ export const useVoiceAlerts = (enabled = true) => {
     const [announcedIds, setAnnouncedIds] = useState(new Set());
     const [isInitialized, setIsInitialized] = useState(false);
     const pollIntervalRef = useRef(null);
+    const hasEnsuredDaily = useRef(false);
     const hasPlayedInitial = useRef(false);
 
     const [errorCount, setErrorCount] = useState(0);
@@ -144,6 +145,17 @@ export const useVoiceAlerts = (enabled = true) => {
     }, [enabled, isInitialized]);
 
     /**
+     * Ensure daily reminders run once per day (idempotent)
+     */
+    useEffect(() => {
+        if (!enabled || !isInitialized || hasEnsuredDaily.current) return;
+        hasEnsuredDaily.current = true;
+        api.post('/reminders/ensure-daily').catch(() => {
+            // Non-blocking; ignore errors
+        });
+    }, [enabled, isInitialized]);
+
+    /**
      * Start polling with backoff
      */
     useEffect(() => {
@@ -188,6 +200,18 @@ export const useVoiceAlerts = (enabled = true) => {
             }
         };
     }, []);
+
+    /**
+     * Manual trigger (e.g., on shift start)
+     */
+    useEffect(() => {
+        const handleCheck = () => {
+            if (!enabled || !isInitialized) return;
+            checkAndAnnounce(false);
+        };
+        window.addEventListener('voice-alerts:check', handleCheck);
+        return () => window.removeEventListener('voice-alerts:check', handleCheck);
+    }, [enabled, isInitialized, checkAndAnnounce]);
 
     return {
         checkNow: () => checkAndAnnounce(false),

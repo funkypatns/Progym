@@ -13,6 +13,12 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf }, ref) => {
 
     if (!payment) return null;
 
+    const methodKey = String(payment.method || 'cash').toLowerCase();
+    const totalPrice = payment.subscription?.price ?? payment.subscription?.plan?.price;
+    const remainingAmount = Number.isFinite(Number(payment.subscription?.remainingAmount))
+        ? Number(payment.subscription.remainingAmount)
+        : (Number.isFinite(Number(totalPrice)) ? Math.max(0, Number(totalPrice) - Number(payment.amount || 0)) : null);
+
     return (
         <div ref={ref} className="p-8 bg-white text-black font-mono text-sm max-w-[80mm] mx-auto print:p-0 print:max-w-none">
             {/* Header */}
@@ -61,11 +67,30 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf }, ref) => {
                 </div>
             )}
 
+            {Number.isFinite(Number(totalPrice)) && (
+                <div className="mb-4 space-y-1 text-xs">
+                    <div className="flex justify-between">
+                        <span>{t('receipt.total', 'Total')}:</span>
+                        <span>{formatCurrency(totalPrice, i18n.language, currencyConf)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>{t('receipt.paidNow', 'Paid now')}:</span>
+                        <span>{formatCurrency(payment.amount, i18n.language, currencyConf)}</span>
+                    </div>
+                    {Number.isFinite(Number(remainingAmount)) && (
+                        <div className="flex justify-between font-bold">
+                            <span>{t('receipt.remaining', 'Remaining')}:</span>
+                            <span>{formatCurrency(remainingAmount, i18n.language, currencyConf)}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Financials */}
             <div className="mb-6 space-y-1">
                 <div className="flex justify-between">
                     <span>{t('receipt.paymentMethod', 'Method')}:</span>
-                    <span className="capitalize">{t(`payments.${payment.method}`)}</span>
+                    <span className="capitalize">{t(`payments.${methodKey}`, methodKey)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t border-gray-100 pt-2 mt-2">
                     <span>{t('receipt.amountPaid', 'Amount')}:</span>

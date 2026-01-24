@@ -6,6 +6,7 @@ import { Link, useLocation } from 'react-router-dom';
 import MemberLedgerModal from '../../components/MemberLedgerModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WhatsAppButtonWithTemplates } from '../../components/WhatsAppButton';
+import toast from 'react-hot-toast';
 
 // Member Code Chip Component
 const MemberCodeChip = ({ code }) => {
@@ -97,14 +98,17 @@ const Members = () => {
     };
 
     const handleMemberCheckout = async (member) => {
+        if (!member?.id || checkoutLoadingId === member.id) return;
         setCheckoutLoadingId(member.id);
         try {
             const res = await apiClient.post('/checkin/checkout', { memberId: member.id });
             if (res.data.success) {
+                toast.success(safeT('checkin.checkoutSuccess', 'Checked out successfully'));
                 fetchMembers();
             }
         } catch (error) {
             console.error("Checkout failed", error);
+            toast.error(error.response?.data?.message || safeT('common.error', 'Checkout failed'));
         } finally {
             setCheckoutLoadingId(null);
         }

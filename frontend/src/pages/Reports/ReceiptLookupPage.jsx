@@ -8,8 +8,9 @@ const ReceiptLookupPage = () => {
 
     return (
         <ReportsShell
-            title="Receipt Lookup"
-            subtitle="Scan or search for transaction receipts"
+            title={t('reports.receipts.title', 'Receipt lookup')}
+            subtitle={t('reports.receipts.subtitle', 'Scan or search for transaction receipts')}
+            centerHeader
         >
             <ReceiptLookupReport isActive={true} />
         </ReportsShell>

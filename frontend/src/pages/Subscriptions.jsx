@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import apiClient from '../utils/api';
 import toast from 'react-hot-toast';
 import { Plus, Users, RefreshCw, Filter, Search } from 'lucide-react';
@@ -8,16 +9,43 @@ import AssignPlanModal from '../components/AssignPlanModal';
 
 const Subscriptions = () => {
     const { t } = useTranslation();
+    const location = useLocation();
     const [subscriptions, setSubscriptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [renewMember, setRenewMember] = useState(null);
+    const [modalMember, setModalMember] = useState(null);
+    const [isRenewMode, setIsRenewMode] = useState(false);
+    const [preselectedPlanId, setPreselectedPlanId] = useState(null);
     const [stats, setStats] = useState({ active: 0, expiring: 0 });
     const [filter, setFilter] = useState('all');
 
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        const state = location.state;
+        const planId = state?.planId;
+        const memberId = state?.memberId;
+        if (planId) {
+            setPreselectedPlanId(planId);
+        }
+        if (memberId) {
+            const fetchMember = async () => {
+                try {
+                    const res = await apiClient.get(`/members/${memberId}`);
+                    if (res.data.success) {
+                        setModalMember(res.data.data);
+                        setIsRenewMode(false);
+                        setShowModal(true);
+                    }
+                } catch (error) {
+                    toast.error("Failed to load member");
+                }
+            };
+            fetchMember();
+        }
+    }, [location.state]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -90,7 +118,12 @@ const Subscriptions = () => {
 
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => setShowModal(true)}
+                            onClick={() => {
+                                setModalMember(null);
+                                setIsRenewMode(false);
+                                setPreselectedPlanId(null);
+                                setShowModal(true);
+                            }}
                             className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
                         >
                             <Plus size={20} /> Assign Plan
@@ -133,7 +166,9 @@ const Subscriptions = () => {
                     })}
                     onCancel={handleCancel}
                     onRenew={(sub) => {
-                        setRenewMember(sub.member);
+                        setModalMember(sub.member);
+                        setIsRenewMode(true);
+                        setPreselectedPlanId(null);
                         setShowModal(true);
                     }}
                     onRefresh={fetchData}
@@ -144,11 +179,14 @@ const Subscriptions = () => {
                 isOpen={showModal}
                 onClose={() => {
                     setShowModal(false);
-                    setRenewMember(null);
+                    setModalMember(null);
+                    setIsRenewMode(false);
+                    setPreselectedPlanId(null);
                 }}
                 onSuccess={fetchData}
-                initialMember={renewMember}
-                isRenewMode={!!renewMember}
+                initialMember={modalMember}
+                isRenewMode={isRenewMode}
+                initialPlanId={preselectedPlanId}
             />
         </div>
     );

@@ -75,7 +75,7 @@ const EmployeeCollectionsPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/20 p-4 lg:p-8">
-            <div className="max-w-7xl mx-auto space-y-6">
+            <div className="w-full space-y-6">
 
                 {/* Header */}
                 <motion.div

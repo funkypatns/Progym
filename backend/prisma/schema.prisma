@@ -146,13 +146,14 @@ model Subscription {
   id        Int      @id @default(autoincrement())
   memberId  Int
   planId    Int
-  startDate DateTime
-  endDate   DateTime
-  status    String   @default("active") // active, expired, cancelled, frozen
-  
-  paidAmount  Float?
-  remainingAmount Float @default(0)
-  paymentStatus String @default("unpaid") // paid, partial, unpaid
+    startDate DateTime
+    endDate   DateTime
+    status    String   @default("active") // active, expired, cancelled, frozen
+    
+    price       Float?  // Snapshot of plan price at subscription creation
+    paidAmount  Float?
+    remainingAmount Float @default(0)
+    paymentStatus String @default("unpaid") // paid, partial, unpaid
   
   usedNonRefundableAmount Float @default(0) // Amount consumed by usage (non-refundable)
   discount    Float    @default(0)

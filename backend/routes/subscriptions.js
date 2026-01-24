@@ -10,6 +10,8 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { authenticate, requirePermission, authorize, requireActiveShift, requireAnyPermission } = require('../middleware/auth');
+const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransaction } = require('../services/paymentService');
+const { roundMoney, clampMoney } = require('../utils/money');
 
 // The global authenticate middleware is removed as it's now applied per route where needed,
 // or specifically for write operations.
@@ -23,17 +25,6 @@ router.use(['/'], (req, res, next) => {
     }
     next();
 });
-
-/**
- * Generate unique receipt number
- */
-function generateReceiptNumber() {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `RCP-${year}${month}-${random}`;
-}
 
 /**
  * GET /api/subscriptions
@@ -108,7 +99,7 @@ router.get('/', async (req, res) => {
             const diffTime = end - now;
             const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-            const total = sub.price !== null ? sub.price : sub.plan.price;
+            const total = sub.price != null ? sub.price : sub.plan.price;
             const paid = sub.paidAmount || 0;
 
             // Calculate total refunded from payments
@@ -160,13 +151,22 @@ router.post('/', [
     // Validation
     body('memberId').isInt().withMessage('Member ID is required'),
     body('planId').isInt().withMessage('Plan ID is required'),
-    body('amount').optional().isFloat({ min: 0 }),
-    body('method').optional().isIn(['cash', 'card', 'transfer', 'other'])
+    body('startDate').optional().isISO8601().withMessage('Invalid start date'),
+    body('price').optional().isFloat({ min: 0 }).withMessage('Price must be 0 or greater'),
+    body('paidAmount').optional().isFloat({ min: 0 }).withMessage('Paid amount must be 0 or greater'),
+    body('discount').optional().isFloat({ min: 0 }).withMessage('Discount must be 0 or greater'),
+    body('paymentStatus').optional().isIn(['paid', 'partial', 'unpaid']).withMessage('Invalid payment status'),
+    body('method').optional().isIn(['cash', 'card', 'transfer', 'other']).withMessage('Invalid payment method')
 ], async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ success: false, errors: errors.array() });
+            const firstError = errors.array()[0];
+            return res.status(400).json({
+                success: false,
+                message: firstError?.msg || 'Validation error',
+                errors: errors.array()
+            });
         }
 
         // 1. RBAC Check (Inline to handle complex AND logic if needed, or strictly enforcement)
@@ -186,43 +186,102 @@ router.post('/', [
         }
 
         const { memberId, planId, startDate, paidAmount, paymentStatus, transactionRef, discount, notes, method = 'cash', collectorId, externalReference } = req.body;
+        const parsedMemberId = parseInt(memberId, 10);
+        const parsedPlanId = parseInt(planId, 10);
+        if (!Number.isInteger(parsedMemberId) || !Number.isInteger(parsedPlanId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Member ID and Plan ID must be valid numbers'
+            });
+        }
 
-        // 2. Safe Reference Handling
-        const { transactionRef: tr, externalReference: er } = req.body || {};
-        const rawRef = tr || er || null;
-        // User requested Safe Logic:
-        const safeRef = (method !== 'cash' && rawRef && String(rawRef).trim())
-            ? String(rawRef).trim()
-            : null;
+        const normalizedMethod = normalizePaymentMethod(method);
 
-        // 3. Logic & Data Prep
-        const plan = await req.prisma.subscriptionPlan.findUnique({ where: { id: parseInt(planId) } });
+        // 2. Logic & Data Prep
+        const plan = await req.prisma.subscriptionPlan.findUnique({ where: { id: parsedPlanId } });
         if (!plan) return res.status(404).json({ success: false, message: 'Subscription plan not found' });
 
-        const member = await req.prisma.member.findUnique({ where: { id: parseInt(memberId) } });
+        const member = await req.prisma.member.findUnique({ where: { id: parsedMemberId } });
         if (!member) return res.status(404).json({ success: false, message: 'Member not found' });
+
+        const rawPrice = req.body.price;
+        const parsedPrice = rawPrice !== undefined && rawPrice !== null && rawPrice !== ''
+            ? parseFloat(rawPrice)
+            : null;
+        if (rawPrice !== undefined && rawPrice !== null && rawPrice !== '' && !Number.isFinite(parsedPrice)) {
+            return res.status(400).json({ success: false, message: 'Invalid price' });
+        }
+
+        const numericDiscount = discount ? parseFloat(discount) : 0;
+        if (!Number.isFinite(numericDiscount)) {
+            return res.status(400).json({ success: false, message: 'Invalid discount' });
+        }
+
+        const basePrice = parsedPrice !== null ? parsedPrice : plan.price;
+        if (numericDiscount > basePrice) {
+            return res.status(400).json({ success: false, message: 'Discount cannot exceed price' });
+        }
+        const fullPrice = clampMoney(basePrice - numericDiscount);
 
         let initialPaid = 0;
         // Fix: Prioritize explicit paidAmount if valid, otherwise fallback to plan price for 'paid' status
         if (paidAmount !== undefined && paidAmount !== null && !isNaN(parseFloat(paidAmount))) {
             initialPaid = parseFloat(paidAmount);
         } else if (paymentStatus === 'paid') {
-            initialPaid = plan.price;
+            initialPaid = fullPrice;
         } else if (paymentStatus === 'partial' && paidAmount) {
             // Fallback for partial if not caught above
             initialPaid = parseFloat(paidAmount);
         }
 
-        const numericPaidAmount = initialPaid;
-        const numericDiscount = discount ? parseFloat(discount) : 0;
+        const numericPaidAmount = roundMoney(Number.isFinite(initialPaid) ? initialPaid : 0);
+        if (numericPaidAmount > fullPrice) {
+            return res.status(400).json({
+                success: false,
+                message: 'Paid amount cannot exceed total price'
+            });
+        }
+
+        let computedPaymentStatus = 'unpaid';
+        if (fullPrice === 0) {
+            computedPaymentStatus = 'paid';
+        } else if (numericPaidAmount >= fullPrice) {
+            computedPaymentStatus = 'paid';
+        } else if (numericPaidAmount > 0) {
+            computedPaymentStatus = 'partial';
+        }
+
+        const safeRef = numericPaidAmount > 0
+            ? resolvePaymentReference(normalizedMethod, externalReference, transactionRef)
+            : null;
+
+        if (normalizedMethod !== 'cash' && numericPaidAmount > 0 && !safeRef) {
+            return res.status(400).json({
+                success: false,
+                message: 'Transaction reference is required for non-cash payments'
+            });
+        }
+
+        if (process.env.NODE_ENV !== 'production') {
+            console.info('[SUBSCRIPTIONS][CREATE]', {
+                userId: req.user?.id,
+                memberId: parsedMemberId,
+                planId: parsedPlanId,
+                method: normalizedMethod,
+                paidAmount: numericPaidAmount,
+                paymentStatus: computedPaymentStatus,
+                price: fullPrice,
+                hasReference: Boolean(safeRef)
+            });
+        }
 
         // 4. Create Subscription (Transaction)
         const result = await req.prisma.$transaction(async (prisma) => {
             // Safety: Check if an identical active subscription already exists (Race condition check)
             const existing = await prisma.subscription.findFirst({
                 where: {
-                    memberId: parseInt(memberId),
-                    planId: parseInt(planId),
+                    memberId: parsedMemberId,
+                    planId: parsedPlanId,
                     status: 'active',
                     startDate: startDate ? new Date(startDate) : { lte: new Date() },
                     endDate: { gte: new Date() }
@@ -242,7 +301,7 @@ router.post('/', [
             // STRICT RULE: Cannot assign new subscription if one is already active
             const activeSub = await prisma.subscription.findFirst({
                 where: {
-                    memberId: parseInt(memberId),
+                    memberId: parsedMemberId,
                     status: 'active'
                 },
                 include: { plan: true }
@@ -253,7 +312,7 @@ router.post('/', [
                 // If it's a race duplicate, we might want to return it (idempotency), 
                 // BUT the requirement says "Return HTTP 409".
                 // To be safe and compliant:
-                const isRace = activeSub.createdAt > new Date(Date.now() - 5000) && activeSub.planId === parseInt(planId);
+                const isRace = activeSub.createdAt > new Date(Date.now() - 5000) && activeSub.planId === parsedPlanId;
 
                 if (isRace) {
                     console.log(`[SUBS] Idempotency: Returning existing sub ${activeSub.id}`);
@@ -267,15 +326,18 @@ router.post('/', [
             const end = new Date(start);
             end.setDate(end.getDate() + plan.duration);
 
+            const remainingAmount = clampMoney(fullPrice - numericPaidAmount);
             const sub = await prisma.subscription.create({
                 data: {
-                    memberId: parseInt(memberId),
-                    planId: parseInt(planId),
+                    memberId: parsedMemberId,
+                    planId: parsedPlanId,
                     startDate: start,
                     endDate: end,
                     status: 'active',
-                    price: plan.price,
-                    paidAmount: numericPaidAmount,
+                    price: fullPrice,
+                    paidAmount: roundMoney(numericPaidAmount),
+                    remainingAmount,
+                    paymentStatus: computedPaymentStatus,
                     discount: numericDiscount,
                     notes: notes || null
                 },
@@ -302,69 +364,94 @@ router.post('/', [
                 if (userShift) shiftId = userShift.id;
             }
 
-            const fullPrice = plan.price;
+            const totalPrice = fullPrice;
             const paidNow = numericPaidAmount;
+            let createdPayment = null;
 
             // Step A: Create "Receipt" for money actually received now
             if (paidNow > 0) {
-                await prisma.payment.create({
-                    data: {
-                        memberId: sub.memberId,
-                        subscriptionId: sub.id,
-                        amount: paidNow,
-                        method: String(method).toLowerCase().trim(),
-                        status: 'completed',
-                        receiptNumber: generateReceiptNumber(),
-                        notes: `${paymentStatus === 'paid' ? 'Full' : 'Partial'} subscription payment` + (safeRef ? ` (Ref: ${safeRef})` : '') + (notes ? ` - ${notes}` : ''),
-                        shiftId: shiftId,
-                        createdBy: finalCreatedBy,
-                        collectorName: finalCollectorName,
-                        externalReference: safeRef
-                    }
+                const paymentResult = await recordPaymentTransaction(prisma, {
+                    memberId: sub.memberId,
+                    subscriptionId: sub.id,
+                    amount: paidNow,
+                    method: normalizedMethod,
+                    status: 'completed',
+                    notes: `${computedPaymentStatus === 'paid' ? 'Full' : 'Partial'} subscription payment${notes ? ` - ${notes}` : ''}`,
+                    shiftId: shiftId,
+                    createdBy: finalCreatedBy,
+                    collectorName: finalCollectorName,
+                    externalReference: safeRef
                 });
+                createdPayment = paymentResult.payment;
             }
 
             // Step B: Create "Invoice" (Pending Payment) for any remaining balance
-            if (paidNow < fullPrice) {
-                const remaining = fullPrice - paidNow;
-                await prisma.payment.create({
-                    data: {
-                        memberId: sub.memberId,
-                        subscriptionId: sub.id,
-                        amount: remaining,
-                        method: 'other', // Invoice doesn't have a method yet
-                        status: 'pending',
-                        receiptNumber: generateReceiptNumber() + "-INV",
-                        notes: `Remaining balance for ${plan.name} subscription`,
-                        shiftId: shiftId,
-                        createdBy: finalCreatedBy,
-                        collectorName: finalCollectorName
-                    }
-                });
+            if (paidNow < totalPrice) {
+                const remaining = totalPrice - paidNow;
+                await recordPaymentTransaction(prisma, {
+                    memberId: sub.memberId,
+                    subscriptionId: sub.id,
+                    amount: remaining,
+                    method: 'other', // Invoice doesn't have a method yet
+                    status: 'pending',
+                    notes: `Remaining balance for ${plan.name} subscription`,
+                    shiftId: shiftId,
+                    createdBy: finalCreatedBy,
+                    collectorName: finalCollectorName
+                }, { receiptSuffix: '-INV' });
             }
-            return sub;
+            return { ...sub, payment: createdPayment };
         });
 
         // Log Activity
-        await req.prisma.activityLog.create({
-            data: {
-                userId: req.user.id,
-                action: 'CREATE_SUBSCRIPTION',
-                entityType: 'Subscription',
-                entityId: result.id,
-                details: JSON.stringify({ planName: plan.name, amount: numericPaidAmount })
-            }
-        });
+        try {
+            await req.prisma.activityLog.create({
+                data: {
+                    userId: req.user.id,
+                    action: 'CREATE_SUBSCRIPTION',
+                    entityType: 'Subscription',
+                    entityId: result.id,
+                    details: JSON.stringify({ planName: plan.name, amount: numericPaidAmount })
+                }
+            });
+        } catch (logError) {
+            console.warn('[SUBSCRIPTIONS][CREATE] Activity log failed:', logError.message);
+        }
 
         res.status(201).json({ success: true, message: 'Subscription created', data: result });
 
     } catch (error) {
-        console.error('Create subscription error:', error);
+        const errorInfo = {
+            message: error.message,
+            code: error.code,
+            userId: req.user?.id,
+            memberId: req.body?.memberId,
+            planId: req.body?.planId
+        };
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Create subscription error:', error);
+        } else {
+            console.error('Create subscription error:', errorInfo);
+        }
 
         if (error.message && error.message.includes('CONFLICT:')) {
             return res.status(409).json({
                 success: false,
                 message: error.message.replace('CONFLICT: ', '')
+            });
+        }
+
+        if (error.code === 'P2002') {
+            return res.status(409).json({
+                success: false,
+                message: 'Duplicate record detected. Please try again.'
+            });
+        }
+
+        if (error.code === 'P2003') {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid reference data. Please refresh and try again.'
             });
         }
 
@@ -390,6 +477,7 @@ router.put('/:id/renew', async (req, res) => {
     try {
         const previousSubscriptionId = parseInt(req.params.id);
         const { planId, paidAmount, paymentStatus, externalReference, method = 'cash', collectorId, collectorName, notes } = req.body;
+        const normalizedMethod = normalizePaymentMethod(method);
 
         const result = await req.prisma.$transaction(async (prisma) => {
             // 1. Validate Previous Subscription
@@ -437,7 +525,7 @@ router.put('/:id/renew', async (req, res) => {
             if (paymentStatus === 'paid') initialPaid = newPlan.price;
             else if (paymentStatus === 'partial' && paidAmount) initialPaid = parseFloat(paidAmount);
 
-            const numericPaidAmount = initialPaid;
+            const numericPaidAmount = roundMoney(initialPaid);
 
             // 4. Create NEW Subscription
             // Start date is NOW (since it's a renewal action happening now)
@@ -457,7 +545,6 @@ router.put('/:id/renew', async (req, res) => {
                     startDate: start,
                     endDate: end,
                     status: 'active',
-                    price: newPlan.price,
                     paidAmount: numericPaidAmount,
                     notes: notes || `Renewal of prev sub #${previousSubscriptionId}`,
                     // usedNonRefundableAmount starts at 0 for new sub
@@ -487,44 +574,38 @@ router.put('/:id/renew', async (req, res) => {
                 if (userShift) shiftId = userShift.id;
             }
 
-            const fullPrice = newPlan.price;
-            const paidNow = numericPaidAmount;
+            const fullPrice = roundMoney(newPlan.price);
+            const paidNow = roundMoney(numericPaidAmount);
 
             // Step A: Receipt for actual money
             if (paidNow > 0) {
-                await prisma.payment.create({
-                    data: {
-                        memberId: newSub.memberId,
-                        subscriptionId: newSub.id,
-                        amount: paidNow,
-                        method: String(method).toLowerCase().trim(),
-                        status: 'completed',
-                        receiptNumber: generateReceiptNumber(),
-                        notes: `Renewal Payment: ${paymentStatus === 'paid' ? 'Full' : 'Partial'}` + (externalReference ? ` (Ref: ${externalReference})` : '') + (notes ? ` - ${notes}` : ''),
-                        shiftId: shiftId,
-                        createdBy: finalCreatedBy,
-                        collectorName: finalCollectorName,
-                        externalReference: externalReference
-                    }
+                await recordPaymentTransaction(prisma, {
+                    memberId: newSub.memberId,
+                    subscriptionId: newSub.id,
+                    amount: paidNow,
+                    method: normalizedMethod,
+                    status: 'completed',
+                    notes: `Renewal Payment: ${paymentStatus === 'paid' ? 'Full' : 'Partial'}` + (externalReference ? ` (Ref: ${externalReference})` : '') + (notes ? ` - ${notes}` : ''),
+                    shiftId: shiftId,
+                    createdBy: finalCreatedBy,
+                    collectorName: finalCollectorName,
+                    externalReference: externalReference
                 });
             }
 
             // Step B: Invoice for remaining balance
             if (paidNow < fullPrice) {
-                await prisma.payment.create({
-                    data: {
-                        memberId: newSub.memberId,
-                        subscriptionId: newSub.id,
-                        amount: fullPrice - paidNow,
-                        method: 'other',
-                        status: 'pending',
-                        receiptNumber: generateReceiptNumber() + "-INV",
-                        notes: `Remaining balance for ${newPlan.name} renewal`,
-                        shiftId: shiftId,
-                        createdBy: finalCreatedBy,
-                        collectorName: finalCollectorName
-                    }
-                });
+                await recordPaymentTransaction(prisma, {
+                    memberId: newSub.memberId,
+                    subscriptionId: newSub.id,
+                    amount: roundMoney(fullPrice - paidNow),
+                    method: 'other',
+                    status: 'pending',
+                    notes: `Remaining balance for ${newPlan.name} renewal`,
+                    shiftId: shiftId,
+                    createdBy: finalCreatedBy,
+                    collectorName: finalCollectorName
+                }, { receiptSuffix: '-INV' });
             }
 
             return newSub;
@@ -745,7 +826,7 @@ router.get('/:id/preview-cancel', authorize('admin'), async (req, res) => {
         if (usedDays > totalDuration) usedDays = totalDuration;
         if (usedDays < 0) usedDays = 0;
 
-        const totalPrice = sub.price !== null ? sub.price : sub.plan.price;
+        const totalPrice = sub.price != null ? sub.price : sub.plan.price;
         const dailyRate = totalPrice / totalDuration;
         let usedAmount = usedDays * dailyRate;
         if (usedAmount > paidTotal) usedAmount = paidTotal;
@@ -807,7 +888,7 @@ router.put('/:id/cancel', authorize('admin'), async (req, res) => {
             if (usedDays > totalDuration) usedDays = totalDuration;
             if (usedDays < 0) usedDays = 0;
 
-            const totalPrice = sub.price !== null ? sub.price : sub.plan.price;
+            const totalPrice = sub.price != null ? sub.price : sub.plan.price;
             const dailyRate = totalPrice / totalDuration;
             let usedAmount = usedDays * dailyRate;
 

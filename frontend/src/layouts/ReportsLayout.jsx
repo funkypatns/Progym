@@ -44,7 +44,7 @@ const ReportsLayout = () => {
     ];
 
     return (
-        <div className="flex h-[calc(100vh-8rem)] bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="flex w-full h-full min-h-full bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {/* Reports Sidebar */}
             <div className="w-64 bg-gray-50/50 dark:bg-gray-900/50 border-r dark:border-gray-700 flex flex-col overflow-y-auto">
                 <div className="p-4 border-b dark:border-gray-700">

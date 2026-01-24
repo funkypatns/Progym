@@ -23,6 +23,58 @@ const PERMISSIONS = {
 };
 
 /**
+ * POST /api/reminders/ensure-daily
+ * Run daily reminder generation once per day
+ * Accessible to any authenticated user (idempotent)
+ */
+router.post('/ensure-daily', async (req, res) => {
+    try {
+        const todayKey = new Date().toISOString().split('T')[0];
+
+        const lastRunSetting = await req.prisma.setting.findUnique({
+            where: { key: 'reminders_last_run_date' }
+        });
+
+        if (lastRunSetting?.value === todayKey) {
+            return res.json({
+                success: true,
+                data: { ran: false, lastRun: lastRunSetting.value }
+            });
+        }
+
+        const [gymNameSetting, dueSoonDaysSetting] = await Promise.all([
+            req.prisma.setting.findUnique({ where: { key: 'gym_name' } }),
+            req.prisma.setting.findUnique({ where: { key: 'due_soon_days' } })
+        ]);
+        const gymName = gymNameSetting?.value || 'Gym';
+        const dueSoonDays = parseInt(dueSoonDaysSetting?.value || 3);
+
+        const results = await reminderService.runDailyReminderJob(gymName, dueSoonDays);
+
+        await req.prisma.setting.upsert({
+            where: { key: 'reminders_last_run_date' },
+            update: { value: todayKey, type: 'string', group: 'system' },
+            create: { key: 'reminders_last_run_date', value: todayKey, type: 'string', group: 'system' }
+        });
+
+        res.json({
+            success: true,
+            data: {
+                ran: true,
+                lastRun: todayKey,
+                results
+            }
+        });
+    } catch (error) {
+        console.error('[REMINDERS] Ensure daily error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to run daily reminders'
+        });
+    }
+});
+
+/**
  * GET /api/reminders/dashboard
  * Get reminder dashboard stats (due today, due soon, overdue)
  */

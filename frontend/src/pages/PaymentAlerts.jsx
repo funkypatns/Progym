@@ -2,14 +2,13 @@
  * ============================================
  * PAYMENT ALERTS PAGE
  * ============================================
- * 
+ *
  * Displays members with outstanding payments grouped by status
  */
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
     Bell,
     AlertTriangle,
@@ -22,23 +21,26 @@ import {
     RefreshCcw,
     Loader2,
     Phone,
-    ChevronDown,
     CheckCircle,
-    XCircle,
-    Filter
+    Mail,
+    Activity
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency } from '../utils/numberFormatter';
+import { speakNotification, getTTSSettings } from '../utils/tts';
 import { useSettingsStore } from '../store';
+import { reportStyles, iconBadgeColors } from '../styles/reportStyles';
+import MemberCodeChip from '../components/MemberCodeChip';
+import StatusChip from '../components/StatusChip';
 
 const PaymentAlerts = () => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const { getSetting } = useSettingsStore();
+    const isRTL = i18n.language === 'ar';
 
-    // State
     const [isLoading, setIsLoading] = useState(false);
     const [members, setMembers] = useState([]);
     const [stats, setStats] = useState({
@@ -52,17 +54,19 @@ const PaymentAlerts = () => {
         sortBy: 'remaining',
         sortOrder: 'desc'
     });
-    const [selectedMembers, setSelectedMembers] = useState([]);
     const [isSending, setIsSending] = useState(false);
+    const [dueSoonDays, setDueSoonDays] = useState(3);
 
     const currencyConf = {
         code: getSetting('currency_code', 'EGP'),
         symbol: getSetting('currency_symbol', 'EGP')
     };
 
-    const [dueSoonDays, setDueSoonDays] = useState(3);
+    const alignStart = isRTL ? 'text-right' : 'text-left';
+    const alignEnd = isRTL ? 'text-left' : 'text-right';
+    const searchIconPosition = isRTL ? 'right-3' : 'left-3';
+    const searchPadding = isRTL ? 'pr-9' : 'pl-9';
 
-    // Fetch data
     useEffect(() => {
         fetchDashboard();
         fetchMembers();
@@ -95,14 +99,10 @@ const PaymentAlerts = () => {
             }
         } catch (error) {
             console.error('Failed to fetch members:', error);
-            toast.error('فشل تحميل البيانات');
+            toast.error(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const handleSearch = () => {
-        fetchMembers();
     };
 
     const handleKeyDown = (e) => {
@@ -116,355 +116,348 @@ const PaymentAlerts = () => {
             setIsSending(true);
             const response = await api.post('/reminders/generate');
             if (response.data.success) {
-                toast.success(`تم إنشاء ${response.data.data.dueSoon + response.data.data.overdue} تذكير`);
+                const remindersCount = (response.data.data.dueSoon || 0) + (response.data.data.overdue || 0);
+                toast.success(isRTL ? `تم إنشاء ${remindersCount} تذكير` : `Generated ${remindersCount} reminders`);
                 fetchDashboard();
             }
         } catch (error) {
-            toast.error('فشل إنشاء التذكيرات');
+            toast.error(isRTL ? 'فشل إنشاء التذكيرات' : 'Failed to generate reminders');
         } finally {
             setIsSending(false);
         }
     };
 
+    const handleTestVoice = async () => {
+        const targetMember = members.find(m => m.remaining > 0);
+        if (!targetMember) {
+            toast.error(isRTL ? 'لا يوجد أعضاء لديهم مستحقات للاختبار' : 'No members with remaining balance to test');
+            return;
+        }
+
+        try {
+            toast.loading(isRTL ? 'جارٍ اختبار الصوت...' : 'Testing voice...', { id: 'test-voice' });
+
+            const response = await api.post('/reminders/test', { memberId: targetMember.memberId });
+
+            if (response.data.success) {
+                toast.success(isRTL ? 'تم إرسال تنبيه الاختبار' : 'Test alert sent', { id: 'test-voice' });
+                const notification = response.data.data;
+
+                await speakNotification(
+                    notification,
+                    i18n.language,
+                    getTTSSettings()
+                );
+            }
+        } catch (error) {
+            console.error('[TEST] Error:', error);
+            const msg = error.response?.data?.message || (isRTL ? 'فشل الاختبار' : 'Test failed');
+            toast.error(msg, { id: 'test-voice' });
+        }
+    };
+
     const getStatusBadge = (member) => {
+        if (!member?.endDate) {
+            return <StatusChip variant="neutral" label={t('common.unknown') || 'Unknown'} />;
+        }
+
+        const endDate = new Date(member.endDate);
+        if (Number.isNaN(endDate.getTime())) {
+            return <StatusChip variant="neutral" label={t('common.unknown') || 'Unknown'} />;
+        }
+
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const endDate = new Date(member.endDate);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        const dueSoonDate = new Date(today);
+        dueSoonDate.setDate(today.getDate() + dueSoonDays);
 
         if (endDate < today) {
-            return (
-                <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold bg-red-500/15 text-red-500 border border-red-500/20">
-                    <AlertTriangle className="w-3 h-3 mr-1" />
-                    متأخر
-                </span>
-            );
+            return <StatusChip variant="danger" label={isRTL ? 'متأخر' : 'Overdue'} />;
         }
 
-        const daysUntil = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-
-        if (daysUntil === 0) {
-            return (
-                <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/20">
-                    <Clock className="w-3 h-3 mr-1" />
-                    اليوم
-                </span>
-            );
+        if (endDate >= today && endDate < tomorrow) {
+            return <StatusChip variant="warning" label={isRTL ? 'مستحق اليوم' : 'Due Today'} />;
         }
 
-        if (daysUntil <= dueSoonDays) {
-            return (
-                <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold bg-yellow-500/15 text-yellow-600 border border-yellow-500/20">
-                    <CalendarClock className="w-3 h-3 mr-1" />
-                    قريباً ({daysUntil} يوم)
-                </span>
-            );
+        if (endDate >= tomorrow && endDate <= dueSoonDate) {
+            return <StatusChip variant="info" label={isRTL ? 'مستحق قريباً' : 'Due Soon'} />;
         }
 
-        return (
-            <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold bg-blue-500/15 text-blue-500 border border-blue-500/20">
-                <CalendarClock className="w-3 h-3 mr-1" />
-                {daysUntil} يوم
-            </span>
-        );
+        return <StatusChip variant="neutral" label={isRTL ? 'قادم' : 'Upcoming'} />;
     };
 
     const getPaymentStatusBadge = (status) => {
-        if (status === 'UNPAID') {
-            return (
-                <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-400">
-                    غير مسدد
-                </span>
-            );
+        const normalized = (status || '').toUpperCase();
+
+        if (normalized === 'PAID') {
+            return <StatusChip variant="success" label={t('common.paid') || 'Paid'} />;
         }
-        return (
-            <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400">
-                جزئي
-            </span>
-        );
+
+        if (normalized === 'PARTIAL') {
+            return <StatusChip variant="warning" label={t('common.partial') || 'Partial'} />;
+        }
+
+        if (normalized === 'REFUNDED') {
+            return <StatusChip variant="danger" label={t('common.refunded') || 'Refunded'} />;
+        }
+
+        if (normalized === 'UNPAID') {
+            return <StatusChip variant="danger" label={isRTL ? 'غير مدفوع' : 'Unpaid'} />;
+        }
+
+        return <StatusChip variant="neutral" label={status || '-'} />;
     };
 
     return (
-        <div className="space-y-6">
+        <div className={reportStyles.container}>
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-lg shadow-red-500/30">
+                    <Bell className="w-6 h-6 text-white" />
+                </div>
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
-                            <Bell className="w-5 h-5 text-white" />
-                        </div>
-                        المتأخرات والتنبيهات
+                    <h1 className="text-2xl md:text-3xl font-black text-white">
+                        {isRTL ? 'المدفوعات المتأخرة والتنبيهات' : 'Overdue Payments & Alerts'}
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">
-                        متابعة المدفوعات المتبقية وإرسال التذكيرات
+                    <p className="text-gray-400 mt-1 text-sm">
+                        {isRTL ? 'متابعة الأرصدة المتبقية وإرسال التنبيهات للفريق' : 'Track outstanding balances and notify the team'}
                     </p>
                 </div>
-                <button
-                    onClick={handleGenerateReminders}
-                    disabled={isSending}
-                    className="btn-primary"
-                >
-                    {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    إنشاء التذكيرات
-                </button>
-                <button
-                    onClick={async () => {
-                        // Find a member with remaining amount
-                        const targetMember = members.find(m => m.remaining > 0);
-                        if (!targetMember) {
-                            toast.error('لا يوجد أعضاء عليهم مستحقات للاختبار');
-                            return;
-                        }
-
-                        try {
-                            toast.loading('جاري اختبار الصوت...', { id: 'test-voice' });
-
-                            // Use .id (database ID) not .memberId (string code)
-                            // backend expects integer ID
-                            const response = await api.post('/reminders/test', { memberId: targetMember.id });
-
-                            if (response.data.success) {
-                                toast.success('تم إرسال تنبيه الاختبار', { id: 'test-voice' });
-                                const notification = response.data.data;
-
-                                // Play beep
-                                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleC8KEIQ+WFBQZG54d2uDkIpxTDIvKjo8Oz5BWF9pcXx+d2ttaVtIRxEULztBOzQzMj9KVFhdV09FREJBQkBCQ0ZJTVFVWFlaWldWVFJQT05NTk5PUVNVVldYWFlZWllYV1ZVVFRUVFRVVlZXWFhZWVhaWVlZWFhXV1ZWVVVVVVVVVVZWVldXWFhYWFhYWFhXV1dXVldXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXVw==');
-                                audio.volume = 0.3;
-                                await audio.play().catch(e => console.error('Audio play error:', e));
-
-                                // Speak
-                                await import('../utils/tts').then(module => {
-                                    module.speakNotification(
-                                        notification,
-                                        i18n.language,
-                                        module.getTTSSettings()
-                                    );
-                                });
-                            }
-                        } catch (error) {
-                            console.error('[TEST] Error:', error);
-                            const msg = error.response?.data?.message || 'فشل الاختبار';
-                            toast.error(msg, { id: 'test-voice' });
-                        }
-                    }}
-                    className="btn-secondary ml-2"
-                >
-                    {i18n.language === 'ar' ? '🔊 اختبار الصوت والتنبيه' : '🔊 Test Sound/Voice'}
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                    <button
+                        onClick={handleGenerateReminders}
+                        disabled={isSending}
+                        className={reportStyles.primaryButton}
+                    >
+                        {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {isRTL ? 'إنشاء التذكيرات' : 'Generate Reminders'}
+                    </button>
+                    <button onClick={handleTestVoice} className={reportStyles.secondaryButton}>
+                        {isRTL ? 'اختبار الصوت والتنبيه' : 'Test Sound/Voice'}
+                    </button>
+                    <button onClick={fetchMembers} className={reportStyles.secondaryButton}>
+                        <RefreshCcw className="w-4 h-4" />
+                        {isRTL ? 'تحديث' : 'Refresh'}
+                    </button>
+                </div>
             </div>
 
-            {/* Stats Cards */}
+            {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Due Today */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white dark:bg-dark-800 rounded-2xl p-6 border border-gray-100 dark:border-dark-700 shadow-sm"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-xl bg-amber-500/15 flex items-center justify-center">
-                            <Clock className="w-7 h-7 text-amber-500" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">مستحق اليوم</p>
-                            <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {stats.dueToday?.count || 0}
-                            </p>
-                            <p className="text-sm text-amber-500 font-medium">
-                                {formatCurrency(stats.dueToday?.total || 0, i18n.language, currencyConf)}
-                            </p>
-                        </div>
+                <div className={reportStyles.summaryCard}>
+                    <div>
+                        <p className={reportStyles.cardLabel}>{isRTL ? 'مستحق اليوم' : 'Due Today'}</p>
+                        <p className={reportStyles.cardValue}>{stats.dueToday?.count || 0}</p>
+                        <p className="text-xs font-semibold text-amber-400">
+                            {formatCurrency(stats.dueToday?.total || 0, i18n.language, currencyConf)}
+                        </p>
                     </div>
-                </motion.div>
+                    <div className={`${reportStyles.iconBadge} ${iconBadgeColors.orange}`}>
+                        <Clock className="w-5 h-5 text-white" />
+                    </div>
+                </div>
 
-                {/* Due Soon */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="bg-white dark:bg-dark-800 rounded-2xl p-6 border border-gray-100 dark:border-dark-700 shadow-sm"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-xl bg-blue-500/15 flex items-center justify-center">
-                            <CalendarClock className="w-7 h-7 text-blue-500" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">مستحق قريباً ({dueSoonDays} أيام)</p>
-                            <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {stats.dueSoon?.count || 0}
-                            </p>
-                            <p className="text-sm text-blue-500 font-medium">
-                                {formatCurrency(stats.dueSoon?.total || 0, i18n.language, currencyConf)}
-                            </p>
-                        </div>
+                <div className={reportStyles.summaryCard}>
+                    <div>
+                        <p className={reportStyles.cardLabel}>
+                            {isRTL ? `مستحق قريباً (${dueSoonDays} أيام)` : `Due Soon (${dueSoonDays} days)`}
+                        </p>
+                        <p className={reportStyles.cardValue}>{stats.dueSoon?.count || 0}</p>
+                        <p className="text-xs font-semibold text-blue-400">
+                            {formatCurrency(stats.dueSoon?.total || 0, i18n.language, currencyConf)}
+                        </p>
                     </div>
-                </motion.div>
+                    <div className={`${reportStyles.iconBadge} ${iconBadgeColors.blue}`}>
+                        <CalendarClock className="w-5 h-5 text-white" />
+                    </div>
+                </div>
 
-                {/* Overdue */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white dark:bg-dark-800 rounded-2xl p-6 border border-gray-100 dark:border-dark-700 shadow-sm"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-xl bg-red-500/15 flex items-center justify-center">
-                            <AlertTriangle className="w-7 h-7 text-red-500" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">متأخر</p>
-                            <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {stats.overdue?.count || 0}
-                            </p>
-                            <p className="text-sm text-red-500 font-medium">
-                                {formatCurrency(stats.overdue?.total || 0, i18n.language, currencyConf)}
-                            </p>
-                        </div>
+                <div className={reportStyles.summaryCard}>
+                    <div>
+                        <p className={reportStyles.cardLabel}>{isRTL ? 'متأخر' : 'Overdue'}</p>
+                        <p className={reportStyles.cardValue}>{stats.overdue?.count || 0}</p>
+                        <p className="text-xs font-semibold text-red-400">
+                            {formatCurrency(stats.overdue?.total || 0, i18n.language, currencyConf)}
+                        </p>
                     </div>
-                </motion.div>
+                    <div className={`${reportStyles.iconBadge} ${iconBadgeColors.red}`}>
+                        <AlertTriangle className="w-5 h-5 text-white" />
+                    </div>
+                </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white dark:bg-dark-800 rounded-2xl p-4 border border-gray-100 dark:border-dark-700 shadow-sm">
-                <div className="flex flex-wrap items-center gap-4">
-                    {/* Search */}
-                    <div className="relative flex-1 min-w-[200px]">
-                        <Search className="absolute top-1/2 right-3 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="بحث بالاسم أو رقم الهاتف..."
-                            className="input w-full pr-10"
-                            value={filters.search}
-                            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                            onKeyDown={handleKeyDown}
-                        />
+            <div className={reportStyles.toolbar}>
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex-1 min-w-[220px] space-y-1.5">
+                        <label className={reportStyles.label}>{isRTL ? 'بحث' : 'Search'}</label>
+                        <div className="relative">
+                            <Search className={`absolute top-1/2 ${searchIconPosition} -translate-y-1/2 w-4 h-4 text-gray-400`} />
+                            <input
+                                type="text"
+                                placeholder={isRTL ? 'ابحث بالاسم أو الهاتف...' : 'Search name or phone...'}
+                                className={`${reportStyles.input} ${searchPadding}`}
+                                value={filters.search}
+                                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                                onKeyDown={handleKeyDown}
+                            />
+                        </div>
                     </div>
 
-                    {/* Status Filter */}
-                    <select
-                        className="input py-2"
-                        value={filters.status}
-                        onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                    >
-                        <option value="all">جميع الحالات</option>
-                        <option value="dueToday">مستحق اليوم</option>
-                        <option value="dueSoon">مستحق قريباً</option>
-                        <option value="overdue">متأخر</option>
-                    </select>
+                    <div className="min-w-[160px] space-y-1.5">
+                        <label className={reportStyles.label}>{isRTL ? 'الحالة' : 'Status'}</label>
+                        <select
+                            className={reportStyles.input}
+                            value={filters.status}
+                            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                        >
+                            <option value="all">{isRTL ? 'كل الحالات' : 'All Statuses'}</option>
+                            <option value="dueToday">{isRTL ? 'مستحق اليوم' : 'Due Today'}</option>
+                            <option value="dueSoon">{isRTL ? 'مستحق قريباً' : 'Due Soon'}</option>
+                            <option value="overdue">{isRTL ? 'متأخر' : 'Overdue'}</option>
+                        </select>
+                    </div>
 
-                    {/* Sort */}
-                    <select
-                        className="input py-2"
-                        value={filters.sortBy}
-                        onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
-                    >
-                        <option value="remaining">المبلغ المتبقي</option>
-                        <option value="endDate">تاريخ الاستحقاق</option>
-                        <option value="memberName">اسم العضو</option>
-                    </select>
+                    <div className="min-w-[180px] space-y-1.5">
+                        <label className={reportStyles.label}>{isRTL ? 'ترتيب حسب' : 'Sort By'}</label>
+                        <select
+                            className={reportStyles.input}
+                            value={filters.sortBy}
+                            onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
+                        >
+                            <option value="remaining">{isRTL ? 'المتبقي' : 'Remaining'}</option>
+                            <option value="endDate">{isRTL ? 'تاريخ الاستحقاق' : 'Due Date'}</option>
+                            <option value="memberName">{isRTL ? 'اسم العضو' : 'Member Name'}</option>
+                        </select>
+                    </div>
 
-                    <button onClick={fetchMembers} className="btn-secondary">
+                    <div className="min-w-[140px] space-y-1.5">
+                        <label className={reportStyles.label}>{isRTL ? 'الترتيب' : 'Order'}</label>
+                        <select
+                            className={reportStyles.input}
+                            value={filters.sortOrder}
+                            onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value })}
+                        >
+                            <option value="desc">{isRTL ? 'تنازلي' : 'Desc'}</option>
+                            <option value="asc">{isRTL ? 'تصاعدي' : 'Asc'}</option>
+                        </select>
+                    </div>
+
+                    <button onClick={fetchMembers} className={reportStyles.secondaryButton}>
                         <RefreshCcw className="w-4 h-4" />
-                        تحديث
+                        {isRTL ? 'تحديث' : 'Refresh'}
                     </button>
                 </div>
             </div>
 
             {/* Members Table */}
-            <div className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-100 dark:border-dark-700 shadow-sm overflow-hidden">
+            <div className={reportStyles.table}>
                 {isLoading ? (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <Loader2 className="w-10 h-10 animate-spin text-primary-500 mb-3" />
-                        <p className="text-gray-500">جاري التحميل...</p>
+                    <div className={reportStyles.emptyState}>
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                        <p className={reportStyles.emptyText}>{isRTL ? 'جارٍ التحميل...' : 'Loading...'}</p>
                     </div>
                 ) : members.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <CheckCircle className="w-16 h-16 text-emerald-500/50 mb-4" />
-                        <p className="text-xl font-bold text-gray-900 dark:text-white mb-2">لا توجد متأخرات</p>
-                        <p className="text-gray-500">جميع الأعضاء قاموا بالسداد</p>
+                    <div className={reportStyles.emptyState}>
+                        <CheckCircle className="w-12 h-12 text-emerald-500/60 mb-3" />
+                        <p className="text-lg font-bold text-white">{isRTL ? 'لا توجد متأخرات' : 'No overdue payments'}</p>
+                        <p className={reportStyles.emptyText}>{isRTL ? 'جميع الأعضاء قاموا بالسداد' : 'All members are settled'}</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-dark-700/50">
-                                <tr className="text-xs uppercase text-gray-500 font-bold tracking-wider">
-                                    <th className="px-4 py-3 text-right">العضو</th>
-                                    <th className="px-4 py-3 text-right">الباقة</th>
-                                    <th className="px-4 py-3 text-right">الإجمالي</th>
-                                    <th className="px-4 py-3 text-right">المدفوع</th>
-                                    <th className="px-4 py-3 text-right">المتبقي</th>
-                                    <th className="px-4 py-3 text-center">الحالة</th>
-                                    <th className="px-4 py-3 text-center">الاستحقاق</th>
-                                    <th className="px-4 py-3 text-right">آخر دفعة</th>
-                                    <th className="px-4 py-3 text-center">الإجراءات</th>
+                            <thead className={reportStyles.tableHeader}>
+                                <tr>
+                                    <th className={`${reportStyles.tableHeaderCell} ${alignStart}`}>{isRTL ? 'العضو' : 'Member'}</th>
+                                    <th className={`${reportStyles.tableHeaderCell} ${alignStart}`}>{isRTL ? 'الاشتراك' : 'Subscription'}</th>
+                                    <th className={`${reportStyles.tableHeaderCell} ${alignEnd}`}>{isRTL ? 'المبالغ' : 'Amounts'}</th>
+                                    <th className={`${reportStyles.tableHeaderCell} text-center`}>{isRTL ? 'الزيارات' : 'Visits'}</th>
+                                    <th className={`${reportStyles.tableHeaderCell} text-center`}>{isRTL ? 'الدفع' : 'Payment'}</th>
+                                    <th className={`${reportStyles.tableHeaderCell} text-center`}>{isRTL ? 'الاستحقاق' : 'Due'}</th>
+                                    <th className={`${reportStyles.tableHeaderCell} text-center`}>{isRTL ? 'الإجراءات' : 'Actions'}</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-dark-700">
-                                {members.map((member, idx) => (
-                                    <motion.tr
-                                        key={`${member.memberId}-${member.subscriptionId}`}
-                                        initial={{ opacity: 0, x: -10 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: idx * 0.02 }}
-                                        className="hover:bg-gray-50 dark:hover:bg-dark-700/30"
-                                    >
-                                        <td className="px-4 py-3">
+                            <tbody className={reportStyles.tableBody}>
+                                {members.map((member) => (
+                                    <tr key={`${member.memberId}-${member.subscriptionId}`} className={reportStyles.tableRow}>
+                                        <td className={`${reportStyles.tableCell} ${alignStart}`}>
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-primary-500/10 flex items-center justify-center">
-                                                    <User className="w-5 h-5 text-primary-500" />
+                                                <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center">
+                                                    <User className="w-5 h-5 text-indigo-400" />
                                                 </div>
-                                                <div>
-                                                    <p className="font-semibold text-gray-900 dark:text-white">
-                                                        {member.memberName}
-                                                    </p>
-                                                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                                                        <Phone className="w-3 h-3" />
-                                                        {member.memberPhone}
-                                                    </p>
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold text-white">{member.memberName}</p>
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                                                        <MemberCodeChip code={member.memberCode} />
+                                                        {member.memberPhone && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Phone className="w-3 h-3" />
+                                                                {member.memberPhone}
+                                                            </span>
+                                                        )}
+                                                        {member.memberEmail && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Mail className="w-3 h-3" />
+                                                                {member.memberEmail}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                                            {member.planName}
+                                        <td className={`${reportStyles.tableCell} ${alignStart}`}>
+                                            <div className="space-y-1">
+                                                <p className="font-semibold text-white">{member.planName || '-'}</p>
+                                                <p className="text-xs text-gray-400">
+                                                    {isRTL ? 'ينتهي' : 'Ends'}: {member.endDate ? formatDateTime(member.endDate, i18n.language).split(',')[0] : '-'}
+                                                </p>
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                                            {formatCurrency(member.total, i18n.language, currencyConf)}
+                                        <td className={`${reportStyles.tableCell} ${alignEnd}`}>
+                                            <div className="space-y-1">
+                                                <p className="text-xs text-gray-400">{isRTL ? 'الإجمالي' : 'Total'}: {formatCurrency(member.total, i18n.language, currencyConf)}</p>
+                                                <p className="text-xs text-emerald-400">{isRTL ? 'المدفوع' : 'Paid'}: {formatCurrency(member.paid, i18n.language, currencyConf)}</p>
+                                                <p className="text-xs text-red-400 font-semibold">{isRTL ? 'المتبقي' : 'Remaining'}: {formatCurrency(member.remaining, i18n.language, currencyConf)}</p>
+                                                <p className="text-[10px] text-gray-500">
+                                                    {isRTL ? 'آخر دفعة' : 'Last payment'}: {member.lastPaymentDate ? formatDateTime(member.lastPaymentDate, i18n.language).split(',')[0] : '-'}
+                                                </p>
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-3 text-emerald-500 font-medium">
-                                            {formatCurrency(member.paid, i18n.language, currencyConf)}
+                                        <td className={`${reportStyles.tableCell} text-center`}>
+                                            <div className="inline-flex items-center gap-2 text-xs text-gray-300">
+                                                <Activity className="w-4 h-4 text-indigo-400" />
+                                                <span className="font-semibold">
+                                                    {member.visits?.subscription ?? 0} / {member.visits?.allTime ?? 0}
+                                                </span>
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-3 text-red-500 font-bold">
-                                            {formatCurrency(member.remaining, i18n.language, currencyConf)}
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
+                                        <td className={`${reportStyles.tableCell} text-center`}>
                                             {getPaymentStatusBadge(member.status)}
                                         </td>
-                                        <td className="px-4 py-3 text-center">
+                                        <td className={`${reportStyles.tableCell} text-center`}>
                                             {getStatusBadge(member)}
                                         </td>
-                                        <td className="px-4 py-3 text-xs text-gray-500">
-                                            {member.lastPaymentDate
-                                                ? formatDateTime(member.lastPaymentDate, i18n.language)
-                                                : '-'}
-                                        </td>
-                                        <td className="px-4 py-3">
+                                        <td className={`${reportStyles.tableCell} text-center`}>
                                             <div className="flex items-center justify-center gap-2">
                                                 <button
                                                     onClick={() => navigate(`/members/${member.memberId}`)}
-                                                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 text-gray-500 hover:text-primary-500 transition-colors"
-                                                    title="عرض الملف"
+                                                    className="p-2 rounded-lg hover:bg-slate-700/40 text-gray-400 hover:text-white transition-colors"
+                                                    title={isRTL ? 'عرض الملف' : 'View Profile'}
                                                 >
                                                     <User className="w-4 h-4" />
                                                 </button>
                                                 <button
                                                     onClick={() => navigate(`/payments?memberId=${member.memberId}`)}
-                                                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 text-gray-500 hover:text-emerald-500 transition-colors"
-                                                    title="تسجيل دفعة"
+                                                    className="p-2 rounded-lg hover:bg-slate-700/40 text-emerald-400 hover:text-emerald-300 transition-colors"
+                                                    title={isRTL ? 'تسجيل دفعة' : 'Record Payment'}
                                                 >
                                                     <CreditCard className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         </td>
-                                    </motion.tr>
+                                    </tr>
                                 ))}
                             </tbody>
                         </table>
@@ -474,19 +467,17 @@ const PaymentAlerts = () => {
 
             {/* Summary Footer */}
             {members.length > 0 && (
-                <div className="bg-gradient-to-r from-primary-500/10 to-accent-500/10 rounded-xl p-4 border border-primary-500/20">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-6">
-                            <div>
-                                <p className="text-xs text-gray-500 uppercase font-bold">إجمالي الأعضاء</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">{members.length}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 uppercase font-bold">إجمالي المتبقي</p>
-                                <p className="text-lg font-bold text-red-500">
-                                    {formatCurrency(members.reduce((sum, m) => sum + m.remaining, 0), i18n.language, currencyConf)}
-                                </p>
-                            </div>
+                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
+                    <div className="flex flex-wrap items-center gap-6">
+                        <div>
+                            <p className="text-xs text-gray-500 uppercase font-bold">{isRTL ? 'إجمالي الأعضاء' : 'Total Members'}</p>
+                            <p className="text-lg font-bold text-white">{members.length}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-500 uppercase font-bold">{isRTL ? 'إجمالي المتبقي' : 'Total Remaining'}</p>
+                            <p className="text-lg font-bold text-red-400">
+                                {formatCurrency(members.reduce((sum, m) => sum + m.remaining, 0), i18n.language, currencyConf)}
+                            </p>
                         </div>
                     </div>
                 </div>

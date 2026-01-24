@@ -27,6 +27,7 @@ import MemberProfile from './pages/Members/MemberProfile';
 import Subscriptions from './pages/Subscriptions';
 import CheckIn from './pages/CheckIn';
 import Payments from './pages/Payments';
+import PaymentReceiptPage from './pages/Payments/PaymentReceiptPage';
 import ReportsLayout from './layouts/ReportsLayout';
 import ReportsDashboard from './pages/Reports/index';
 // Report Pages
@@ -164,6 +165,15 @@ function App() {
                 <Route path="/license-expired" element={<LicenseExpired />} />
 
                 {/* Protected Routes */}
+                <Route path="/payments/:id/receipt" element={
+                    <ProtectedRoute>
+                        <LicenseGuard>
+                            <PermissionGuard permission={PERMISSIONS.PAYMENTS_VIEW}>
+                                <PaymentReceiptPage />
+                            </PermissionGuard>
+                        </LicenseGuard>
+                    </ProtectedRoute>
+                } />
                 <Route
                     element={
                         <ProtectedRoute>

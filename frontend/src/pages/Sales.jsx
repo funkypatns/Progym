@@ -78,11 +78,11 @@ const Sales = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950/20 p-2 lg:p-4">
-            <div className="h-[calc(100vh-2rem)] max-w-[1920px] mx-auto flex gap-4 lg:gap-6">
+        <div className="h-full min-h-0 bg-gradient-to-br from-slate-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950/20 p-2 lg:p-4 overflow-hidden">
+            <div className="h-full min-h-0 max-w-[1920px] mx-auto flex gap-4 lg:gap-6">
 
                 {/* Left: Products Section */}
-                <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                <div className="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
 
                     {/* Header with Search */}
                     <motion.div
@@ -135,7 +135,7 @@ const Sales = () => {
                     </motion.div>
 
                     {/* Products Grid */}
-                    <div className="flex-1 overflow-y-auto bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl p-6">
+                    <div className="flex-1 min-h-0 overflow-y-auto bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl p-6">
                         {loading ? (
                             <div className="flex items-center justify-center h-full">
                                 <div className="text-center">
@@ -200,7 +200,7 @@ const Sales = () => {
                 <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="w-[380px] flex-shrink-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-2xl flex flex-col overflow-hidden"
+                    className="w-[380px] h-full min-h-0 flex-shrink-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-2xl flex flex-col overflow-hidden"
                 >
                     {/* Cart Header */}
                     <div className="p-6 border-b border-gray-100 dark:border-white/5 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20">
@@ -240,8 +240,12 @@ const Sales = () => {
                                     className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-white/5 p-4 shadow-sm"
                                 >
                                     <div className="flex items-start gap-3">
-                                        <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/30 dark:to-indigo-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
-                                            <Package className="text-purple-500" size={24} />
+                                        <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/30 dark:to-indigo-900/30 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                            {item.imageUrl ? (
+                                                <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <Package className="text-purple-500" size={24} />
+                                            )}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate mb-1">{item.name}</h4>

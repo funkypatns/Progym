@@ -185,7 +185,8 @@ router.get('/unseen-detailed', async (req, res) => {
                                 memberId: true,
                                 firstName: true,
                                 lastName: true,
-                                phone: true
+                                phone: true,
+                                email: true
                             }
                         },
                         subscription: {
@@ -209,38 +210,82 @@ router.get('/unseen-detailed', async (req, res) => {
             }
         });
 
-        // Calculate remaining amounts
-        const detailedNotifications = notifications.map(notif => {
-            let remainingAmount = 0;
-            let memberName = '';
-            let currency = 'EGP';
+        const detailedNotifications = await Promise.all(
+            notifications.map(async (notif) => {
+                let remainingAmount = 0;
+                let totalAmount = 0;
+                let paidAmount = 0;
+                let memberName = '';
+                let memberPhone = '';
+                let memberEmail = '';
+                let memberCode = '';
+                let subscriptionEnd = null;
+                let subscriptionStart = null;
+                let planName = '';
+                let subscriptionVisits = 0;
+                let allTimeVisits = 0;
+                const currency = 'EGP';
 
-            if (notif.reminder && notif.reminder.subscription) {
-                const sub = notif.reminder.subscription;
-                const total = sub.price || sub.plan?.price || 0;
-                const payments = sub.payments || [];
-                const grossPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                const totalRefunded = payments.reduce((sum, p) => sum + (p.refundedTotal || 0), 0);
-                const netPaid = grossPaid - totalRefunded;
-                remainingAmount = Math.max(0, total - netPaid);
-            }
+                if (notif.reminder && notif.reminder.subscription) {
+                    const sub = notif.reminder.subscription;
+                    const payments = sub.payments || [];
+                    totalAmount = sub.plan?.price || 0;
+                    const grossPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                    const totalRefunded = payments.reduce((sum, p) => sum + (p.refundedTotal || 0), 0);
+                    paidAmount = grossPaid - totalRefunded;
+                    remainingAmount = Math.max(0, totalAmount - paidAmount);
+                    subscriptionEnd = sub.endDate || null;
+                    subscriptionStart = sub.startDate || null;
+                    planName = sub.plan?.name || '';
 
-            if (notif.reminder && notif.reminder.member) {
-                memberName = `${notif.reminder.member.firstName} ${notif.reminder.member.lastName}`;
-            }
+                    if (sub.memberId) {
+                        subscriptionVisits = await req.prisma.checkIn.count({
+                            where: {
+                                memberId: sub.memberId,
+                                checkInTime: {
+                                    gte: sub.startDate,
+                                    lte: sub.endDate
+                                }
+                            }
+                        });
+                        allTimeVisits = await req.prisma.checkIn.count({
+                            where: { memberId: sub.memberId }
+                        });
+                    }
+                }
 
-            return {
-                id: notif.id,
-                type: notif.type,
-                priority: notif.priority,
-                title: notif.title,
-                message: notif.message,
-                createdAt: notif.createdAt,
-                memberName,
-                remainingAmount,
-                currency
-            };
-        });
+                if (notif.reminder && notif.reminder.member) {
+                    memberName = `${notif.reminder.member.firstName} ${notif.reminder.member.lastName}`;
+                    memberPhone = notif.reminder.member.phone || '';
+                    memberEmail = notif.reminder.member.email || '';
+                    memberCode = notif.reminder.member.memberId || '';
+                }
+
+                return {
+                    id: notif.id,
+                    type: notif.type,
+                    priority: notif.priority,
+                    title: notif.title,
+                    message: notif.message,
+                    createdAt: notif.createdAt,
+                    memberName,
+                    memberPhone,
+                    memberEmail,
+                    memberCode,
+                    totalAmount,
+                    paidAmount,
+                    remainingAmount,
+                    subscriptionStart,
+                    subscriptionEnd,
+                    planName,
+                    visits: {
+                        subscription: subscriptionVisits,
+                        allTime: allTimeVisits
+                    },
+                    currency
+                };
+            })
+        );
 
         res.json({
             success: true,

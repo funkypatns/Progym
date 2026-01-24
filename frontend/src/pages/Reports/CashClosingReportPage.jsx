@@ -12,27 +12,32 @@ const CashClosingReportPage = () => {
 
     // This wrapper needs to handle the modal state which was previously in Reports.jsx
 
+    const handleOpenModal = () => {
+        setIsModalOpen(true);
+    };
+
     const actions = (
         <Button
             variant="contained"
             startIcon={<Plus size={18} />}
-            onClick={() => setIsModalOpen(true)}
+            onClick={handleOpenModal}
             sx={{ color: 'white' }}
         >
-            {t('cashClosing.createClosing')}
+            {t('cashClosing.createClosing', 'Create closing')}
         </Button>
     );
 
     return (
         <ReportsShell
-            title={t('cashClosing.title') || "Cash Closing"}
-            subtitle="Daily cash reconciliation and handover logs"
+            title={t('cashClosing.title', 'Cash closing')}
+            subtitle={t('cashClosing.subtitle', 'Daily cash reconciliation and handover logs')}
             actions={actions}
+            centerHeader
         >
             <CashClosingReport isActive={true} />
 
             <CashClosingModal
-                open={isModalOpen}
+                isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSuccess={() => {
                     // Ideally trigger refresh in report

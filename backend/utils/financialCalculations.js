@@ -6,6 +6,7 @@
  * Single source of truth for all financial calculations
  * Used by: Reports, Dashboard, Alerts, Member Profile
  */
+const { roundMoney, clampMoney } = require('./money');
 
 /**
  * Calculate financial breakdown for a single subscription
@@ -14,7 +15,7 @@
  * @returns {Object} Financial breakdown
  */
 function calculateSubscriptionFinancials(subscription, payments = []) {
-    const subscriptionPrice = subscription.price || 0;
+    const subscriptionPrice = roundMoney(subscription.price || 0);
 
     // Separate payments by type
     const paymentRecords = payments.filter(p => {
@@ -23,18 +24,20 @@ function calculateSubscriptionFinancials(subscription, payments = []) {
     });
 
     // Calculate totals
-    const totalPaid = paymentRecords.reduce((sum, p) => {
+    const totalPaidRaw = paymentRecords.reduce((sum, p) => {
         return sum + (p.amount > 0 ? p.amount : 0);
     }, 0);
 
-    const totalRefunded = paymentRecords.reduce((sum, p) => {
+    const totalRefundedRaw = paymentRecords.reduce((sum, p) => {
         // Old style: p.refundedTotal | New style: p.amount < 0
         const negativeAmount = p.amount < 0 ? Math.abs(p.amount) : 0;
         return sum + (p.refundedTotal || 0) + negativeAmount;
     }, 0);
 
-    const netPaid = totalPaid - totalRefunded;
-    const remaining = Math.max(0, subscriptionPrice - netPaid);
+    const totalPaid = roundMoney(totalPaidRaw);
+    const totalRefunded = roundMoney(totalRefundedRaw);
+    const netPaid = roundMoney(totalPaid - totalRefunded);
+    const remaining = clampMoney(subscriptionPrice - netPaid);
 
     return {
         subscriptionPrice,
@@ -42,7 +45,7 @@ function calculateSubscriptionFinancials(subscription, payments = []) {
         totalRefunded,
         netPaid,
         remaining,
-        percentPaid: subscriptionPrice > 0 ? (netPaid / subscriptionPrice) * 100 : 0
+        percentPaid: subscriptionPrice > 0 ? roundMoney((netPaid / subscriptionPrice) * 100) : 0
     };
 }
 
@@ -90,11 +93,11 @@ function calculateMemberTotals(subscriptions = []) {
     });
 
     return {
-        totalSubscriptionPrice,
-        totalPaid,
-        totalRefunded,
-        totalNetPaid,
-        totalRemaining,
+        totalSubscriptionPrice: roundMoney(totalSubscriptionPrice),
+        totalPaid: roundMoney(totalPaid),
+        totalRefunded: roundMoney(totalRefunded),
+        totalNetPaid: roundMoney(totalNetPaid),
+        totalRemaining: roundMoney(totalRemaining),
         subscriptionCount: subscriptions.length
     };
 }
@@ -164,15 +167,15 @@ function calculateDailyRevenue(payments = []) {
         return s === 'PAID' || s === 'COMPLETED' || s === 'REFUNDED' || s === 'PARTIAL' || s === 'PARTIAL REFUND';
     });
 
-    const grossRevenue = completedPayments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0);
+    const grossRevenue = roundMoney(completedPayments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0));
 
-    const totalRefunded = completedPayments.reduce((sum, p) => {
+    const totalRefunded = roundMoney(completedPayments.reduce((sum, p) => {
         // Sum explicit refunds plus negative amounts
         const negativeAmount = p.amount < 0 ? Math.abs(p.amount) : 0;
         return sum + (p.refundedTotal || 0) + negativeAmount;
-    }, 0);
+    }, 0));
 
-    const netRevenue = grossRevenue - totalRefunded;
+    const netRevenue = roundMoney(grossRevenue - totalRefunded);
 
     return {
         grossRevenue,
@@ -200,7 +203,7 @@ async function calculateNetRevenue(prisma, startDate, endDate) {
     });
 
     // Gross = Only Sum Positive Amounts
-    const grossRevenue = payments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0);
+    const grossRevenue = roundMoney(payments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0));
 
     // Refunds = Sum Negative Amounts (abs) + refundedTotal (old style)
     // NOTE: Explicit "Refund" table entries are synced with negative payments now.
@@ -225,12 +228,12 @@ async function calculateNetRevenue(prisma, startDate, endDate) {
         select: { amount: true }
     });
 
-    const totalRefunds = refunds.reduce((sum, r) => sum + (r.amount || 0), 0);
+    const totalRefunds = roundMoney(refunds.reduce((sum, r) => sum + (r.amount || 0), 0));
 
     return {
         grossRevenue,
         totalRefunds,
-        netRevenue: grossRevenue - totalRefunds,
+        netRevenue: roundMoney(grossRevenue - totalRefunds),
         paymentCount: payments.length,
         refundCount: refunds.length
     };
@@ -263,6 +266,24 @@ async function calculateCashClosingStats(prisma, startDate, endDate, employeeId 
         refundWhere.createdBy = parseInt(employeeId);
     }
 
+    let cashIn = 0;
+    let cashOut = 0;
+    let nonCashIn = 0;
+    let nonCashOut = 0;
+    let cardIn = 0;
+    let transferIn = 0;
+    let cardOut = 0;
+    let transferOut = 0;
+
+    const subscriptionTotals = {
+        total: 0,
+        cash: 0,
+        nonCash: 0,
+        card: 0,
+        transfer: 0,
+        count: 0
+    };
+
     // 1. Get Payments grouped by method
     const payments = await prisma.payment.findMany({
         where: paymentWhere,
@@ -281,6 +302,45 @@ async function calculateCashClosingStats(prisma, startDate, endDate, employeeId 
         }
     });
 
+    payments.forEach(p => {
+        const amount = Number(p.amount) || 0;
+        if (amount <= 0) return; // Avoid double counting refunds (handled via Refund table)
+
+        const method = (p.method || 'cash').toLowerCase();
+        subscriptionTotals.total += amount;
+        subscriptionTotals.count += 1;
+
+        if (method === 'cash') {
+            cashIn += amount;
+            subscriptionTotals.cash += amount;
+        } else {
+            nonCashIn += amount;
+            subscriptionTotals.nonCash += amount;
+            if (method.includes('card')) {
+                cardIn += amount;
+                subscriptionTotals.card += amount;
+            } else if (method.includes('transfer')) {
+                transferIn += amount;
+                subscriptionTotals.transfer += amount;
+            }
+        }
+    });
+
+    refunds.forEach(r => {
+        const amount = Number(r.amount) || 0;
+        const method = (r.payment?.method || 'cash').toLowerCase();
+        if (method === 'cash') {
+            cashOut += amount;
+        } else {
+            nonCashOut += amount;
+            if (method.includes('card')) {
+                cardOut += amount;
+            } else if (method.includes('transfer')) {
+                transferOut += amount;
+            }
+        }
+    });
+
     // 3. Get Retail Sales (POS)
     const salesWhere = {
         createdAt: { gte: startDate, lte: endDate },
@@ -292,14 +352,23 @@ async function calculateCashClosingStats(prisma, startDate, endDate, employeeId 
         select: { totalAmount: true, paymentMethod: true }
     });
 
+    let posSalesTotal = 0;
+    let posSalesCash = 0;
+    let posSalesNonCash = 0;
+
     sales.forEach(s => {
         const method = (s.paymentMethod || 'cash').toLowerCase();
         const amount = s.totalAmount || 0;
+        if (amount <= 0) return;
+
+        posSalesTotal += amount;
 
         if (method === 'cash') {
             cashIn += amount;
+            posSalesCash += amount;
         } else {
             nonCashIn += amount;
+            posSalesNonCash += amount;
             if (method.includes('card')) {
                 cardIn += amount;
             } else if (method.includes('transfer')) {
@@ -337,14 +406,26 @@ async function calculateCashClosingStats(prisma, startDate, endDate, employeeId 
         expectedTotalAmount: expectedCashAmount + (nonCashIn - nonCashOut),
         cardTotal: cardIn,
         transferTotal: transferIn,
-        paymentCount: payments.length + sales.length, // Include sales count?
+        paymentCount: subscriptionTotals.count + sales.length,
         refundCount: refunds.length,
         cashIn,
         cashOut,
+        nonCashIn,
+        nonCashOut,
+        cardOut,
+        transferOut,
         payInTotal,
         payOutTotal,
         salesCount: sales.length,
-        salesTotal: sales.reduce((sum, s) => sum + s.totalAmount, 0)
+        salesTotal: posSalesTotal,
+        subscriptionSalesTotal: subscriptionTotals.total,
+        subscriptionCashTotal: subscriptionTotals.cash,
+        subscriptionNonCashTotal: subscriptionTotals.nonCash,
+        subscriptionCardTotal: subscriptionTotals.card,
+        subscriptionTransferTotal: subscriptionTotals.transfer,
+        posCashTotal: posSalesCash,
+        posNonCashTotal: posSalesNonCash,
+        refundsTotal: refunds.reduce((sum, r) => sum + (r.amount || 0), 0)
     };
 }
 

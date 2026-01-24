@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Loader2, RefreshCcw, FileSpreadsheet, DollarSign, Eye, Calendar, Search, Users, AlertCircle, Banknote
@@ -11,6 +11,7 @@ import { useAuthStore, useSettingsStore } from '../store';
 import MemberLedgerModal from './MemberLedgerModal';
 import MemberDetailsModal from './MemberDetailsModal';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReportSummaryCards from './ReportSummaryCards';
 
 // Helper to normalize backend response to safe defaults
 const normalizeReportResponse = (data) => {
@@ -36,6 +37,11 @@ const PaymentRemainingReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
     const { user } = useAuthStore();
     const { getSetting } = useSettingsStore();
+    const isRTL = i18n.language === 'ar';
+    const alignStart = isRTL ? 'text-right' : 'text-left';
+    const alignEnd = isRTL ? 'text-left' : 'text-right';
+    const searchIconPosition = isRTL ? 'right-3' : 'left-3';
+    const searchPadding = isRTL ? 'pr-10' : 'pl-10';
 
     const [isLoading, setIsLoading] = useState(false);
     const [data, setData] = useState(null);
@@ -69,17 +75,17 @@ const PaymentRemainingReport = ({ isActive }) => {
         try {
             const res = await apiClient.get('/plans');
             setPlans(res.data.data || []);
-        } catch (e) { console.error(e); }
+        } catch (e) {}
     };
 
     const fetchEmployees = async () => {
         try {
             const res = await apiClient.get('/users/list');
             setEmployees(res.data.data || []);
-        } catch (e) { console.error(e); }
+        } catch (e) {}
     };
 
-    const fetchReport = async () => {
+    const fetchReport = useCallback(async () => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams({
@@ -91,17 +97,30 @@ const PaymentRemainingReport = ({ isActive }) => {
             if (filters.status.length > 0) params.append('status', filters.status.join(','));
             if (filters.employeeId) params.append('employeeId', filters.employeeId);
             if (filters.remainingOnly) params.append('remainingOnly', 'true');
+            params.append('_ts', Date.now().toString());
 
             const res = await apiClient.get(`/reports/payment-remaining?${params}`);
             setData(normalizeReportResponse(res.data.success ? res.data.data : null));
         } catch (error) {
-            console.error('Payment remaining report error:', error);
-            toast.error('Failed to fetch report');
+            toast.error(t('reports.errors.serverError', 'Failed to load report'));
             setData(normalizeReportResponse(null)); // Safe default
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [filters, t]);
+
+    useEffect(() => {
+        if (isActive) fetchReport();
+    }, [isActive, fetchReport]);
+
+    useEffect(() => {
+        if (!isActive) return;
+        const handlePaymentsUpdated = () => {
+            fetchReport();
+        };
+        window.addEventListener('payments:updated', handlePaymentsUpdated);
+        return () => window.removeEventListener('payments:updated', handlePaymentsUpdated);
+    }, [isActive, fetchReport]);
 
     const exportExcel = async () => {
         try {
@@ -124,18 +143,18 @@ const PaymentRemainingReport = ({ isActive }) => {
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success('Report exported');
+            toast.success(t('reports.exportSuccess', 'Report exported'));
         } catch (error) {
-            toast.error('Export failed');
+            toast.error(t('reports.exportFailed', 'Export failed'));
         }
     };
 
     const getStatusBadge = (status) => {
         const configs = {
-            unpaid: { label: 'غير مسدد', class: 'bg-red-500/20 text-red-400' },
-            partial: { label: 'سداد جزئي', class: 'bg-amber-500/20 text-amber-400' },
-            settled: { label: 'تم السداد', class: 'bg-emerald-500/20 text-emerald-400' },
-            overpaid: { label: 'دفع زائد', class: 'bg-blue-500/20 text-blue-400' }
+            unpaid: { label: t('reports.status.unpaid', 'Unpaid'), class: 'bg-red-500/20 text-red-400' },
+            partial: { label: t('reports.status.partial', 'Partial'), class: 'bg-amber-500/20 text-amber-400' },
+            settled: { label: t('reports.status.settled', 'Settled'), class: 'bg-emerald-500/20 text-emerald-400' },
+            overpaid: { label: t('reports.status.overpaid', 'Overpaid'), class: 'bg-blue-500/20 text-blue-400' }
         };
         const cfg = configs[status] || configs.unpaid;
         return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${cfg.class}`}>{cfg.label}</span>;
@@ -148,6 +167,13 @@ const PaymentRemainingReport = ({ isActive }) => {
                 ? prev.status.filter(x => x !== s)
                 : [...prev.status, s]
         }));
+    };
+
+    const statusLabels = {
+        unpaid: t('reports.status.unpaid', 'Unpaid'),
+        partial: t('reports.status.partial', 'Partial'),
+        settled: t('reports.status.settled', 'Settled'),
+        overpaid: t('reports.status.overpaid', 'Overpaid')
     };
 
     if (!isActive) return null;
@@ -174,69 +200,42 @@ const PaymentRemainingReport = ({ isActive }) => {
 
             {/* Summary Cards */}
             {data && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {/* Total Due */}
-                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                        <div className="flex-1">
-                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                                إجمالي المستحق
-                            </p>
-                            <h3 className="text-2xl font-bold text-white">
-                                {formatCurrency(data.summary.totalDue, i18n.language, currencyConf)}
-                            </h3>
-                        </div>
-                        <div className="p-3 bg-indigo-500 rounded-xl">
-                            <Banknote className="w-6 h-6 text-white" />
-                        </div>
-                    </div>
-
-                    {/* Paid */}
-                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                        <div className="flex-1">
-                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                                المدفوع
-                            </p>
-                            <h3 className="text-2xl font-bold text-white">
-                                {formatCurrency(data.summary.totalPaid, i18n.language, currencyConf)}
-                            </h3>
-                        </div>
-                        <div className="p-3 bg-emerald-500 rounded-xl">
-                            <DollarSign className="w-6 h-6 text-white" />
-                        </div>
-                    </div>
-
-                    {/* Remaining */}
-                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                        <div className="flex-1">
-                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                                المتبقي
-                            </p>
-                            <h3 className="text-2xl font-bold text-white">
-                                {formatCurrency(data.summary.totalRemaining, i18n.language, currencyConf)}
-                            </h3>
-                        </div>
-                        <div className="p-3 bg-red-500 rounded-xl">
-                            <AlertCircle className="w-6 h-6 text-white" />
-                        </div>
-                    </div>
-
-                    {/* Count */}
-                    <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                        <div className="flex-1">
-                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                                عدد الحالات
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-400">{data.summary.countUnpaid}</span>
-                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-400">{data.summary.countPartial}</span>
-                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400">{data.summary.countSettled}</span>
-                            </div>
-                        </div>
-                        <div className="p-3 bg-indigo-500 rounded-xl">
-                            <Users className="w-6 h-6 text-white" />
-                        </div>
-                    </div>
-                </div>
+                <ReportSummaryCards
+                    gridClassName="md:grid-cols-2 xl:grid-cols-4"
+                    items={[
+                        {
+                            label: t('reports.totalDue', 'Total due'),
+                            value: formatCurrency(data.summary.totalDue, i18n.language, currencyConf),
+                            icon: Banknote,
+                            iconClassName: 'bg-indigo-500'
+                        },
+                        {
+                            label: t('common.paid', 'Paid'),
+                            value: formatCurrency(data.summary.totalPaid, i18n.language, currencyConf),
+                            icon: DollarSign,
+                            iconClassName: 'bg-emerald-500'
+                        },
+                        {
+                            label: t('reports.remaining', 'Remaining'),
+                            value: formatCurrency(data.summary.totalRemaining, i18n.language, currencyConf),
+                            icon: AlertCircle,
+                            iconClassName: 'bg-red-500'
+                        },
+                        {
+                            label: t('reports.cases', 'Cases'),
+                            value: (
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-400">{data.summary.countUnpaid}</span>
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-400">{data.summary.countPartial}</span>
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400">{data.summary.countSettled}</span>
+                                </div>
+                            ),
+                            valueClassName: 'mt-1',
+                            icon: Users,
+                            iconClassName: 'bg-indigo-500'
+                        }
+                    ]}
+                />
             )}
 
             {/* Filters */}
@@ -245,7 +244,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[150px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Calendar size={14} />
-                            من
+                            {t('reports.from', 'From')}
                         </label>
                         <input
                             type="date"
@@ -257,7 +256,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[150px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Calendar size={14} />
-                            إلى
+                            {t('reports.to', 'To')}
                         </label>
                         <input
                             type="date"
@@ -269,24 +268,27 @@ const PaymentRemainingReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[200px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Search size={14} />
-                            بحث عن عضو
+                            {t('common.search', 'Search')}
                         </label>
-                        <input
-                            type="text"
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500"
-                            placeholder="اسم / رقم عضوية / هاتف"
-                            value={filters.search}
-                            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                        />
+                        <div className="relative">
+                            <Search className={`absolute ${searchIconPosition} top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400`} />
+                            <input
+                                type="text"
+                                className={`w-full h-11 ${searchPadding} bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500`}
+                                placeholder={t('reports.searchPlaceholder', 'Search name, code, or phone...')}
+                                value={filters.search}
+                                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                            />
+                        </div>
                     </div>
                     <div className="flex-1 min-w-[150px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400">الباقة</label>
+                        <label className="text-xs font-semibold text-gray-400">{t('reports.fields.planName', 'Plan')}</label>
                         <select
                             className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.planId}
                             onChange={(e) => setFilters({ ...filters, planId: e.target.value })}
                         >
-                            <option value="">جميع الباقات</option>
+                            <option value="">{t('reports.allPlans', 'All plans')}</option>
                             {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     </div>
@@ -304,7 +306,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                                     : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
                                     }`}
                             >
-                                {s === 'unpaid' ? 'غير مسدد' : s === 'partial' ? 'جزئي' : s === 'settled' ? 'تم السداد' : 'زائد'}
+                                {statusLabels[s]}
                             </button>
                         ))}
                     </div>
@@ -315,7 +317,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                         value={filters.employeeId}
                         onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}
                     >
-                        <option value="">جميع الموظفين</option>
+                        <option value="">{t('reports.allEmployees', 'All employees')}</option>
                         {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
                     </select>
 
@@ -327,7 +329,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                             onChange={(e) => setFilters({ ...filters, remainingOnly: e.target.checked })}
                             className="rounded w-4 h-4 accent-indigo-600 bg-slate-700 border-slate-600"
                         />
-                        إظهار المتبقي فقط
+                        {t('reports.remainingOnly', 'Remaining only')}
                     </label>
 
                     <div className="flex-1" />
@@ -338,14 +340,14 @@ const PaymentRemainingReport = ({ isActive }) => {
                         className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
                     >
                         {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
-                        تحديث
+                        {t('common.refresh', 'Refresh')}
                     </button>
                     <button
                         onClick={exportExcel}
                         className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
                     >
                         <FileSpreadsheet className="w-5 h-5" />
-                        تصدير Excel
+                        {t('reports.export', 'Export')}
                     </button>
                 </div>
             </div>
@@ -355,23 +357,23 @@ const PaymentRemainingReport = ({ isActive }) => {
                 {isLoading ? (
                     <div className="py-16 flex flex-col items-center justify-center">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">جاري التحميل...</p>
+                        <p className="text-sm text-gray-400 font-medium">{t('common.loading', 'Loading...')}</p>
                     </div>
                 ) : data && data.rows && data.rows.length > 0 ? (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-900/50 border-b border-slate-700/50">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-900/70 border-b border-slate-700/50 sticky top-0">
                                 <tr>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">اسم العضو</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">رقم العضوية</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">الباقة</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">إجمالي</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-emerald-500 uppercase tracking-wider">مدفوع</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-red-500 uppercase tracking-wider">متبقي</th>
-                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">الحالة</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">آخر دفعة</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">تم بواسطة</th>
-                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">الإجراءات</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.memberName', 'Member')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.memberId', 'Member ID')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.planName', 'Plan')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.total', 'Total')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-emerald-500 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.paidAmount', 'Paid')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-red-500 uppercase tracking-wider ${alignEnd}`}>{t('reports.remaining', 'Remaining')}</th>
+                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">{t('reports.fields.status', 'Status')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.lastPayment', 'Last payment')}</th>
+                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.paidBy', 'Processed by')}</th>
+                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">{t('common.actions', 'Actions')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-700/50">
@@ -384,25 +386,25 @@ const PaymentRemainingReport = ({ isActive }) => {
                                             transition={{ delay: idx * 0.02 }}
                                             className="hover:bg-slate-700/30 transition-colors"
                                         >
-                                            <td className="px-4 py-3 text-right font-medium text-white">{row.memberName}</td>
-                                            <td className="px-4 py-3 text-right text-gray-400 text-xs font-mono">{row.memberCode || '-'}</td>
-                                            <td className="px-4 py-3 text-right text-white">{row.planName}</td>
-                                            <td className="px-4 py-3 text-right font-mono text-white">
+                                            <td className={`px-4 py-3 ${alignStart} font-medium text-white`}>{row.memberName}</td>
+                                            <td className={`px-4 py-3 ${alignStart} text-gray-400 text-xs font-mono`}>{row.memberCode || '-'}</td>
+                                            <td className={`px-4 py-3 ${alignStart} text-white`}>{row.planName}</td>
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono text-white`}>
                                                 {formatCurrency(row.price, i18n.language, currencyConf)}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono text-emerald-500">
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono text-emerald-500`}>
                                                 {formatCurrency(row.paidAmount, i18n.language, currencyConf)}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono font-bold text-red-500">
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-red-500`}>
                                                 {formatCurrency(row.remainingAmount, i18n.language, currencyConf)}
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 {getStatusBadge(row.status)}
                                             </td>
-                                            <td className="px-4 py-3 text-right text-xs text-gray-400 font-mono">
+                                            <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400 font-mono`}>
                                                 {row.lastPaymentDate ? formatDateTime(row.lastPaymentDate, i18n.language) : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-right text-xs text-gray-400">
+                                            <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400`}>
                                                 {row.employeeName || '-'}
                                             </td>
                                             <td className="px-4 py-3 text-center">
@@ -414,14 +416,14 @@ const PaymentRemainingReport = ({ isActive }) => {
                                                             memberName: row.memberName
                                                         })}
                                                         className="p-1.5 hover:bg-slate-600 rounded text-indigo-400 transition-all text-xs border border-transparent hover:border-indigo-500/20"
-                                                        title="سجل الدفعات"
+                                                        title={t('reports.paymentHistory', 'Payment history')}
                                                     >
-                                                        سجل
+                                                        {t('reports.ledger', 'Ledger')}
                                                     </button>
                                                     <button
                                                         onClick={() => setViewMemberId(row.memberId)}
                                                         className="p-1.5 hover:bg-slate-600 rounded text-gray-400 hover:text-white transition-all"
-                                                        title="عرض العضو"
+                                                        title={t('reports.viewMember', 'View member')}
                                                     >
                                                         <Eye size={16} />
                                                     </button>
@@ -436,7 +438,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                 ) : (
                     <div className="py-16 flex flex-col items-center justify-center">
                         <AlertCircle className="w-12 h-12 text-gray-600 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">لا توجد بيانات متاحة</p>
+                        <p className="text-sm text-gray-400 font-medium">{t('common.noResults', 'No data available')}</p>
                     </div>
                 )}
             </div>

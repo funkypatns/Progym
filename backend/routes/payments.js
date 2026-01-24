@@ -10,6 +10,8 @@ const { authenticate, requireActiveShift, requirePermission } = require('../midd
 const { body, validationResult } = require('express-validator');
 const PDFDocument = require('pdfkit');
 const { v4: uuidv4 } = require('uuid');
+const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransaction } = require('../services/paymentService');
+const { roundMoney, clampMoney } = require('../utils/money');
 
 router.use(authenticate);
 
@@ -211,7 +213,7 @@ router.post('/verify-reference', async (req, res) => {
  */
 router.post('/', requirePermission('payments.create'), [
     body('memberId').isInt().withMessage('Valid member ID is required'),
-    body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number'),
+    body('amount').optional().isFloat({ min: 0 }).withMessage('Amount must be a positive number'),
     body('method').isIn(['cash', 'card', 'transfer', 'other']).withMessage('Invalid payment method')
 ], async (req, res) => {
     try {
@@ -222,29 +224,15 @@ router.post('/', requirePermission('payments.create'), [
         }
 
         const { memberId, subscriptionId, amount, method, notes, transactionRef, machineId, collectorId, collectorName, verificationMode, posAmountVerified } = req.body;
-
-        // DIAGNOSTIC: Log incoming request
-        console.log('[PAYMENTS POST] ================================');
-        console.log('[PAYMENTS POST] Req.body:', JSON.stringify(req.body, null, 2));
-        console.log('[PAYMENTS POST] User:', { id: req.user?.id, role: req.user?.role });
-        console.log('[PAYMENTS POST] ================================');
-
-        // DIAGNOSTIC-2: Log incoming request
-        console.log('[PAYMENTS POST] ================================');
-        console.log('[PAYMENTS POST] Req.body:', JSON.stringify(req.body, null, 2));
-        console.log('[PAYMENTS POST] Req.user:', { id: req.user?.id, role: req.user?.role, username: req.user?.username });
-        console.log('[PAYMENTS POST] Method after extract:', method);
-        console.log('[PAYMENTS POST] TransactionRef:', transactionRef);
-        console.log('[PAYMENTS POST] ================================');
-
-        // Validate transaction reference for Card/Visa
-        if ((method === 'card' || method === 'visa') && !transactionRef?.trim()) {
-            console.error('[PAYMENTS POST] Missing transactionRef for card/visa');
-            return res.status(400).json({
-                success: false,
-                message: 'Transaction reference is required for Card/Visa payments'
-            });
+        const paymentType = String(req.body.type || 'subscription').toLowerCase();
+        const paymentMode = String(req.body.paymentMode || req.body.paymentType || '').toLowerCase();
+        const normalizedPaymentMode = ['partial', 'full'].includes(paymentMode) ? paymentMode : null;
+        const rawAmount = amount !== undefined && amount !== null && amount !== '' ? Number(amount) : null;
+        if (rawAmount !== null && !Number.isFinite(rawAmount)) {
+            return res.status(400).json({ success: false, message: 'Invalid payment amount' });
         }
+        const amountValue = rawAmount !== null ? roundMoney(rawAmount) : null;
+
 
         let shiftId = null;
         let finalCreatedBy = req.user.id;
@@ -270,6 +258,21 @@ router.post('/', requirePermission('payments.create'), [
         });
         if (!member) {
             return res.status(404).json({ success: false, message: 'Member not found' });
+        }
+
+        const isSubscriptionPayment = paymentType === 'subscription' || normalizedPaymentMode;
+        if (isSubscriptionPayment && (!subscriptionId || !Number.isInteger(parseInt(subscriptionId)))) {
+            return res.status(400).json({
+                success: false,
+                message: 'Subscription is required to record this payment'
+            });
+        }
+
+        if (!isSubscriptionPayment && (amountValue === null || amountValue <= 0)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment amount must be greater than 0'
+            });
         }
 
         // POS SHIFT ENFORCEMENT (Strict Business Rule)
@@ -300,11 +303,22 @@ router.post('/', requirePermission('payments.create'), [
             }
         }
 
-        console.log(`[DEBUG] Final Shift ID for Payment: ${shiftId}`);
+        const normalizedMethod = normalizePaymentMethod(method);
+        const safeRef = resolvePaymentReference(normalizedMethod, null, transactionRef);
+
+        // Validate transaction reference for Card/Visa
+        if ((normalizedMethod === 'card' || normalizedMethod === 'visa') && !safeRef) {
+            console.error('[PAYMENTS POST] Missing transactionRef for card/visa');
+            return res.status(400).json({
+                success: false,
+                message: 'Transaction reference is required for Card/Visa payments'
+            });
+        }
 
         // TRANSACTIONAL UPDATE
         const result = await req.prisma.$transaction(async (prisma) => {
-            // 1. Subscription Logic
+            let resolvedAmount = amountValue;
+            // 1. Subscription validation (do not mutate until payment is confirmed)
             if (subscriptionId) {
                 const subIdInt = parseInt(subscriptionId);
                 const memIdInt = parseInt(memberId);
@@ -314,26 +328,37 @@ router.post('/', requirePermission('payments.create'), [
                     select: {
                         id: true,
                         paidAmount: true,
-                        plan: {
-                            select: { price: true }
-                        }
+                        price: true,
+                        plan: { select: { price: true } }
                     }
                 });
 
                 if (!subscription) throw new Error('SUBSCRIPTION_NOT_FOUND');
 
-                const planPrice = subscription.plan?.price || 0;
-                const currentPaid = subscription.paidAmount || 0;
-                const remaining = planPrice - currentPaid;
+                const planPrice = subscription.price ?? subscription.plan?.price ?? 0;
+                const currentPaid = roundMoney(subscription.paidAmount || 0);
+                const remaining = clampMoney(planPrice - currentPaid);
 
-                if (parseFloat(amount) > remaining + 0.01) {
-                    throw new Error(`OVERPAYMENT: Amount exceeds remaining balance (${remaining})`);
+                if (normalizedPaymentMode === 'full') {
+                    if (remaining <= 0) {
+                        throw new Error('ALREADY_PAID');
+                    }
+                    if (resolvedAmount === null || resolvedAmount <= 0) {
+                        resolvedAmount = remaining;
+                    } else if (Math.abs(resolvedAmount - remaining) > 0.01) {
+                        throw new Error(`FULL_PAYMENT_MISMATCH:${remaining}`);
+                    }
+                } else if (normalizedPaymentMode === 'partial') {
+                    if (resolvedAmount === null || resolvedAmount <= 0) {
+                        throw new Error('PARTIAL_AMOUNT_REQUIRED');
+                    }
+                } else if (resolvedAmount === null || resolvedAmount <= 0) {
+                    throw new Error('AMOUNT_REQUIRED');
                 }
 
-                await prisma.subscription.update({
-                    where: { id: subscription.id },
-                    data: { paidAmount: { increment: parseFloat(amount) } }
-                });
+                if (resolvedAmount > remaining + 0.01) {
+                    throw new Error(`OVERPAYMENT: Amount exceeds remaining balance (${remaining})`);
+                }
             }
 
             // schema.prisma (Runtime mismatch workaround: transactionRef field unknown to client)
@@ -348,73 +373,45 @@ router.post('/', requirePermission('payments.create'), [
             // createdBy Int?
             // collectorName String?
 
-            // Workaround: Append valid transactionRef to notes since column appears missing in generated client
-            let finalNotes = notes ? String(notes).trim() : '';
-            const safeRef = (transactionRef && transactionRef.trim() !== '') ? transactionRef.trim().toUpperCase() : null;
-            if (safeRef) {
-                finalNotes = finalNotes ? `${finalNotes} (Ref: ${safeRef})` : `Ref: ${safeRef}`;
-            }
-
-            const paymentMethod = String(method).toLowerCase().trim();
-
-            // Method-based validation: Card payments require reference
-            if ((paymentMethod === 'card' || paymentMethod === 'visa') && !safeRef) {
-                throw new Error('CARD_REF_REQUIRED');
-            }
-
-            // Build prismaData - ONLY include optional fields if they have values
-            // (Prisma treats null differently than undefined for optional fields)
-            const prismaData = {
-                memberId: parseInt(memberId),
-                amount: parseFloat(amount),
-                method: paymentMethod.toUpperCase(),
-                status: 'completed', // Match schema default and query filter
-                receiptNumber: generateReceiptNumber()
-            };
-
-            // Conditionally add optional fields only if they have values
-            if (subscriptionId) prismaData.subscriptionId = parseInt(subscriptionId);
-            if (finalNotes) prismaData.notes = finalNotes;
-            if (shiftId) prismaData.shiftId = parseInt(shiftId);
-            if (finalCreatedBy) prismaData.createdBy = parseInt(finalCreatedBy);
-            if (finalCollectorName) prismaData.collectorName = String(finalCollectorName).trim();
-
-            // Card-specific fields - only include if method is card AND value exists
-            if (paymentMethod === 'card' || paymentMethod === 'visa') {
-                if (safeRef) prismaData.externalReference = safeRef;
-                if (verificationMode) prismaData.verificationMode = verificationMode;
-                if (posAmountVerified) prismaData.posAmountVerified = parseFloat(posAmountVerified);
-            }
-
-            console.log('[PAYMENTS] incoming body:', req.body);
-            console.log('[PAYMENTS] prismaData constructed:', prismaData);
-
-            // 3. Create Payment
-            const payment = await prisma.payment.create({
-                data: prismaData,
-                include: {
-                    member: true,
-                    subscription: { include: { plan: true } }
-                }
+            // 3. Create Payment (shared service)
+            const paymentResult = await recordPaymentTransaction(prisma, {
+                memberId,
+                subscriptionId,
+                amount: resolvedAmount,
+                method: normalizedMethod,
+                status: 'completed',
+                notes,
+                shiftId,
+                createdBy: finalCreatedBy,
+                collectorName: finalCollectorName,
+                externalReference: safeRef,
+                transactionRef,
+                verificationMode,
+                posAmountVerified
             });
+            const payment = paymentResult.payment;
 
             // 4. Update subscription payment status if applicable
-            if (subscriptionId && payment.subscription) {
-                const sub = payment.subscription;
-                const totalPrice = sub.price || sub.plan?.price || 0;
+            if (subscriptionId) {
+                const sub = await prisma.subscription.findUnique({
+                    where: { id: parseInt(subscriptionId) },
+                    include: { plan: true }
+                });
+                if (!sub) throw new Error('SUBSCRIPTION_NOT_FOUND');
+
+                const totalPrice = roundMoney(sub.price ?? sub.plan?.price ?? 0);
 
                 // Get all payments for this subscription
                 const allPayments = await prisma.payment.findMany({
                     where: { subscriptionId: parseInt(subscriptionId), status: 'completed' },
                     select: { amount: true }
                 });
-                const totalPaid = allPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                const remaining = totalPrice - totalPaid;
+                const totalPaid = roundMoney(allPayments.reduce((sum, p) => sum + (p.amount || 0), 0));
 
                 // Update paidAmount on subscription
                 // NEW: Also update remainingAmount and paymentStatus
                 // Status logic: 
-                const newRemaining = Math.max(0, totalPrice - totalPaid);
+                const newRemaining = clampMoney(totalPrice - totalPaid);
                 let newStatus = 'unpaid';
                 if (totalPaid >= totalPrice - 0.01) newStatus = 'paid';
                 else if (totalPaid > 0) newStatus = 'partial';
@@ -422,13 +419,12 @@ router.post('/', requirePermission('payments.create'), [
                 await prisma.subscription.update({
                     where: { id: parseInt(subscriptionId) },
                     data: {
-                        paidAmount: totalPaid,
+                        paidAmount: roundMoney(totalPaid),
                         remainingAmount: newRemaining,
                         paymentStatus: newStatus
                     }
                 });
 
-                console.log(`[PAYMENTS] Subscription ${subscriptionId} updated: paid=${totalPaid}, remaining=${newRemaining}, status=${newStatus}`);
             }
 
             // 5. Log Activity
@@ -438,7 +434,7 @@ router.post('/', requirePermission('payments.create'), [
                     action: 'CREATE_PAYMENT',
                     entityType: 'Payment',
                     entityId: payment.id,
-                    details: JSON.stringify({ amount, method, subscriptionId })
+                    details: JSON.stringify({ amount: resolvedAmount, method, subscriptionId })
                 }
             });
 
@@ -463,6 +459,22 @@ router.post('/', requirePermission('payments.create'), [
         // KNOWN ERRORS
         if (error.message === 'SUBSCRIPTION_NOT_FOUND') {
             return res.status(404).json({ success: false, message: 'Subscription not found or does not belong to member' });
+        }
+        if (error.message === 'ALREADY_PAID') {
+            return res.status(400).json({ success: false, message: 'Subscription is already fully paid' });
+        }
+        if (error.message === 'PARTIAL_AMOUNT_REQUIRED') {
+            return res.status(400).json({ success: false, message: 'Partial payment amount must be greater than 0' });
+        }
+        if (error.message === 'AMOUNT_REQUIRED') {
+            return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+        }
+        if (error.message.startsWith('FULL_PAYMENT_MISMATCH:')) {
+            const remaining = error.message.split(':')[1];
+            return res.status(400).json({
+                success: false,
+                message: `Full payment must match remaining balance (${remaining})`
+            });
         }
         if (error.message.startsWith('OVERPAYMENT')) {
             return res.status(400).json({ success: false, message: error.message });
@@ -802,7 +814,7 @@ router.get('/:id', async (req, res) => {
             where: { id: paymentId },
             include: {
                 member: {
-                    select: { id: true, memberId: true, firstName: true, lastName: true }
+                    select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
                 },
                 subscription: {
                     include: { plan: true }

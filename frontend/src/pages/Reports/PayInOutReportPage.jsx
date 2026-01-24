@@ -9,6 +9,7 @@ const PayInOutReportPage = () => {
         <ReportsShell
             title={t('payInOut.title') || "Pay In / Out"}
             subtitle="Cash drawer manual movements"
+            centerHeader
         >
             <CashMovementsReport isActive={true} />
         </ReportsShell>

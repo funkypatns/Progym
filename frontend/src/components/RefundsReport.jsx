@@ -5,7 +5,6 @@ import {
     FileSpreadsheet,
     Loader2,
     Calendar,
-    Banknote,
     Info,
     RefreshCw,
     Eye,
@@ -20,12 +19,18 @@ import { formatCurrency, formatNumber } from '../utils/numberFormatter';
 import { useSettingsStore } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import MemberDetailsModal from './MemberDetailsModal';
+import ReportSummaryCards from './ReportSummaryCards';
 
 const RefundsReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
+    const isRTL = i18n.language === 'ar';
+    const alignStart = isRTL ? 'text-right' : 'text-left';
+    const alignEnd = isRTL ? 'text-left' : 'text-right';
+    const searchIconPosition = isRTL ? 'right-3' : 'left-3';
+    const searchPadding = isRTL ? 'pr-10' : 'pl-10';
 
-    const [data, setData] = useState({ rows: [], totals: { totalRefunded: 0, count: 0, thisMonthTotal: 0, thisMonthCount: 0 } });
+    const [data, setData] = useState({ rows: [], summary: { totalRefunded: 0, count: 0, thisMonthTotal: 0, thisMonthCount: 0 } });
     const [isLoading, setIsLoading] = useState(false);
     const [admins, setAdmins] = useState([]);
     const [expandedRow, setExpandedRow] = useState(null);
@@ -50,9 +55,7 @@ const RefundsReport = ({ isActive }) => {
             try {
                 const res = await api.get('/users/list');
                 setAdmins(res.data.data || []);
-            } catch (err) {
-                console.error("Failed to load admins list", err);
-            }
+            } catch (err) {}
         };
         if (isActive) fetchAdmins();
     }, [isActive]);
@@ -68,13 +71,22 @@ const RefundsReport = ({ isActive }) => {
             });
             const response = await api.get(`/reports/refunds?${params}`);
             if (response.data.success) {
-                setData(response.data.data);
+                const payload = response.data.data || {};
+                const summary = payload.summary || payload.totals || {};
+                setData({
+                    rows: Array.isArray(payload.rows) ? payload.rows : [],
+                    summary: {
+                        totalRefunded: summary.totalRefunded || 0,
+                        count: summary.count || 0,
+                        thisMonthTotal: summary.thisMonthTotal || 0,
+                        thisMonthCount: summary.thisMonthCount || 0
+                    }
+                });
             } else {
-                toast.error(response.data.message || t('common.error'));
+                toast.error(response.data.message || t('common.error', 'Error'));
             }
         } catch (error) {
-            console.error('Failed to fetch refunds report', error);
-            toast.error(t('reports.errors.serverError') || 'Failed to load report');
+            toast.error(t('reports.errors.serverError', 'Failed to load report'));
         } finally {
             setIsLoading(false);
         }
@@ -104,9 +116,9 @@ const RefundsReport = ({ isActive }) => {
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success(t('common.success'));
+            toast.success(t('common.success', 'Success'));
         } catch (error) {
-            toast.error(t('common.error'));
+            toast.error(t('common.error', 'Error'));
         }
     };
 
@@ -123,52 +135,29 @@ const RefundsReport = ({ isActive }) => {
             />
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Total Refunded */}
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                            {t(`${tPath}.totalRefunded`)}
-                        </p>
-                        <h3 className="text-2xl font-bold text-white">
-                            {formatCurrency(data?.totals?.totalRefunded || 0, i18n.language, currencyConf)}
-                        </h3>
-                    </div>
-                    <div className="p-3 bg-red-500 rounded-xl">
-                        <TrendingDown className="w-6 h-6 text-white" />
-                    </div>
-                </div>
-
-                {/* This Month */}
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                            {t(`${tPath}.thisMonth`)}
-                        </p>
-                        <h3 className="text-2xl font-bold text-white">
-                            {formatCurrency(data?.totals?.thisMonthTotal || 0, i18n.language, currencyConf)}
-                        </h3>
-                    </div>
-                    <div className="p-3 bg-indigo-500 rounded-xl">
-                        <Calendar className="w-6 h-6 text-white" />
-                    </div>
-                </div>
-
-                {/* Count */}
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-5 flex items-center justify-between">
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                            {t(`${tPath}.resultCount`)}
-                        </p>
-                        <h3 className="text-2xl font-bold text-white">
-                            {formatNumber(data?.totals?.count || 0, i18n.language)}
-                        </h3>
-                    </div>
-                    <div className="p-3 bg-amber-500 rounded-xl">
-                        <Info className="w-6 h-6 text-white" />
-                    </div>
-                </div>
-            </div>
+            <ReportSummaryCards
+                gridClassName="md:grid-cols-3"
+                items={[
+                    {
+                        label: t(`${tPath}.totalRefunded`, 'Total refunded'),
+                        value: formatCurrency(data?.summary?.totalRefunded || 0, i18n.language, currencyConf),
+                        icon: TrendingDown,
+                        iconClassName: 'bg-red-500'
+                    },
+                    {
+                        label: t(`${tPath}.thisMonth`, 'This month'),
+                        value: formatCurrency(data?.summary?.thisMonthTotal || 0, i18n.language, currencyConf),
+                        icon: Calendar,
+                        iconClassName: 'bg-indigo-500'
+                    },
+                    {
+                        label: t(`${tPath}.resultCount`, 'Count'),
+                        value: formatNumber(data?.summary?.count || 0, i18n.language),
+                        icon: Info,
+                        iconClassName: 'bg-amber-500'
+                    }
+                ]}
+            />
 
             {/* Filters */}
             <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
@@ -176,7 +165,7 @@ const RefundsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[160px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Calendar size={14} />
-                            {t('reports.from')}
+                            {t('reports.from', 'From')}
                         </label>
                         <input
                             type="date"
@@ -188,7 +177,7 @@ const RefundsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[160px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Calendar size={14} />
-                            {t('reports.to')}
+                            {t('reports.to', 'To')}
                         </label>
                         <input
                             type="date"
@@ -200,14 +189,14 @@ const RefundsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[160px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Users size={14} />
-                            {t('reports.filterByEmployee')}
+                            {t('reports.filterByEmployee', 'Filter by employee')}
                         </label>
                         <select
                             className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
                             value={filters.adminId}
                             onChange={(e) => setFilters({ ...filters, adminId: e.target.value })}
                         >
-                            <option value="all">{t('common.all')}</option>
+                            <option value="all">{t('common.all', 'All')}</option>
                             {admins.map(admin => (
                                 <option key={admin.id} value={admin.id}>
                                     {admin.firstName} {admin.lastName}
@@ -218,14 +207,14 @@ const RefundsReport = ({ isActive }) => {
                     <div className="flex-1 min-w-[200px] space-y-1.5">
                         <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                             <Search size={14} />
-                            {t('common.search')}
+                            {t('common.search', 'Search')}
                         </label>
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <Search className={`absolute ${searchIconPosition} top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400`} />
                             <input
                                 type="text"
-                                className="w-full h-11 pl-10 pr-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500"
-                                placeholder={t(`${tPath}.searchPlaceholder`) || 'Search...'}
+                                className={`w-full h-11 ${searchPadding} bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500`}
+                                placeholder={t(`${tPath}.searchPlaceholder`, 'Search...')}
                                 value={filters.search}
                                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                                 onKeyDown={(e) => e.key === 'Enter' && fetchRefunds()}
@@ -239,14 +228,14 @@ const RefundsReport = ({ isActive }) => {
                             className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
                         >
                             {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                            {t('common.refresh')}
+                            {t('common.refresh', 'Refresh')}
                         </button>
                         <button
                             onClick={handleExport}
                             className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
                         >
                             <FileSpreadsheet className="w-5 h-5" />
-                            {t(`${tPath}.exportExcel`)}
+                            {t(`${tPath}.exportExcel`, t('reports.export', 'Export'))}
                         </button>
                     </div>
                 </div>
@@ -255,18 +244,18 @@ const RefundsReport = ({ isActive }) => {
             {/* Table */}
             <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-900/50 border-b border-slate-700/50">
+                    <table className="w-full text-sm">
+                        <thead className="bg-slate-900/70 border-b border-slate-700/50 sticky top-0">
                             <tr>
                                 <th className="px-4 py-3 w-10"></th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t('reports.fields.paidAt')}</th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t(`${tPath}.transactionId`)}</th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t('reports.fields.memberName')}</th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Original Paid</th>
-                                <th className="px-4 py-3 text-xs font-bold text-red-500 uppercase tracking-wider text-right">Refunded</th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Cumulative</th>
-                                <th className="px-4 py-3 text-xs font-bold text-emerald-500 uppercase tracking-wider text-right">Net Remaining</th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{t(`${tPath}.admin`)}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.paidAt', 'Date')}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t(`${tPath}.transactionId`, 'Receipt ID')}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.memberName', 'Member')}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.originalPaid', 'Original paid')}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-red-500 uppercase tracking-wider ${alignEnd}`}>{t(`${tPath}.refundAmount`, t('reports.refunds.refunded', 'Refunded'))}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.cumulative', 'Cumulative')}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-emerald-500 uppercase tracking-wider ${alignEnd}`}>{t('reports.netRemaining', 'Net remaining')}</th>
+                                <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t(`${tPath}.admin`, t('reports.fields.paidBy', 'Processed by'))}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-700/50">
@@ -274,14 +263,14 @@ const RefundsReport = ({ isActive }) => {
                                 <tr>
                                     <td colSpan="9" className="p-12 text-center">
                                         <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-indigo-500" />
-                                        <p className="text-gray-400 font-medium">{t('common.loading')}</p>
+                                        <p className="text-gray-400 font-medium">{t('common.loading', 'Loading...')}</p>
                                     </td>
                                 </tr>
                             ) : (!data?.rows || data.rows.length === 0) ? (
                                 <tr>
                                     <td colSpan="9" className="p-12 text-center">
                                         <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-600" />
-                                        <p className="text-gray-400 font-medium">{t('common.noData')}</p>
+                                        <p className="text-gray-400 font-medium">{t('common.noResults', 'No data available')}</p>
                                     </td>
                                 </tr>
                             ) : (
@@ -294,19 +283,19 @@ const RefundsReport = ({ isActive }) => {
                                             <td className="px-4 py-3">
                                                 <Info className={`w-4 h-4 transition-transform ${expandedRow === row.id ? 'text-indigo-400 scale-125' : 'text-gray-500'}`} />
                                             </td>
-                                            <td className="px-4 py-3 text-white">
+                                            <td className={`px-4 py-3 text-white ${alignStart}`}>
                                                 <div>{row.refundedAt ? formatDateTime(row.refundedAt, i18n.language).split(',')[0] : 'N/A'}</div>
                                                 <div className="text-[10px] text-gray-500 font-mono">
                                                     {row.refundedAt ? formatDateTime(row.refundedAt, i18n.language).split(',')[1] : ''}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 font-mono text-xs text-indigo-400 font-bold">
+                                            <td className={`px-4 py-3 font-mono text-xs text-indigo-400 font-bold ${alignStart}`}>
                                                 #{row.receiptId || '0000'}
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className={`px-4 py-3 ${alignStart}`}>
                                                 <div className="flex items-center gap-2 group">
                                                     <div className="font-medium text-white">
-                                                        {row.member?.name || t('common.unknown')}
+                                                        {row.member?.name || t('common.unknown', 'Unknown')}
                                                     </div>
                                                     <span className="text-[10px] px-1 bg-slate-700 rounded text-gray-400 uppercase">{row.member?.code}</span>
                                                     {row.member?.id && (
@@ -322,19 +311,19 @@ const RefundsReport = ({ isActive }) => {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono text-xs text-gray-400">
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono text-xs text-gray-400`}>
                                                 {formatCurrency(row.originalPaid || 0, i18n.language, currencyConf)}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono font-bold text-red-500">
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-red-500`}>
                                                 {formatCurrency(row.amount || 0, i18n.language, currencyConf)}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono text-xs text-gray-500">
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono text-xs text-gray-500`}>
                                                 {formatCurrency(row.totalRefundedSoFar || 0, i18n.language, currencyConf)}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono font-bold text-emerald-500">
+                                            <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-emerald-500`}>
                                                 {formatCurrency(row.netRemaining || 0, i18n.language, currencyConf)}
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-gray-400">
+                                            <td className={`px-4 py-3 text-sm text-gray-400 ${alignStart}`}>
                                                 {row.processedBy?.name}
                                             </td>
                                         </tr>
@@ -353,37 +342,37 @@ const RefundsReport = ({ isActive }) => {
                                                             <div className="p-6 border-l-4 border-indigo-500 ml-4 my-2 space-y-4">
                                                                 <div className="flex justify-between items-start">
                                                                     <div>
-                                                                        <h4 className="text-sm font-bold text-white mb-1">Refund Audit Details</h4>
-                                                                        <p className="text-xs text-gray-500">Transaction details and history.</p>
+                                                                        <h4 className="text-sm font-bold text-white mb-1">{t('reports.refunds.auditDetails', 'Refund audit details')}</h4>
+                                                                        <p className="text-xs text-gray-500">{t('reports.refunds.auditSubtext', 'Transaction details and history.')}</p>
                                                                     </div>
                                                                     <div className="bg-slate-800 p-2 rounded border border-slate-700">
-                                                                        <span className="text-[10px] text-gray-400 uppercase mr-2">Method:</span>
+                                                                        <span className="text-[10px] text-gray-400 uppercase mr-2">{t('reports.fields.method', 'Method')}:</span>
                                                                         <span className="text-xs font-bold text-white capitalize">{row.method}</span>
                                                                     </div>
                                                                 </div>
 
                                                                 {row.reason && (
                                                                     <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
-                                                                        <p className="text-xs font-bold text-red-400 uppercase tracking-tighter mb-1">Reason for Refund</p>
+                                                                        <p className="text-xs font-bold text-red-400 uppercase tracking-tighter mb-1">{t('reports.refunds.reason', 'Reason for refund')}</p>
                                                                         <p className="text-sm text-gray-300 italic">"{row.reason}"</p>
                                                                     </div>
                                                                 )}
 
                                                                 <div className="grid grid-cols-4 gap-4">
                                                                     <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
-                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Original Activity</p>
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">{t('reports.refunds.originalActivity', 'Original activity')}</p>
                                                                         <p className="text-sm font-bold text-white uppercase truncate">{row.subscription?.name}</p>
                                                                     </div>
                                                                     <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
-                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Refund Issued By</p>
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">{t('reports.refunds.issuedBy', 'Refund issued by')}</p>
                                                                         <p className="text-sm font-bold text-white">{row.processedBy?.name}</p>
                                                                     </div>
                                                                     <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
-                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Action Date</p>
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">{t('reports.refunds.actionDate', 'Action date')}</p>
                                                                         <p className="text-sm font-bold text-white font-mono">{formatDateTime(row.refundedAt, i18n.language)}</p>
                                                                     </div>
                                                                     <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
-                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">Audit Trace</p>
+                                                                        <p className="text-[10px] text-gray-500 uppercase mb-1">{t('reports.refunds.auditTrace', 'Audit trace')}</p>
                                                                         <p className="text-sm font-bold text-indigo-400 font-mono">TXN-{row.id}</p>
                                                                     </div>
                                                                 </div>

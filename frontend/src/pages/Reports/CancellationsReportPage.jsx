@@ -7,8 +7,9 @@ const CancellationsReportPage = () => {
     const { t } = useTranslation();
     return (
         <ReportsShell
-            title={t('reports.cancellations') || "Cancellations"}
-            subtitle="Monthly cancellation report"
+            title={t('reports.cancellations', 'Cancellations')}
+            subtitle={t('reports.cancellations.subtitle', 'Monthly cancellation report')}
+            centerHeader
         >
             <CancellationsReport isActive={true} />
         </ReportsShell>

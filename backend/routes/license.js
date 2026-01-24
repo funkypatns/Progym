@@ -28,11 +28,15 @@ router.get('/status', async (req, res) => {
         });
 
     } catch (error) {
-        // This should never happen since getStatus() is now safe
+        // Fail-safe: never block UI with a 500 on license status
         console.error('License status unexpected error:', error);
-        res.status(500).json({
+        res.json({
             success: false,
-            message: 'Unexpected error checking license status',
+            data: {
+                valid: false,
+                status: 'error',
+                message: 'Unexpected error checking license status'
+            },
             debug: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
@@ -55,8 +59,9 @@ router.get('/hardware-id', (req, res) => {
 
     } catch (error) {
         console.error('Hardware ID error:', error);
-        res.status(500).json({
+        res.json({
             success: false,
+            data: { hardwareId: 'Unknown' },
             message: 'Failed to generate hardware ID'
         });
     }
@@ -130,9 +135,13 @@ router.post('/validate', async (req, res) => {
 
     } catch (error) {
         console.error('Validation error:', error);
-        res.status(500).json({
+        res.json({
             success: false,
-            message: 'Failed to validate license'
+            data: {
+                valid: false,
+                code: 'VALIDATION_ERROR',
+                message: 'Failed to validate license'
+            }
         });
     }
 });

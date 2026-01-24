@@ -11,6 +11,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubscriptionId }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
+    const roundMoney = (value) => {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return 0;
+        return Math.round((num + Number.EPSILON) * 100) / 100;
+    };
 
     // -- State --
     const [step, setStep] = useState(initialMember ? 2 : 1);
@@ -79,8 +84,18 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     }, [selectedMember, step]);
 
     useEffect(() => {
+        if (memberSubscriptions.length === 1 && !selectedSubscriptionId) {
+            handleSubscriptionSelect(memberSubscriptions[0]);
+        }
+    }, [memberSubscriptions, selectedSubscriptionId]);
+
+    useEffect(() => {
         if (paymentMode === 'full') {
             setPayNowAmount(totalDue > 0 ? totalDue.toString() : '');
+            return;
+        }
+        if (paymentMode === 'partial') {
+            setPayNowAmount('');
         }
     }, [totalDue, paymentMode]);
 
@@ -133,19 +148,34 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         try {
             setLoading(true);
             const res = await apiClient.get(`/subscriptions?memberId=${memberId}`);
-            if (res.data.success) setMemberSubscriptions(res.data.data.subscriptions || []);
+            if (res.data.success) {
+                const rawSubs = res.data.data.subscriptions || [];
+                const sorted = [...rawSubs].sort((a, b) => {
+                    const rank = (s) => (s.status === 'active' ? 0 : 1);
+                    const byStatus = rank(a) - rank(b);
+                    if (byStatus !== 0) return byStatus;
+                    const endA = a.endDate ? new Date(a.endDate).getTime() : 0;
+                    const endB = b.endDate ? new Date(b.endDate).getTime() : 0;
+                    return endB - endA;
+                });
+                setMemberSubscriptions(sorted);
+            }
         } catch (error) { toast.error(t('errors.fetchSubscriptions')); }
         finally { setLoading(false); }
     };
 
+    const getSubscriptionMeta = (sub) => {
+        const total = roundMoney(Number.isFinite(sub.price) ? sub.price : (Number.isFinite(sub.plan?.price) ? sub.plan.price : 0));
+        const paid = roundMoney(Number.isFinite(sub.paidAmount) ? sub.paidAmount : 0);
+        const remaining = roundMoney(Math.max(0, total - paid));
+        return { total, paid, remaining };
+    };
+
     const handleSubscriptionSelect = (sub) => {
         setSelectedSubscriptionId(sub.id);
-        const price = sub.price || sub.plan?.price || 0;
-        const paid = sub.paidAmount || 0;
-        const remaining = Math.max(0, price - paid);
-        setTotalDue(remaining);
-        setPayNowAmount(remaining.toString());
-        setPaymentMode(paid > 0 ? 'partial' : 'full');
+        const meta = getSubscriptionMeta(sub);
+        setTotalDue(meta.remaining);
+        setPaymentMode('full');
     };
 
     const startCamera = async () => {
@@ -175,7 +205,24 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     };
 
     const handleSubmit = async () => {
-        if (!selectedMember || !payNowAmount) return;
+        if (!selectedMember) return;
+        if (!selectedSubscriptionId) {
+            toast.error(t('payments.selectSubscription', 'Select a subscription first'));
+            return;
+        }
+        const amountValue = roundMoney(payNowAmount);
+        if (!Number.isFinite(amountValue) || amountValue <= 0) {
+            toast.error(t('payments.invalidAmount', 'Enter a valid amount'));
+            return;
+        }
+        if (totalDue <= 0) {
+            toast.error(t('payments.alreadyPaid', 'Subscription is already fully paid'));
+            return;
+        }
+        if (amountValue > totalDue + 0.01) {
+            toast.error(t('payments.amountExceedsRemaining', 'Amount exceeds remaining balance'));
+            return;
+        }
         if ((method === 'card' || method === 'transfer') && !transactionRef.trim()) {
             toast.error(t('payments.refRequired', 'Transaction Ref is required'));
             return;
@@ -185,19 +232,27 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         try {
             const payload = {
                 memberId: selectedMember.id,
-                amount: parseFloat(payNowAmount),
+                amount: amountValue,
                 method,
                 type,
+                paymentMode,
                 transactionRef: transactionRef || undefined,
                 date: new Date().toISOString()
             };
 
-            if (type === 'subscription' && selectedSubscriptionId) {
+            if (type === 'subscription') {
                 payload.subscriptionId = parseInt(selectedSubscriptionId);
             }
 
-            await apiClient.post('/payments', payload);
+            const response = await apiClient.post('/payments', payload);
             toast.success(t('payments.paymentRecorded'));
+            const paymentId = response?.data?.data?.id;
+            if (paymentId) {
+                window.open(`/payments/${paymentId}/receipt`, '_blank', 'noopener');
+            }
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('payments:updated'));
+            }
             if (onSuccess) onSuccess();
             onClose();
         } catch (e) {
@@ -225,7 +280,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         </div>
     );
 
-    const activeSubscription = memberSubscriptions.find(s => s.id === parseInt(selectedSubscriptionId));
+    const selectedSubscription = memberSubscriptions.find(s => s.id === parseInt(selectedSubscriptionId));
+    const selectedMeta = selectedSubscription ? getSubscriptionMeta(selectedSubscription) : null;
+    const isSubscriptionMissing = memberSubscriptions.length === 0;
+    const isSubscriptionSelected = Boolean(selectedSubscriptionId);
+    const isFullyPaid = totalDue <= 0;
+    const amountValue = roundMoney(payNowAmount);
+    const isAmountValid = Number.isFinite(amountValue) && amountValue > 0 && amountValue <= totalDue + 0.01;
+    const isConfirmDisabled = !isSubscriptionSelected || isFullyPaid || !isAmountValid || loading || ((method === 'card' || method === 'transfer') && !transactionRef);
 
     return (
         <AnimatePresence>
@@ -314,12 +376,12 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                         )}
                                     </div>
 
-                                    {activeSubscription ? (
+                                    {selectedSubscription ? (
                                         <div className="pt-3 border-t border-white/5 flex items-center justify-between">
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] font-black bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded-md uppercase tracking-tight border border-indigo-500/10">
-                                                        {activeSubscription.plan?.name}
+                                                        {selectedSubscription.plan?.name}
                                                     </span>
                                                     {totalDue > 0 ? (
                                                         <span className="text-[10px] font-black bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded-md uppercase tracking-tight border border-orange-500/10">DUE</span>
@@ -328,7 +390,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                                     )}
                                                 </div>
                                                 <div className="text-[9px] font-bold text-slate-500 flex items-center gap-1">
-                                                    <Clock size={10} /> {new Date(activeSubscription.startDate).toLocaleDateString()} - {new Date(activeSubscription.endDate).toLocaleDateString()}
+                                                    <Clock size={10} /> {new Date(selectedSubscription.startDate).toLocaleDateString()} - {new Date(selectedSubscription.endDate).toLocaleDateString()}
                                                 </div>
                                             </div>
                                             <div className="text-right">
@@ -338,7 +400,50 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                         </div>
                                     ) : (
                                         <div className="pt-3 border-t border-white/5">
-                                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest text-center py-2">No active subscription selected</p>
+                                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest text-center py-2">No subscription selected</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Subscription Selector */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Subscription</label>
+                                    {isSubscriptionMissing ? (
+                                        <div className="p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-bold uppercase tracking-widest text-center">
+                                            No subscription found. Create subscription first from Subscriptions.
+                                        </div>
+                                    ) : (
+                                        <select
+                                            className="w-full px-4 py-3 bg-slate-900/50 border border-white/5 rounded-2xl text-xs font-bold text-white outline-none focus:border-blue-500/50 transition-all"
+                                            value={selectedSubscriptionId}
+                                            onChange={(e) => {
+                                                const sub = memberSubscriptions.find(s => s.id === parseInt(e.target.value));
+                                                if (sub) handleSubscriptionSelect(sub);
+                                                else {
+                                                    setSelectedSubscriptionId('');
+                                                    setTotalDue(0);
+                                                    setPaymentMode('full');
+                                                    setPayNowAmount('');
+                                                }
+                                            }}
+                                        >
+                                            <option value="">Select a subscription...</option>
+                                            {memberSubscriptions.map(sub => {
+                                                const meta = getSubscriptionMeta(sub);
+                                                const status = (sub.status || '').toUpperCase();
+                                                return (
+                                                    <option key={sub.id} value={sub.id}>
+                                                        {sub.plan?.name || 'Plan'} • {meta.remaining} / {meta.total} EGP • {status}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    )}
+                                    {selectedMeta && (
+                                        <div className="grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-400">
+                                            <div className="p-2 bg-slate-900/40 rounded-xl text-center">Total: {selectedMeta.total}</div>
+                                            <div className="p-2 bg-slate-900/40 rounded-xl text-center text-emerald-400">Paid: {selectedMeta.paid}</div>
+                                            <div className="p-2 bg-slate-900/40 rounded-xl text-center text-orange-400">Remaining: {selectedMeta.remaining}</div>
                                         </div>
                                     )}
                                 </div>
@@ -346,9 +451,26 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                 {/* Amount Selector */}
                                 <div className="space-y-4">
                                     <div className="flex p-1 bg-slate-900/50 rounded-xl border border-white/5">
-                                        <button onClick={() => setPaymentMode('full')} className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'full' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>Full Payment</button>
-                                        <button onClick={() => setPaymentMode('partial')} className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'partial' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>Partial</button>
+                                        <button
+                                            onClick={() => setPaymentMode('full')}
+                                            disabled={isFullyPaid || !isSubscriptionSelected}
+                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'full' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'} ${isFullyPaid || !isSubscriptionSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        >
+                                            Full Payment
+                                        </button>
+                                        <button
+                                            onClick={() => setPaymentMode('partial')}
+                                            disabled={isFullyPaid || !isSubscriptionSelected}
+                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'partial' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'} ${isFullyPaid || !isSubscriptionSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        >
+                                            Partial
+                                        </button>
                                     </div>
+                                    {isFullyPaid && isSubscriptionSelected && (
+                                        <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-widest">
+                                            Already paid
+                                        </div>
+                                    )}
 
                                     <div className="relative group bg-slate-950/30 rounded-3xl p-6 border-2 border-white/5 focus-within:border-blue-500/50 transition-all text-center">
                                         <label className="absolute top-4 left-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount to Pay</label>
@@ -358,13 +480,20 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                                 type="number"
                                                 className="bg-transparent border-none text-5xl font-black text-white outline-none w-full text-center placeholder-slate-800"
                                                 value={payNowAmount}
+                                                readOnly={paymentMode === 'full'}
                                                 onChange={e => {
+                                                    if (paymentMode === 'full') return;
                                                     setPayNowAmount(e.target.value);
                                                     if (totalDue > 0) setPaymentMode('partial');
                                                 }}
                                                 placeholder="0.00"
                                             />
                                         </div>
+                                        {paymentMode === 'partial' && totalDue > 0 && (
+                                            <div className="mt-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                                Remaining: <span className="text-orange-500">{totalDue.toLocaleString()} EGP</span>
+                                            </div>
+                                        )}
                                         {totalDue > 0 && parseFloat(payNowAmount) > 0 && (
                                             <div className="mt-4 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2">
                                                 Remaining After: <span className="text-orange-500 text-xs font-black">{(totalDue - parseFloat(payNowAmount)).toLocaleString()} EGP</span>
@@ -417,7 +546,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                         {step === 2 && (
                             <button
                                 onClick={handleSubmit}
-                                disabled={!payNowAmount || loading || ((method === 'card' || method === 'transfer') && !transactionRef)}
+                                disabled={isConfirmDisabled}
                                 className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-900/40 transition-all flex justify-center items-center gap-2 active:scale-95"
                             >
                                 {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <div className="flex items-center gap-2 tracking-tighter font-black uppercase">Confirm Payment <Check size={18} strokeWidth={4} /></div>}

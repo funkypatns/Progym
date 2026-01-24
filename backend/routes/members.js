@@ -60,12 +60,17 @@ router.use(authenticate);
 /**
  * Generate unique member ID
  */
-async function generateMemberId(prisma) {
+async function generateMemberId(prisma, offset = 0) {
     const lastMember = await prisma.member.findFirst({
         orderBy: { id: 'desc' }
     });
 
-    const nextNum = lastMember ? parseInt(lastMember.memberId.split('-')[1]) + 1 : 1;
+    const lastId = lastMember?.memberId || '';
+    const match = lastId.match(/(\d+)\s*$/);
+    const lastNum = match ? parseInt(match[1], 10) : 0;
+    const baseNum = Number.isFinite(lastNum) ? lastNum : 0;
+    const nextNum = baseNum + 1 + Math.max(0, offset);
+
     return `GYM-${String(nextNum).padStart(4, '0')}`;
 }
 
@@ -334,13 +339,16 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
     body('lastName').trim().notEmpty().withMessage('Last name is required'),
     body('phone').trim().notEmpty().withMessage('Phone is required'),
     body('email').optional().isEmail().withMessage('Invalid email format'),
-    body('gender').optional({ nullable: true }).isIn(['male', 'female', 'unknown']).withMessage('Invalid gender')
+    body('gender').optional({ nullable: true }).isIn(['male', 'female', 'unknown']).withMessage('Invalid gender'),
+    body('dateOfBirth').optional({ nullable: true }).isISO8601().withMessage('Invalid date of birth')
 ], async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            const firstError = errors.array()[0];
             return res.status(400).json({
                 success: false,
+                message: firstError?.msg || 'Validation error',
                 errors: errors.array()
             });
         }
@@ -358,8 +366,17 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
             notes
         } = req.body;
 
-        // Generate unique member ID
-        const memberId = await generateMemberId(req.prisma);
+        if (process.env.NODE_ENV !== 'production') {
+            console.info('[MEMBERS][CREATE]', {
+                userId: req.user?.id,
+                firstName,
+                lastName,
+                phone,
+                email,
+                gender,
+                hasPhoto: Boolean(req.file)
+            });
+        }
 
         // Handle photo upload
         let photoPath = null;
@@ -367,39 +384,73 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
             photoPath = `/uploads/members/${req.file.filename}`;
         }
 
-        // Generate QR code
-        const qrCodePath = await generateQRCode(memberId, req.userDataPath);
+        // Create member (retry on memberId collision)
+        const baseMemberData = {
+            firstName,
+            lastName,
+            email: email || null,
+            phone: phone ? String(phone).trim() : phone,
+            address: address || null,
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+            gender: gender || null,
+            photo: photoPath,
+            emergencyContactName: emergencyContactName || null,
+            emergencyContactPhone: emergencyContactPhone || null,
+            notes: notes || null,
+            isActive: true
+        };
 
-        // Create member
-        const member = await req.prisma.member.create({
-            data: {
-                memberId,
-                firstName,
-                lastName,
-                email: email || null,
-                phone,
-                address: address || null,
-                dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-                gender: gender || null,
-                photo: photoPath,
-                qrCode: qrCodePath,
-                emergencyContactName: emergencyContactName || null,
-                emergencyContactPhone: emergencyContactPhone || null,
-                notes: notes || null,
-                isActive: true
+        const maxAttempts = 3;
+        let member = null;
+        let lastError = null;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            const memberId = await generateMemberId(req.prisma, attempt);
+            const qrCodePath = await generateQRCode(memberId, req.userDataPath);
+            try {
+                member = await req.prisma.member.create({
+                    data: {
+                        memberId,
+                        qrCode: qrCodePath,
+                        ...baseMemberData
+                    }
+                });
+                break;
+            } catch (err) {
+                if (err.code === 'P2002' && String(err.meta?.target || '').includes('memberId')) {
+                    try {
+                        const qrFilePath = path.join(req.userDataPath, 'uploads', 'qrcodes', `${memberId}.png`);
+                        if (fs.existsSync(qrFilePath)) {
+                            fs.unlinkSync(qrFilePath);
+                        }
+                    } catch (cleanupError) {
+                        console.warn('[MEMBERS][CREATE] Failed to cleanup QR file:', cleanupError.message);
+                    }
+                    lastError = err;
+                    continue;
+                }
+                throw err;
             }
-        });
+        }
+
+        if (!member) {
+            throw lastError || new Error('Failed to generate a unique member ID');
+        }
 
         // Log activity
-        await req.prisma.activityLog.create({
-            data: {
-                userId: req.user.id,
-                action: 'CREATE_MEMBER',
-                entityType: 'Member',
-                entityId: member.id,
-                details: JSON.stringify({ memberId: member.memberId })
-            }
-        });
+        try {
+            await req.prisma.activityLog.create({
+                data: {
+                    userId: req.user.id,
+                    action: 'CREATE_MEMBER',
+                    entityType: 'Member',
+                    entityId: member.id,
+                    details: JSON.stringify({ memberId: member.memberId })
+                }
+            });
+        } catch (logError) {
+            console.warn('[MEMBERS][CREATE] Activity log failed:', logError.message);
+        }
 
         res.status(201).json({
             success: true,
@@ -408,7 +459,26 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
         });
 
     } catch (error) {
+        if (req.file) {
+            try {
+                const uploadedPath = path.join(req.userDataPath, 'uploads', 'members', req.file.filename);
+                if (fs.existsSync(uploadedPath)) {
+                    fs.unlinkSync(uploadedPath);
+                }
+            } catch (cleanupError) {
+                console.warn('[MEMBERS][CREATE] Failed to cleanup uploaded file:', cleanupError.message);
+            }
+        }
+
         console.error('Create member error:', error);
+
+        if (error.code === 'P2002') {
+            return res.status(409).json({
+                success: false,
+                message: 'A member with this ID already exists. Please try again.'
+            });
+        }
+
         res.status(500).json({
             success: false,
             message: 'Failed to create member'

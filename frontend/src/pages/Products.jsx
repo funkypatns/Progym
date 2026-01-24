@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../utils/api';
 import { useTranslation } from 'react-i18next';
-import { Plus, Search, Package, ShoppingCart, Trash2, X, TrendingUp, DollarSign, Box } from 'lucide-react';
+import { Plus, Search, Package, ShoppingCart, Trash2, X, TrendingUp, DollarSign, Box, Edit3, ImagePlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 const Products = () => {
     const { t } = useTranslation();
@@ -30,19 +31,99 @@ const Products = () => {
     };
 
     const [showModal, setShowModal] = useState(false);
+    const [editingProduct, setEditingProduct] = useState(null);
     const [newProduct, setNewProduct] = useState({ name: '', sku: '', salePrice: '', description: '', isActive: true });
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState('');
+    const [imageError, setImageError] = useState('');
 
-    const handleAddProduct = async (e) => {
+    const resetModalState = () => {
+        setNewProduct({ name: '', sku: '', salePrice: '', description: '', isActive: true });
+        setEditingProduct(null);
+        setImageFile(null);
+        setImagePreview('');
+        setImageError('');
+    };
+
+    const closeModal = () => {
+        setShowModal(false);
+        resetModalState();
+    };
+
+    const openAddModal = () => {
+        resetModalState();
+        setShowModal(true);
+    };
+
+    const openEditModal = (product) => {
+        setEditingProduct(product);
+        setNewProduct({
+            name: product.name || '',
+            sku: product.sku || '',
+            salePrice: product.salePrice || '',
+            description: product.description || '',
+            isActive: product.isActive ?? true
+        });
+        setImageFile(null);
+        setImagePreview(product.imageUrl || '');
+        setImageError('');
+        setShowModal(true);
+    };
+
+    const handleImageChange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            setImageError('Supported formats: JPG, PNG, WEBP');
+            setImageFile(null);
+            return;
+        }
+
+        const maxSize = 5 * 1024 * 1024;
+        if (file.size > maxSize) {
+            setImageError('Max size is 5MB');
+            setImageFile(null);
+            return;
+        }
+
+        setImageError('');
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
+    };
+
+    const handleSaveProduct = async (e) => {
         e.preventDefault();
         try {
-            await apiClient.post('/products', newProduct);
-            alert('Product added successfully!');
+            const payload = new FormData();
+            payload.append('name', newProduct.name);
+            payload.append('sku', newProduct.sku || '');
+            payload.append('salePrice', newProduct.salePrice);
+            payload.append('description', newProduct.description || '');
+            payload.append('isActive', newProduct.isActive);
+            if (imageFile) {
+                payload.append('image', imageFile);
+            }
+
+            if (editingProduct) {
+                await apiClient.put(`/products/${editingProduct.id}`, payload, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                toast.success('Product updated');
+            } else {
+                await apiClient.post('/products', payload, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                toast.success('Product added');
+            }
+
             setShowModal(false);
-            setNewProduct({ name: '', sku: '', salePrice: '', description: '', isActive: true });
+            resetModalState();
             fetchProducts();
         } catch (error) {
             console.error(error);
-            alert('Failed to add product');
+            toast.error('Failed to save product');
         }
     };
 
@@ -117,7 +198,7 @@ const Products = () => {
 
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => setShowModal(true)}
+                                onClick={openAddModal}
                                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl font-bold shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] active:scale-95"
                             >
                                 <Plus size={20} />
@@ -223,14 +304,31 @@ const Products = () => {
                                 className="group bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-lg hover:shadow-2xl hover:shadow-indigo-500/20 transition-all duration-300 overflow-hidden hover:-translate-y-1"
                             >
                                 <div className="relative h-48 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 flex items-center justify-center overflow-hidden">
-                                    <Package className="text-indigo-300 dark:text-indigo-700 group-hover:scale-110 transition-transform duration-300" size={80} />
+                                    {product.imageUrl ? (
+                                        <img
+                                            src={product.imageUrl}
+                                            alt={product.name}
+                                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        />
+                                    ) : (
+                                        <div className="h-full w-full flex items-center justify-center">
+                                            <Package className="text-indigo-300 dark:text-indigo-700 group-hover:scale-110 transition-transform duration-300" size={80} />
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={() => openEditModal(product)}
+                                        className="absolute top-3 right-3 p-2 rounded-full bg-white/80 dark:bg-slate-900/80 text-indigo-600 dark:text-indigo-300 shadow-lg hover:scale-105 transition-transform"
+                                        title="Edit Product"
+                                    >
+                                        <Edit3 size={16} />
+                                    </button>
                                     {product.stock <= 0 && (
-                                        <div className="absolute top-3 right-3 px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-full shadow-lg">
+                                        <div className="absolute top-3 left-3 px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-full shadow-lg">
                                             Out of Stock
                                         </div>
                                     )}
                                     {product.stock > 0 && product.stock < 10 && (
-                                        <div className="absolute top-3 right-3 px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full shadow-lg">
+                                        <div className="absolute top-3 left-3 px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full shadow-lg">
                                             Low Stock
                                         </div>
                                     )}
@@ -292,7 +390,7 @@ const Products = () => {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
-                        onClick={() => setShowModal(false)}
+                        onClick={closeModal}
                     >
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
@@ -302,53 +400,84 @@ const Products = () => {
                             className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-white/10"
                         >
                             <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20">
-                                <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Add New Product</h3>
-                                <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                                <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
+                                    {editingProduct ? 'Edit Product' : 'Add New Product'}
+                                </h3>
+                                <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
                                     <X size={24} className="text-gray-500" />
                                 </button>
                             </div>
-                            <form onSubmit={handleAddProduct} className="p-6 space-y-5">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Product Name *</label>
-                                    <input
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
-                                        required
-                                        value={newProduct.name}
-                                        onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">SKU</label>
-                                        <input
-                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
-                                            value={newProduct.sku}
-                                            onChange={e => setNewProduct({ ...newProduct, sku: e.target.value })}
-                                        />
+                            <form onSubmit={handleSaveProduct} className="p-6 space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-6">
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Product Image</label>
+                                        <div className="relative w-full aspect-square rounded-2xl border border-dashed border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-slate-800/50 overflow-hidden flex items-center justify-center">
+                                            {imagePreview ? (
+                                                <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-2 text-gray-400">
+                                                    <ImagePlus size={32} />
+                                                    <span className="text-xs font-semibold">Upload</span>
+                                                </div>
+                                            )}
+                                            <input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp"
+                                                onChange={handleImageChange}
+                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                            />
+                                        </div>
+                                        {imageError && (
+                                            <p className="text-xs font-semibold text-red-500">{imageError}</p>
+                                        )}
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Price (EGP) *</label>
-                                        <input
-                                            type="number" step="0.01"
-                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
-                                            required
-                                            value={newProduct.salePrice}
-                                            onChange={e => setNewProduct({ ...newProduct, salePrice: e.target.value })}
-                                        />
+
+                                    <div className="space-y-5">
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Product Name *</label>
+                                            <input
+                                                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                                                required
+                                                value={newProduct.name}
+                                                onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">SKU</label>
+                                                <input
+                                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                                                    value={newProduct.sku}
+                                                    onChange={e => setNewProduct({ ...newProduct, sku: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Price (EGP) *</label>
+                                                <input
+                                                    type="number" step="0.01"
+                                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                                                    required
+                                                    value={newProduct.salePrice}
+                                                    onChange={e => setNewProduct({ ...newProduct, salePrice: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Description</label>
+                                            <textarea
+                                                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all resize-none"
+                                                rows="4"
+                                                value={newProduct.description}
+                                                onChange={e => setNewProduct({ ...newProduct, description: e.target.value })}
+                                            ></textarea>
+                                        </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Description</label>
-                                    <textarea
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all resize-none"
-                                        rows="4"
-                                        value={newProduct.description}
-                                        onChange={e => setNewProduct({ ...newProduct, description: e.target.value })}
-                                    ></textarea>
-                                </div>
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button type="button" onClick={() => setShowModal(false)} className="px-6 py-3 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 font-bold transition-all">Cancel</button>
-                                    <button type="submit" className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02]">Save Product</button>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" onClick={closeModal} className="px-6 py-3 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 font-bold transition-all">Cancel</button>
+                                    <button type="submit" className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02]">
+                                        {editingProduct ? 'Update Product' : 'Save Product'}
+                                    </button>
                                 </div>
                             </form>
                         </motion.div>
@@ -398,8 +527,12 @@ const Products = () => {
                                         exit={{ opacity: 0, x: 20 }}
                                         className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-white/5"
                                     >
-                                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-xl flex items-center justify-center">
-                                            <Package className="text-indigo-500" size={28} />
+                                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-xl flex items-center justify-center overflow-hidden">
+                                            {item.imageUrl ? (
+                                                <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <Package className="text-indigo-500" size={28} />
+                                            )}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-bold text-gray-900 dark:text-white truncate">{item.name}</h4>

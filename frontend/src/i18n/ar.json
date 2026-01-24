@@ -175,6 +175,7 @@
         "card": "بطاقة",
         "transfer": "تحويل بنكي",
         "receipt": "إيصال",
+        "receiptNotFound": "الإيصال غير موجود",
         "downloadReceipt": "تحميل الإيصال",
         "paymentRecorded": "تم تسجيل الدفعة بنجاح",
         "totalRevenue": "إجمالي الإيرادات",
@@ -336,6 +337,7 @@
         "search": "بحث",
         "filter": "تصفية",
         "export": "تصدير",
+        "print": "طباعة",
         "import": "استيراد",
         "loading": "جاري التحميل...",
         "noData": "لا توجد بيانات",
@@ -389,6 +391,7 @@
         "invalidPhone": "رقم الهاتف غير صالح",
         "minLength": "الحد الأدنى {{count}} أحرف",
         "maxLength": "الحد الأقصى {{count}} أحرف",
+        "partialAmountRange": "يجب أن تكون الدفعة الجزئية أقل من الإجمالي",
         "serverError": "خطأ في الخادم. يرجى المحاولة مرة أخرى.",
         "networkError": "خطأ في الشبكة. يرجى التحقق من الاتصال."
     },
@@ -415,11 +418,21 @@
     },
     "finance": {
         "amountToPay": "المبلغ المطلوب",
+        "paymentMode": "وضع الدفع",
+        "fullPayment": "كامل",
+        "partialPayment": "جزئي",
+        "amountPaidNow": "المبلغ المدفوع الآن",
+        "amountPaidNowPlaceholder": "0",
         "paymentMethod": "طريقة الدفع",
         "transactionRef": "رقم مرجع المعاملة",
         "transferRef": "رقم مرجع التحويل / الإيصال",
         "refPlaceholder": "امسح أو اكتب رقم المرجع...",
         "refRequired": "مطلوب للسجلات"
+    },
+    "receipt": {
+        "total": "الإجمالي",
+        "paidNow": "المدفوع الآن",
+        "remaining": "المتبقي"
     },
     "cashClosing": {
         "title": "تقفيل الكاش",

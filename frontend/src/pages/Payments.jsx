@@ -22,6 +22,15 @@ const Payments = () => {
         fetchPayments();
     }, []);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handlePaymentsUpdated = () => {
+            fetchPayments();
+        };
+        window.addEventListener('payments:updated', handlePaymentsUpdated);
+        return () => window.removeEventListener('payments:updated', handlePaymentsUpdated);
+    }, []);
+
     const fetchPayments = async () => {
         setLoading(true);
         try {

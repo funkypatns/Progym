@@ -695,4 +695,184 @@ router.get('/chart/refunds', authenticate, requirePermission('dashboard.view_fin
     }
 });
 
+/**
+ * GET /api/dashboard/chart/net
+ * Get net revenue chart data (gross - refunds)
+ */
+router.get('/chart/net', authenticate, requirePermission('dashboard.view_financials'), async (req, res) => {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+        if (req.user.role !== 'admin') {
+            return res.json({ success: true, data: [] });
+        }
+
+        const { period = 'month' } = req.query;
+        const validPeriods = ['week', 'month', 'year'];
+        if (!validPeriods.includes(period)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid period. Must be one of: ${validPeriods.join(', ')}`,
+                requestId
+            });
+        }
+
+        const now = new Date();
+        let startDate;
+        let groupBy;
+
+        if (period === 'week') {
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            groupBy = 'day';
+        } else if (period === 'month') {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            groupBy = 'day';
+        } else {
+            startDate = new Date(now.getFullYear(), 0, 1);
+            groupBy = 'month';
+        }
+
+        const [payments, refunds] = await Promise.all([
+            req.prisma.payment.findMany({
+                where: {
+                    status: { in: ['completed', 'refunded', 'Partial Refund'] },
+                    paidAt: { gte: startDate, lte: now }
+                },
+                select: { amount: true, paidAt: true }
+            }),
+            req.prisma.refund.findMany({
+                where: {
+                    createdAt: { gte: startDate, lte: now }
+                },
+                select: { amount: true, createdAt: true }
+            })
+        ]);
+
+        const grouped = {};
+        const formatKey = (date) => {
+            if (groupBy === 'day') {
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+            return date.toLocaleDateString('en-US', { month: 'short' });
+        };
+
+        payments.forEach(p => {
+            if (!p.paidAt) return;
+            const key = formatKey(new Date(p.paidAt));
+            if (!grouped[key]) {
+                grouped[key] = { date: key, gross: 0, refunds: 0, net: 0 };
+            }
+            grouped[key].gross += (p.amount || 0);
+        });
+
+        refunds.forEach(r => {
+            if (!r.createdAt) return;
+            const key = formatKey(new Date(r.createdAt));
+            if (!grouped[key]) {
+                grouped[key] = { date: key, gross: 0, refunds: 0, net: 0 };
+            }
+            grouped[key].refunds += (r.amount || 0);
+        });
+
+        const chartData = Object.values(grouped).map((row) => {
+            const net = row.gross - row.refunds;
+            return {
+                date: row.date,
+                gross: parseFloat(row.gross.toFixed(2)),
+                refunds: parseFloat(row.refunds.toFixed(2)),
+                net: parseFloat(net.toFixed(2))
+            };
+        }).sort((a, b) => {
+            if (groupBy === 'day') {
+                return new Date(a.date + ', ' + now.getFullYear()) - new Date(b.date + ', ' + now.getFullYear());
+            }
+            return new Date(a.date + ' 1, ' + now.getFullYear()) - new Date(b.date + ' 1, ' + now.getFullYear());
+        });
+
+        res.json({ success: true, data: chartData });
+    } catch (error) {
+        console.error(`[Dashboard Net Chart Error] [${requestId}]`, error);
+        res.status(500).json({
+            success: false,
+            message: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch net revenue chart',
+            code: 'NET_CHART_ERROR',
+            requestId
+        });
+    }
+});
+
+/**
+ * GET /api/dashboard/chart/members
+ * Get new members chart data
+ */
+router.get('/chart/members', authenticate, requirePermission('members.view'), async (req, res) => {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+        const { period = 'month' } = req.query;
+        const validPeriods = ['week', 'month', 'year'];
+        if (!validPeriods.includes(period)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid period. Must be one of: ${validPeriods.join(', ')}`,
+                requestId
+            });
+        }
+
+        const now = new Date();
+        let startDate;
+        let groupBy;
+
+        if (period === 'week') {
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            groupBy = 'day';
+        } else if (period === 'month') {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            groupBy = 'day';
+        } else {
+            startDate = new Date(now.getFullYear(), 0, 1);
+            groupBy = 'month';
+        }
+
+        const members = await req.prisma.member.findMany({
+            where: {
+                createdAt: { gte: startDate, lte: now }
+            },
+            select: { createdAt: true }
+        });
+
+        const grouped = {};
+        const formatKey = (date) => {
+            if (groupBy === 'day') {
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+            return date.toLocaleDateString('en-US', { month: 'short' });
+        };
+
+        members.forEach(m => {
+            if (!m.createdAt) return;
+            const key = formatKey(new Date(m.createdAt));
+            if (!grouped[key]) {
+                grouped[key] = { date: key, count: 0 };
+            }
+            grouped[key].count += 1;
+        });
+
+        const chartData = Object.values(grouped).sort((a, b) => {
+            if (groupBy === 'day') {
+                return new Date(a.date + ', ' + now.getFullYear()) - new Date(b.date + ', ' + now.getFullYear());
+            }
+            return new Date(a.date + ' 1, ' + now.getFullYear()) - new Date(b.date + ' 1, ' + now.getFullYear());
+        });
+
+        res.json({ success: true, data: chartData });
+    } catch (error) {
+        console.error(`[Dashboard Members Chart Error] [${requestId}]`, error);
+        res.status(500).json({
+            success: false,
+            message: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch members chart',
+            code: 'MEMBERS_CHART_ERROR',
+            requestId
+        });
+    }
+});
+
 module.exports = router;
