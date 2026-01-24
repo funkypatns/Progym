@@ -58,6 +58,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-24 | bc3532a  | Embed receipt preview and print inside Assign Subscription modal. |
 | 2026-01-24 | 5fe6a6d  | Add print-last-receipt support in payment modals with latest receipt fetch. |
 | 2026-01-24 | bffbc9f  | Always show Print Last Receipt in Assign Subscription modal step 3. |
+| 2026-01-24 | 12889d5 | Disable report caching and normalize payments summary data. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
