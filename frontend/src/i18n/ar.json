@@ -177,6 +177,7 @@
         "receipt": "إيصال",
         "receiptNotFound": "الإيصال غير موجود",
         "downloadReceipt": "تحميل الإيصال",
+        "printReceipt": "طباعة الإيصال",
         "paymentRecorded": "تم تسجيل الدفعة بنجاح",
         "totalRevenue": "إجمالي الإيرادات",
         "noPayments": "لا توجد مدفوعات",
@@ -431,6 +432,7 @@
     },
     "receipt": {
         "paymentTitle": "إيصال الدفع",
+        "fullPayment": "دفع كامل",
         "partialPayment": "دفعة جزئية",
         "paidToDate": "المدفوع حتى الآن",
         "remainingAfter": "المتبقي بعد الدفع",

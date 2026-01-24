@@ -652,7 +652,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                     disabled={!receiptPayment || receiptLoading}
                                     className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-900/30 transition-all flex items-center justify-center gap-2"
                                 >
-                                    <Printer size={16} /> {t('common.print', 'Print')}
+                                    <Printer size={16} /> {t('payments.printReceipt', 'Print Receipt')}
                                 </button>
                                 <button
                                     onClick={onClose}

@@ -19,6 +19,7 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
     const rawRemaining = payment.subscription?.remainingAmount;
     const paidNow = Math.abs(Number(payment.amount || 0));
     const isRefund = Number(payment.amount) < 0 || String(payment.status || '').toLowerCase().includes('refund');
+    const paymentMode = String(payment.paymentMode || payment.mode || '').toLowerCase();
 
     let paidToDate = Number.isFinite(Number(rawPaidToDate)) ? Number(rawPaidToDate) : null;
     let remainingAmount = Number.isFinite(Number(rawRemaining)) ? Number(rawRemaining) : null;
@@ -30,11 +31,13 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
         remainingAmount = Math.max(0, Number(totalPrice) - Number(paidToDate));
     }
 
-    const isPartial = !isRefund
+    const isPartial = (!isRefund
         && Number.isFinite(Number(totalPrice))
         && Number.isFinite(Number(paidToDate))
         && paidToDate > 0
-        && paidToDate < Number(totalPrice) - 0.01;
+        && paidToDate < Number(totalPrice) - 0.01)
+        || paymentMode === 'partial';
+    const isFull = !isRefund && !isPartial;
 
     const reference = payment.externalReference || payment.transactionRef || null;
     const staffName = payment.collectorName || (payment.creator ? `${payment.creator.firstName} ${payment.creator.lastName}` : 'System');
@@ -64,6 +67,11 @@ export const PaymentReceipt = forwardRef(({ payment, currencyConf, gymName, gymL
                     {isPartial && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-50 text-amber-600 border border-amber-100">
                             {t('receipt.partialPayment', 'PARTIAL PAYMENT')}
+                        </span>
+                    )}
+                    {isFull && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100">
+                            {t('receipt.fullPayment', 'FULL PAYMENT')}
                         </span>
                     )}
                 </div>

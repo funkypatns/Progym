@@ -175,6 +175,7 @@
         "receipt": "Receipt",
         "receiptNotFound": "Receipt not found",
         "downloadReceipt": "Download Receipt",
+        "printReceipt": "Print Receipt",
         "paymentRecorded": "Payment recorded successfully",
         "totalRevenue": "Total Revenue",
         "noPayments": "No payments found",
@@ -491,6 +492,7 @@
     },
     "receipt": {
         "paymentTitle": "Payment Receipt",
+        "fullPayment": "Full Payment",
         "partialPayment": "Partial Payment",
         "paidToDate": "Paid to date",
         "remainingAfter": "Remaining after",
