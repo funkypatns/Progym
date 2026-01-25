@@ -504,7 +504,9 @@
         "successTitle": "تمت العملية",
         "successSubtitle": "اختر إجراء",
         "newSale": "بدء بيع جديد",
-        "failed": "فشل البيع"
+        "failed": "فشل البيع",
+        "shiftRequired": "افتح وردية قبل البيع",
+        "cashierRequired": "تسجيل الدخول مطلوب لإتمام البيع"
     },
     "cashClosing": {
         "title": "تقفيل الكاش",

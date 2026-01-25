@@ -19,9 +19,36 @@ const saleValidation = [
     body('items').isArray({ min: 1 }).withMessage('Cart cannot be empty'),
     body('items.*.productId').isInt().withMessage('Invalid product ID'),
     body('items.*.qty').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-    body('paymentMethod').isIn(['cash', 'card', 'transfer', 'mixed']).withMessage('Invalid payment method'),
+    body('paymentMethod').isString().trim().notEmpty().withMessage('Payment method is required'),
+    body('shiftId').isInt({ min: 1 }).withMessage('shiftId is required'),
+    body('cashierId').isInt({ min: 1 }).withMessage('cashierId is required'),
+    body('paid').isFloat({ min: 0 }).withMessage('paid must be a number >= 0'),
+    body('total').isFloat({ min: 0 }).withMessage('total must be a number >= 0'),
     body('notes').optional().trim()
 ];
+
+const VALID_PAYMENT_METHODS = ['cash', 'card', 'transfer', 'wallet', 'mixed'];
+
+const normalizePaymentMethod = (method) => {
+    if (method === undefined || method === null) return '';
+    return String(method).trim().toLowerCase();
+};
+
+const buildFieldErrors = (errorsArray) => {
+    return errorsArray.reduce((acc, err) => {
+        if (!acc[err.param]) {
+            acc[err.param] = err.msg;
+        }
+        return acc;
+    }, {});
+};
+
+const createBadRequest = (message, fieldErrors) => {
+    const err = new Error(message);
+    err.status = 400;
+    if (fieldErrors) err.fieldErrors = fieldErrors;
+    return err;
+};
 
 /**
  * POST /api/sales
@@ -29,11 +56,68 @@ const saleValidation = [
  */
 router.post('/', requireActiveShift, saleValidation, async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+    if (!errors.isEmpty()) {
+        const fieldErrors = buildFieldErrors(errors.array());
+        return res.status(400).json({
+            success: false,
+            message: 'Validation failed',
+            fieldErrors
+        });
+    }
 
     try {
-        const { items, paymentMethod, notes } = req.body;
-        const shiftId = req.activeShift.id;
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+        if (!req.activeShift) {
+            return res.status(403).json({ success: false, message: 'No active shift found' });
+        }
+
+        const { items, paymentMethod, notes, shiftId, cashierId, paid, total } = req.body;
+        const normalizedMethod = normalizePaymentMethod(paymentMethod);
+        if (!VALID_PAYMENT_METHODS.includes(normalizedMethod)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                fieldErrors: { paymentMethod: 'Invalid payment method' }
+            });
+        }
+
+        const parsedShiftId = parseInt(shiftId, 10);
+        const parsedCashierId = parseInt(cashierId, 10);
+        if (parsedShiftId !== req.activeShift.id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                fieldErrors: { shiftId: 'shiftId does not match the active shift' }
+            });
+        }
+        if (parsedCashierId !== req.user.id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                fieldErrors: { cashierId: 'cashierId does not match the logged-in user' }
+            });
+        }
+
+        const paidAmount = Number(paid);
+        const totalAmountInput = Number(total);
+        if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                fieldErrors: { paid: 'paid must be a number >= 0' }
+            });
+        }
+        if (!Number.isFinite(totalAmountInput) || totalAmountInput < 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                fieldErrors: { total: 'total must be a number >= 0' }
+            });
+        }
+
+        const shiftIdValue = req.activeShift.id;
         const employeeId = req.user.id;
         const staffName = `${req.user.firstName} ${req.user.lastName}`;
 
@@ -46,12 +130,24 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
             const receiptItems = [];
 
             for (const item of items) {
+                const productId = parseInt(item.productId, 10);
+                const qty = parseInt(item.qty, 10);
+                if (!Number.isInteger(productId) || !Number.isInteger(qty) || qty < 1) {
+                    throw createBadRequest('Invalid sale item', {
+                        items: 'Each item must include a valid productId and qty'
+                    });
+                }
+
                 const product = await prisma.product.findUnique({
-                    where: { id: item.productId },
+                    where: { id: productId },
                     include: { stockMovements: true } // Need to calc stock? Or trust frontend?
                 });
 
-                if (!product) throw new Error(`Product ID ${item.productId} not found`);
+                if (!product) {
+                    throw createBadRequest(`Product ID ${productId} not found`, {
+                        productId: `Product ${productId} not found`
+                    });
+                }
                 if (!product.isActive) throw new Error(`Product ${product.name} is inactive`);
 
                 // Calc current stock
@@ -61,16 +157,18 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
                             m.quantity); // ADJUST is signed
                 }, 0);
 
-                if (currentStock < item.qty) {
-                    throw new Error(`Insufficient stock for ${product.name}. Available: ${currentStock}`);
+                if (currentStock < qty) {
+                    throw createBadRequest(`Insufficient stock for ${product.name}. Available: ${currentStock}`, {
+                        stock: `Insufficient stock for ${product.name}`
+                    });
                 }
 
-                const lineTotal = product.salePrice * item.qty;
+                const lineTotal = product.salePrice * qty;
                 totalAmount += lineTotal;
 
                 saleItemsData.push({
                     productId: product.id,
-                    quantity: item.qty,
+                    quantity: qty,
                     unitPrice: product.salePrice, // Lock price at time of sale
                     lineTotal
                 });
@@ -78,18 +176,30 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
                 receiptItems.push({
                     type: 'product',
                     name: product.name,
-                    qty: item.qty,
+                    qty,
                     unitPrice: product.salePrice,
                     lineTotal
+                });
+            }
+
+            if (Math.abs(totalAmountInput - totalAmount) > 0.01) {
+                throw createBadRequest('Total does not match cart amount', {
+                    total: 'Total does not match the cart total'
+                });
+            }
+
+            if (Math.abs(paidAmount - totalAmountInput) > 0.01) {
+                throw createBadRequest('Paid amount must equal total for POS sales', {
+                    paid: 'Paid amount must equal total'
                 });
             }
 
             // 2. Create Sale Transaction
             const sale = await prisma.saleTransaction.create({
                 data: {
-                    shiftId,
+                    shiftId: shiftIdValue,
                     employeeId,
-                    paymentMethod,
+                    paymentMethod: normalizedMethod,
                     totalAmount,
                     notes,
                     items: {
@@ -108,7 +218,7 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
                         quantity: item.quantity,
                         reason: `Sale #${sale.id}`,
                         employeeId,
-                        shiftId
+                        shiftId: shiftIdValue
                     }
                 });
             }
@@ -116,7 +226,7 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
             const receiptResult = await createReceipt(prisma, {
                 transactionType: 'sale',
                 transactionId: sale.id,
-                paymentMethod: paymentMethod,
+                paymentMethod: normalizedMethod,
                 customerName: null,
                 customerPhone: null,
                 staffId: employeeId,
@@ -127,8 +237,8 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
                     discount: 0,
                     tax: 0,
                     total: totalAmount,
-                    paid: totalAmount,
-                    remaining: 0,
+                    paid: paidAmount,
+                    remaining: Math.max(totalAmount - paidAmount, 0),
                     change: 0
                 },
                 createdAt: sale.createdAt
@@ -149,8 +259,19 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
         });
 
     } catch (error) {
+        if (error && error.status === 400) {
+            return res.status(400).json({
+                success: false,
+                message: error.message || 'Validation failed',
+                fieldErrors: error.fieldErrors || undefined
+            });
+        }
         console.error('Sale transaction error:', error);
-        res.status(400).json({ success: false, message: error.message || 'Transaction failed' });
+        res.status(500).json({
+            success: false,
+            message: 'Sale creation failed',
+            details: error.message || 'Transaction failed'
+        });
     }
 });
 

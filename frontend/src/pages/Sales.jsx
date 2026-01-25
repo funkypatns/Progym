@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../utils/api';
 import { useTranslation } from 'react-i18next';
-import { usePosStore, useSettingsStore } from '../store';
+import { usePosStore, useSettingsStore, useAuthStore } from '../store';
 import { toast } from 'react-hot-toast';
 import { ShoppingCart, Trash2, Plus, Minus, Search, CreditCard, Banknote, Package, TrendingUp, DollarSign, AlertCircle, CheckCircle, Printer, Eye, RotateCcw, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,7 @@ import ThermalReceipt from '../components/receipts/ThermalReceipt';
 const Sales = () => {
     const { t, i18n } = useTranslation();
     const { currentShift } = usePosStore();
+    const { user } = useAuthStore();
     const { getSetting } = useSettingsStore();
     const receiptRef = useRef(null);
     const [products, setProducts] = useState([]);
@@ -111,11 +112,25 @@ const Sales = () => {
 
     const handleCheckout = async () => {
         if (!cart.length) return;
+        if (!currentShift?.id) {
+            return toast.error(t('sales.shiftRequired', 'Open a shift before selling'));
+        }
+        if (!user?.id) {
+            return toast.error(t('sales.cashierRequired', 'Login required to complete sale'));
+        }
         try {
             const response = await apiClient.post('/sales', {
-                items: cart.map(x => ({ productId: x.id, qty: x.qty })),
+                items: cart.map(x => ({
+                    productId: x.id,
+                    qty: x.qty,
+                    unitPrice: x.salePrice
+                })),
                 paymentMethod: 'cash',
-                notes: 'Quick Sale'
+                paid: total,
+                total,
+                notes: 'Quick Sale',
+                shiftId: currentShift.id,
+                cashierId: user.id
             });
             const receiptData = response.data?.data?.receipt || null;
             const receiptCreated = response.data?.data?.receiptCreated ?? true;
@@ -133,7 +148,8 @@ const Sales = () => {
             }
             setCart([]);
         } catch (e) {
-            toast.error(t('sales.failed', 'Sale failed'));
+            const message = e.response?.data?.message || e.message || t('sales.failed', 'Sale failed');
+            toast.error(message);
         }
     };
 

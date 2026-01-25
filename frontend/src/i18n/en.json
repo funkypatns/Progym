@@ -570,6 +570,8 @@
         "successTitle": "Sale completed",
         "successSubtitle": "Choose an action",
         "newSale": "Start New Sale",
-        "failed": "Sale failed"
+        "failed": "Sale failed",
+        "shiftRequired": "Open a shift before selling",
+        "cashierRequired": "Login required to complete sale"
     }
 }
