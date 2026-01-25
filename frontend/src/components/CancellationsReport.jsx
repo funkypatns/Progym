@@ -224,16 +224,30 @@ const CancellationsReport = ({ isActive }) => {
                             <tbody className="divide-y divide-slate-700/50">
                                 {data.report.map((item, idx) => (
                                     <tr key={idx} className="hover:bg-slate-700/30 transition-colors group">
+                                        {(() => {
+                                            const memberName = item.member?.name
+                                                || [item.member?.firstName, item.member?.lastName].filter(Boolean).join(' ')
+                                                || '-';
+                                            const memberPhone = item.member?.phone || '';
+                                            const planName = item.plan?.name_ar || item.plan?.name_en || item.plan?.name || '-';
+                                            const paidAmount = item.paid ?? item.financials?.paidAmount ?? 0;
+                                            const refundedAmount = item.refunded ?? item.financials?.refundedAmount ?? 0;
+                                            const netAmount = item.net ?? item.financials?.netRevenue ?? 0;
+
+                                            return (
+                                                <>
                                         <td className={`px-4 py-3 text-white ${alignStart}`}>
                                             <span className="text-sm font-medium">{formatDateTime(item.canceledAt, i18n.language)}</span>
                                         </td>
                                         <td className={`px-4 py-3 ${alignStart}`}>
                                             <div>
-                                                <p className="text-sm font-medium text-white">{item.member?.firstName} {item.member?.lastName}</p>
-                                                <p className="text-xs text-gray-400">{item.member?.phone}</p>
+                                                <p className="text-sm font-medium text-white">{memberName}</p>
+                                                {memberPhone && (
+                                                    <p className="text-xs text-gray-400">{memberPhone}</p>
+                                                )}
                                             </div>
                                         </td>
-                                        <td className={`px-4 py-3 text-white text-sm ${alignStart}`}>{item.plan?.name_ar || item.plan?.name_en}</td>
+                                        <td className={`px-4 py-3 text-white text-sm ${alignStart}`}>{planName}</td>
                                         <td className={`px-4 py-3 ${alignStart}`}>
                                             <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${item.status === 'cancelled'
                                                 ? 'bg-red-500/20 text-red-400'
@@ -246,17 +260,17 @@ const CancellationsReport = ({ isActive }) => {
                                         </td>
                                         <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-emerald-400">
-                                                {formatCurrency(item.paid, i18n.language, currencyConf)}
+                                                {formatCurrency(paidAmount, i18n.language, currencyConf)}
                                             </span>
                                         </td>
                                         <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-red-400">
-                                                {formatCurrency(item.refunded, i18n.language, currencyConf)}
+                                                {formatCurrency(refundedAmount, i18n.language, currencyConf)}
                                             </span>
                                         </td>
                                         <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-white">
-                                                {formatCurrency(item.net, i18n.language, currencyConf)}
+                                                {formatCurrency(netAmount, i18n.language, currencyConf)}
                                             </span>
                                         </td>
                                         <td className={`px-4 py-3 ${alignStart}`}>
@@ -267,6 +281,9 @@ const CancellationsReport = ({ isActive }) => {
                                                 <Eye className="w-4 h-4 text-gray-300" />
                                             </button>
                                         </td>
+                                                </>
+                                            );
+                                        })()}
                                     </tr>
                                 ))}
                             </tbody>
