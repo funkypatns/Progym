@@ -47,10 +47,17 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
         transferTotal: 0,
         paymentCount: 0
     });
+    const [salesPreview, setSalesPreview] = useState({
+        totalRevenue: 0,
+        totalUnits: 0,
+        transactionsCount: 0,
+        topProducts: []
+    });
 
     const [employees, setEmployees] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetchingExpected, setIsFetchingExpected] = useState(false);
+    const [isFetchingSales, setIsFetchingSales] = useState(false);
 
     const getErrorMessage = (error, fallback) => {
         const response = error?.response?.data;
@@ -76,6 +83,7 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     useEffect(() => {
         if (formData.startAt && formData.endAt) {
             fetchExpectedAmounts();
+            fetchSalesPreview();
         }
     }, [formData.startAt, formData.endAt, formData.employeeId]);
 
@@ -131,6 +139,41 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
             });
         } finally {
             setIsFetchingExpected(false);
+        }
+    };
+
+    const fetchSalesPreview = async () => {
+        if (!formData.startAt || !formData.endAt) return;
+
+        setIsFetchingSales(true);
+        try {
+            const params = new URLSearchParams({
+                startAt: formData.startAt,
+                endAt: formData.endAt
+            });
+
+            if (formData.employeeId && formData.employeeId !== 'all') {
+                params.append('employeeId', formData.employeeId);
+            }
+
+            const response = await api.get(`/cash-closings/sales-preview?${params}`);
+            const data = response.data.data || {};
+            setSalesPreview({
+                totalRevenue: Number(data.totalRevenue) || 0,
+                totalUnits: Number(data.totalUnits) || 0,
+                transactionsCount: Number(data.transactionsCount) || 0,
+                topProducts: Array.isArray(data.topProducts) ? data.topProducts : []
+            });
+        } catch (error) {
+            console.error('Failed to fetch sales preview:', error);
+            setSalesPreview({
+                totalRevenue: 0,
+                totalUnits: 0,
+                transactionsCount: 0,
+                topProducts: []
+            });
+        } finally {
+            setIsFetchingSales(false);
         }
     };
 
@@ -234,6 +277,12 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
             cardTotal: 0,
             transferTotal: 0,
             paymentCount: 0
+        });
+        setSalesPreview({
+            totalRevenue: 0,
+            totalUnits: 0,
+            transactionsCount: 0,
+            topProducts: []
         });
         onClose();
     };
@@ -364,6 +413,50 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                     <p className="text-lg font-bold text-gray-700 dark:text-white">
                                         {expectedAmounts.paymentCount || 0}
                                     </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 border-t border-gray-200 dark:border-dark-700 pt-3">
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        {t('cashClosing.salesPreview') || 'Product sales preview'}
+                                    </p>
+                                    <p className="text-xs text-gray-400">
+                                        {isFetchingSales ? t('common.loading') : `${salesPreview.transactionsCount} ${t('cashClosing.salesCount', 'sales')}`}
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm">
+                                        <p className="text-xs text-gray-500 mb-1">{t('cashClosing.salesTotal') || 'Sales total'}</p>
+                                        <p className="text-lg font-bold text-indigo-500">
+                                            {formatCurrency(salesPreview.totalRevenue || 0, i18n.language, currencyConf)}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm">
+                                        <p className="text-xs text-gray-500 mb-1">{t('cashClosing.unitsSold') || 'Units sold'}</p>
+                                        <p className="text-lg font-bold text-gray-700 dark:text-white">
+                                            {salesPreview.totalUnits || 0}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 bg-white dark:bg-dark-800 rounded-lg shadow-sm">
+                                        <p className="text-xs text-gray-500 mb-1">{t('cashClosing.topProducts') || 'Top products'}</p>
+                                        {salesPreview.topProducts.length === 0 ? (
+                                            <p className="text-xs text-gray-400">
+                                                {t('cashClosing.noSales') || 'No product sales in this period'}
+                                            </p>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                {salesPreview.topProducts.slice(0, 3).map((item) => (
+                                                    <div key={item.productId} className="flex items-center justify-between text-xs text-gray-500">
+                                                        <span className="truncate pr-2">{item.name}</span>
+                                                        <span className="font-semibold text-gray-700 dark:text-gray-300">
+                                                            {item.quantity}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

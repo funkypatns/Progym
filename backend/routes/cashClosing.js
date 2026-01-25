@@ -323,6 +323,111 @@ router.get('/calculate-expected', async (req, res) => {
 });
 
 /**
+ * GET /api/cash-closings/sales-preview
+ * Quick product sales summary for the selected period
+ * Accessible to all authenticated users
+ */
+router.get('/sales-preview', async (req, res) => {
+    try {
+        const { startAt, endAt, employeeId } = req.query;
+
+        if (!startAt || !endAt) {
+            return res.status(400).json({
+                success: false,
+                message: 'Start and end dates are required'
+            });
+        }
+
+        const start = new Date(startAt);
+        const end = new Date(endAt);
+
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return res.status(400).json({ success: false, message: 'Invalid date format' });
+        }
+
+        let targetEmpId = null;
+        if (req.user.role !== 'admin') {
+            targetEmpId = req.user.id;
+        } else if (employeeId && employeeId !== 'all') {
+            targetEmpId = parseInt(employeeId);
+        }
+
+        const where = {
+            transaction: {
+                createdAt: {
+                    gte: start,
+                    lte: end
+                }
+            }
+        };
+
+        if (targetEmpId) {
+            where.transaction.employeeId = targetEmpId;
+        }
+
+        const items = await req.prisma.saleItem.findMany({
+            where,
+            include: {
+                product: { select: { id: true, name: true } },
+                transaction: { select: { id: true } }
+            }
+        });
+
+        const summary = {
+            totalRevenue: 0,
+            totalUnits: 0,
+            transactionsCount: new Set()
+        };
+
+        const productMap = new Map();
+
+        items.forEach((item) => {
+            const revenue = Number(item.lineTotal) || 0;
+            const qty = Number(item.quantity) || 0;
+
+            summary.totalRevenue += revenue;
+            summary.totalUnits += qty;
+            if (item.transaction?.id) summary.transactionsCount.add(item.transaction.id);
+
+            const productId = item.product?.id || item.productId;
+            if (!productMap.has(productId)) {
+                productMap.set(productId, {
+                    productId,
+                    name: item.product?.name || 'Unknown',
+                    quantity: 0,
+                    revenue: 0
+                });
+            }
+
+            const entry = productMap.get(productId);
+            entry.quantity += qty;
+            entry.revenue += revenue;
+        });
+
+        const topProducts = Array.from(productMap.values())
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 5);
+
+        res.json({
+            success: true,
+            data: {
+                totalRevenue: summary.totalRevenue,
+                totalUnits: summary.totalUnits,
+                transactionsCount: summary.transactionsCount.size,
+                topProducts
+            }
+        });
+
+    } catch (error) {
+        console.error('Sales preview error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch sales preview'
+        });
+    }
+});
+
+/**
  * POST /api/cash-closings
  * Create new cash closing (IMMUTABLE)
  * Accessible to all authenticated users

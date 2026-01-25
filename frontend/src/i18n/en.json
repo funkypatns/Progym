@@ -445,6 +445,12 @@
         "createClosingTab": "Create Closing",
         "selectEmployee": "Select Employee",
         "paymentsCount": "Payments",
+        "salesPreview": "Product sales preview",
+        "salesCount": "sales",
+        "salesTotal": "Sales total",
+        "unitsSold": "Units sold",
+        "topProducts": "Top products",
+        "noSales": "No product sales in this period",
         "collectedAmountInPeriod": "Collected Amount",
         "cash": "Cash",
         "nonCash": "Non-Cash"
