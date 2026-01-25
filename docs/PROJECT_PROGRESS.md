@@ -26,6 +26,7 @@ Context recovery checklist:
 - Record Payment modal embedded receipt + print. Status: done, needs manual verification.
 - POS receipts and unified Receipts report UI. Status: done, needs manual verification.
 - Fix Outstanding report paid totals/status and add payments summary transactions table. Status: done, needs manual verification.
+- Record Payment success modal with receipt print/view and receipts fallback handling. Status: done, needs manual verification.
 
 ## Phase Plan
 
@@ -90,6 +91,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | a3ca17c | Keep Record Payment modal on receipt view after confirm. |
 | 2026-01-25 | 75d81c4 | Close Record Payment modal after success and guard double submit. |
 | 2026-01-25 | 02b53af | Fix outstanding report paid totals and add payments summary transactions. |
+| 2026-01-25 | 372dc8b | Add record payment success receipt actions and receipt fallback status. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
