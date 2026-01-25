@@ -295,31 +295,39 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     };
 
     const handleSubmit = async () => {
-        if (!selectedMember) return;
+        if (loading) return;
+        setLoading(true);
+        if (!selectedMember) {
+            setLoading(false);
+            return;
+        }
         setLastReceiptError('');
         if (!selectedSubscriptionId) {
             toast.error(t('payments.selectSubscription', 'Select a subscription first'));
+            setLoading(false);
             return;
         }
         const amountValue = roundMoney(payNowAmount);
         if (!Number.isFinite(amountValue) || amountValue <= 0) {
             toast.error(t('payments.invalidAmount', 'Enter a valid amount'));
+            setLoading(false);
             return;
         }
         if (totalDue <= 0) {
             toast.error(t('payments.alreadyPaid', 'Subscription is already fully paid'));
+            setLoading(false);
             return;
         }
         if (amountValue > totalDue + 0.01) {
             toast.error(t('payments.amountExceedsRemaining', 'Amount exceeds remaining balance'));
+            setLoading(false);
             return;
         }
         if ((method === 'card' || method === 'transfer') && !transactionRef.trim()) {
             toast.error(t('payments.refRequired', 'Transaction Ref is required'));
+            setLoading(false);
             return;
         }
-
-        setLoading(true);
         try {
             const payload = {
                 memberId: selectedMember.id,
@@ -335,30 +343,13 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                 payload.subscriptionId = parseInt(selectedSubscriptionId);
             }
 
-            const response = await apiClient.post('/payments', payload);
+            await apiClient.post('/payments', payload);
             toast.success(t('payments.paymentRecorded'));
-            let receiptData = response?.data?.data || null;
-            const paymentId = receiptData?.id;
-            if (paymentId) {
-                setReceiptLoading(true);
-                try {
-                    const detailRes = await apiClient.get(`/payments/${paymentId}`);
-                    if (detailRes.data.success) {
-                        receiptData = detailRes.data.data;
-                    }
-                } catch (err) {
-                    toast.error(t('payments.receiptNotFound', 'Receipt not found'));
-                } finally {
-                    setReceiptLoading(false);
-                }
-            }
-            setReceiptPayment(receiptData);
-            setStep(3);
-            setAutoPrintReceipt(false);
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('payments:updated'));
             }
             if (onSuccess) onSuccess();
+            onClose();
         } catch (e) {
             const msg = e.response?.data?.message || t('common.error');
             toast.error(msg);
@@ -682,6 +673,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                     <div className="p-6 border-t border-white/5 flex flex-col gap-3">
                         {step === 2 && (
                             <button
+                                type="button"
                                 onClick={handleSubmit}
                                 disabled={isConfirmDisabled}
                                 className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-900/40 transition-all flex justify-center items-center gap-2 active:scale-95"
