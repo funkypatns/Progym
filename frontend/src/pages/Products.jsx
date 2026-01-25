@@ -156,18 +156,41 @@ const Products = () => {
         setCart(prev => prev.map(item => {
             if (item.id === productId) {
                 const newQty = item.quantity + delta;
-                return newQty > 0 ? { ...item, quantity: newQty } : item;
+                return newQty > 0 ? { ...item, quantity: newQty, quantityInput: undefined } : item;
             }
             return item;
         }).filter(item => item.quantity > 0));
     };
 
-    const setItemQuantity = (productId, value) => {
+    const setItemQuantityInput = (productId, value) => {
+        if (value === '') {
+            setCart(prev => prev.map(item => (
+                item.id === productId ? { ...item, quantityInput: '' } : item
+            )));
+            return;
+        }
+        if (!/^\d+$/.test(value)) return;
         const nextQty = parseInt(value, 10);
-        if (!Number.isFinite(nextQty) || nextQty < 1) return;
         setCart(prev => prev.map(item => (
-            item.id === productId ? { ...item, quantity: nextQty } : item
+            item.id === productId
+                ? { ...item, quantity: nextQty >= 1 ? nextQty : item.quantity, quantityInput: value }
+                : item
         )));
+    };
+
+    const normalizeQuantityInput = (productId) => {
+        setCart(prev => prev.map(item => {
+            if (item.id !== productId) return item;
+            const raw = item.quantityInput;
+            if (raw === '' || raw === undefined || raw === null) {
+                return { ...item, quantityInput: undefined };
+            }
+            const nextQty = parseInt(raw, 10);
+            if (!Number.isFinite(nextQty) || nextQty < 1) {
+                return { ...item, quantityInput: undefined };
+            }
+            return { ...item, quantity: nextQty, quantityInput: undefined };
+        }));
     };
 
     const cartTotal = cart.reduce((sum, item) => sum + (item.salePrice * item.quantity), 0);
@@ -577,8 +600,14 @@ const Products = () => {
                                                 min="1"
                                                 step="1"
                                                 inputMode="numeric"
-                                                value={item.quantity}
-                                                onChange={(e) => setItemQuantity(item.id, e.target.value)}
+                                                value={item.quantityInput ?? String(item.quantity)}
+                                                onChange={(e) => setItemQuantityInput(item.id, e.target.value)}
+                                                onBlur={() => normalizeQuantityInput(item.id)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.currentTarget.blur();
+                                                    }
+                                                }}
                                                 className="w-12 text-center font-bold text-gray-900 dark:text-white bg-transparent outline-none"
                                             />
                                             <button

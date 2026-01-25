@@ -48,18 +48,41 @@ const Sales = () => {
         setCart(prev => prev.map(item => {
             if (item.id === id) {
                 const newQty = Math.max(1, item.qty + delta);
-                return { ...item, qty: newQty };
+                return { ...item, qty: newQty, qtyInput: undefined };
             }
             return item;
         }));
     };
 
-    const setQty = (id, value) => {
+    const setQtyInput = (id, value) => {
+        if (value === '') {
+            setCart(prev => prev.map(item => (
+                item.id === id ? { ...item, qtyInput: '' } : item
+            )));
+            return;
+        }
+        if (!/^\d+$/.test(value)) return;
         const nextQty = parseInt(value, 10);
-        if (!Number.isFinite(nextQty) || nextQty < 1) return;
         setCart(prev => prev.map(item => (
-            item.id === id ? { ...item, qty: nextQty } : item
+            item.id === id
+                ? { ...item, qty: nextQty >= 1 ? nextQty : item.qty, qtyInput: value }
+                : item
         )));
+    };
+
+    const normalizeQtyInput = (id) => {
+        setCart(prev => prev.map(item => {
+            if (item.id !== id) return item;
+            const raw = item.qtyInput;
+            if (raw === '' || raw === undefined || raw === null) {
+                return { ...item, qtyInput: undefined };
+            }
+            const nextQty = parseInt(raw, 10);
+            if (!Number.isFinite(nextQty) || nextQty < 1) {
+                return { ...item, qtyInput: undefined };
+            }
+            return { ...item, qty: nextQty, qtyInput: undefined };
+        }));
     };
 
     const remove = (id) => {
@@ -273,8 +296,14 @@ const Sales = () => {
                                                         min="1"
                                                         step="1"
                                                         inputMode="numeric"
-                                                        value={item.qty}
-                                                        onChange={(e) => setQty(item.id, e.target.value)}
+                                                        value={item.qtyInput ?? String(item.qty)}
+                                                        onChange={(e) => setQtyInput(item.id, e.target.value)}
+                                                        onBlur={() => normalizeQtyInput(item.id)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.currentTarget.blur();
+                                                            }
+                                                        }}
                                                         className="w-12 px-1 text-center font-bold text-sm bg-transparent outline-none"
                                                     />
                                                     <button
