@@ -78,6 +78,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | 9be4d44 | Align cash closing preview range to local time and guard date order. |
 | 2026-01-25 | b160a85 | Add receipts storage, receipt service, and POS receipt generation backend. |
 | 2026-01-25 | d47463b | Add POS receipt modal/print and unified receipts report UI. |
+| 2026-01-25 | 0c813bf | Mark receipt reprints as COPY for POS and reports. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
