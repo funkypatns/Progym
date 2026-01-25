@@ -13,7 +13,7 @@ const router = express.Router();
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { PERMISSIONS } = require('../utils/permissions');
 const { parseDateRange } = require('../utils/dateParams');
-const { parseReceiptJson } = require('../services/receiptService');
+const { createReceipt, buildTransactionId, parseReceiptJson } = require('../services/receiptService');
 
 router.use(authenticate);
 
@@ -32,6 +32,159 @@ const normalizeReceipt = (receipt) => {
     const parsed = parseReceiptJson(receipt);
     return parsed;
 };
+
+const buildPaymentReceiptInput = (payment, member, subscription, plan, staffName) => {
+    const totalPrice = subscription?.price ?? plan?.price ?? payment.amount;
+    const paidNow = Number(payment.amount || 0);
+    const paidToDate = Number.isFinite(Number(subscription?.paidAmount)) ? Number(subscription.paidAmount) : paidNow;
+    const remaining = Number.isFinite(Number(subscription?.remainingAmount)) ? Number(subscription.remainingAmount) : 0;
+
+    const items = [];
+    if (subscription) {
+        items.push({
+            type: 'subscription',
+            name: plan?.name || 'Subscription',
+            qty: 1,
+            unitPrice: totalPrice,
+            lineTotal: totalPrice,
+            duration: plan?.duration,
+            startDate: subscription.startDate,
+            endDate: subscription.endDate
+        });
+    } else {
+        items.push({
+            type: 'payment',
+            name: payment.notes || 'Payment',
+            qty: 1,
+            unitPrice: paidNow,
+            lineTotal: paidNow
+        });
+    }
+
+    return {
+        transactionType: 'payment',
+        transactionId: payment.id,
+        paymentMethod: payment.method,
+        customerId: member?.id,
+        customerName: member ? `${member.firstName} ${member.lastName}` : null,
+        customerPhone: member?.phone || null,
+        customerCode: member?.memberId || null,
+        staffId: payment.createdBy || null,
+        staffName,
+        items,
+        totals: {
+            subtotal: totalPrice,
+            discount: subscription?.discount || 0,
+            tax: 0,
+            total: totalPrice,
+            paid: paidNow,
+            paidToDate,
+            remaining,
+            change: 0
+        },
+        notes: payment.notes || null,
+        createdAt: payment.paidAt || payment.createdAt
+    };
+};
+
+/**
+ * POST /api/receipts/from-transaction
+ * Create or fetch a receipt by transaction id
+ */
+router.post('/from-transaction', requirePermission(PERMISSIONS.PAYMENTS_VIEW), async (req, res) => {
+    try {
+        const { transactionId, type } = req.body || {};
+        if (!transactionId) {
+            return res.status(400).json({ success: false, message: 'transactionId is required' });
+        }
+
+        let transactionKey = String(transactionId);
+        let normalizedType = String(type || '').toLowerCase();
+        if (!transactionKey.includes('-')) {
+            if (!normalizedType) {
+                return res.status(400).json({ success: false, message: 'type is required' });
+            }
+            transactionKey = buildTransactionId(normalizedType, transactionId);
+        } else if (!normalizedType) {
+            normalizedType = transactionKey.split('-')[0]?.toLowerCase() || '';
+        }
+
+        if (normalizedType !== 'payment') {
+            return res.status(400).json({ success: false, message: 'Unsupported transaction type' });
+        }
+
+        const paymentId = parseInt(String(transactionId).split('-').pop(), 10);
+        if (!Number.isInteger(paymentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid transactionId' });
+        }
+
+        const payment = await req.prisma.payment.findUnique({
+            where: { id: paymentId },
+            include: {
+                member: {
+                    select: { id: true, firstName: true, lastName: true, phone: true, memberId: true }
+                },
+                subscription: {
+                    include: { plan: true }
+                },
+                creator: {
+                    select: { id: true, firstName: true, lastName: true }
+                }
+            }
+        });
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: 'Transaction not found' });
+        }
+
+        const staffName = payment.collectorName || (payment.creator ? `${payment.creator.firstName} ${payment.creator.lastName}` : 'System');
+        let receiptResult = null;
+        let receiptError = null;
+
+        try {
+            receiptResult = await createReceipt(req.prisma, buildPaymentReceiptInput(
+                payment,
+                payment.member,
+                payment.subscription,
+                payment.subscription?.plan,
+                staffName
+            ));
+        } catch (receiptErr) {
+            if (receiptErr?.code === 'RECEIPTS_NOT_READY') {
+                receiptError = {
+                    status: 'not_initialized',
+                    message: receiptErr.message
+                };
+            } else {
+                console.error('[RECEIPTS] Create receipt failed:', receiptErr);
+                receiptError = {
+                    status: 'failed',
+                    message: 'Failed to create receipt'
+                };
+            }
+        }
+
+        const receiptData = receiptResult?.receipt ? parseReceiptJson(receiptResult.receipt) : null;
+        const receiptCreated = receiptResult?.created ?? false;
+        const receiptStatus = receiptError?.status || (receiptData ? 'ready' : 'missing');
+        const receiptMessage = receiptError?.message
+            || (!receiptCreated && receiptData ? 'Receipt already issued for this transaction' : null);
+
+        res.json({
+            success: true,
+            data: {
+                receipt: receiptData,
+                receiptCreated,
+                receiptStatus,
+                receiptMessage,
+                transactionId: transactionKey
+            }
+        });
+    } catch (error) {
+        console.error('Receipt creation error:', error);
+        res.status(500).json({ success: false, message: 'Failed to create receipt' });
+    }
+});
 
 /**
  * GET /api/receipts

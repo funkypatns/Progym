@@ -11,7 +11,7 @@ const { body, validationResult } = require('express-validator');
 const PDFDocument = require('pdfkit');
 const { v4: uuidv4 } = require('uuid');
 const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransaction } = require('../services/paymentService');
-const { createReceipt } = require('../services/receiptService');
+const { createReceipt, buildTransactionId, parseReceiptJson } = require('../services/receiptService');
 const { roundMoney, clampMoney } = require('../utils/money');
 
 router.use(authenticate);
@@ -474,30 +474,47 @@ router.post('/', requirePermission('payments.create'), [
                 });
             }
 
-            await createReceipt(prisma, {
-                transactionType: 'payment',
-                transactionId: payment.id,
-                paymentMethod: payment.method,
-                customerId: member?.id,
-                customerName: member ? `${member.firstName} ${member.lastName}` : null,
-                customerPhone: member?.phone || null,
-                customerCode: member?.memberId || null,
-                staffId: payment.createdBy || null,
-                staffName,
-                items,
-                totals: {
-                    subtotal: totalPrice,
-                    discount: subscription?.discount || 0,
-                    tax: 0,
-                    total: totalPrice,
-                    paid: paidNow,
-                    paidToDate,
-                    remaining,
-                    change: 0
-                },
-                notes: payment.notes || null,
-                createdAt: payment.paidAt || payment.createdAt
-            });
+            let receiptResult = null;
+            let receiptError = null;
+            try {
+                receiptResult = await createReceipt(prisma, {
+                    transactionType: 'payment',
+                    transactionId: payment.id,
+                    paymentMethod: payment.method,
+                    customerId: member?.id,
+                    customerName: member ? `${member.firstName} ${member.lastName}` : null,
+                    customerPhone: member?.phone || null,
+                    customerCode: member?.memberId || null,
+                    staffId: payment.createdBy || null,
+                    staffName,
+                    items,
+                    totals: {
+                        subtotal: totalPrice,
+                        discount: subscription?.discount || 0,
+                        tax: 0,
+                        total: totalPrice,
+                        paid: paidNow,
+                        paidToDate,
+                        remaining,
+                        change: 0
+                    },
+                    notes: payment.notes || null,
+                    createdAt: payment.paidAt || payment.createdAt
+                });
+            } catch (receiptErr) {
+                if (receiptErr?.code === 'RECEIPTS_NOT_READY') {
+                    receiptError = {
+                        status: 'not_initialized',
+                        message: receiptErr.message
+                    };
+                } else {
+                    console.error('[PAYMENTS] Receipt creation failed:', receiptErr);
+                    receiptError = {
+                        status: 'failed',
+                        message: 'Failed to create receipt'
+                    };
+                }
+            }
 
             // 5. Log Activity
             await prisma.activityLog.create({
@@ -510,14 +527,28 @@ router.post('/', requirePermission('payments.create'), [
                 }
             });
 
-            return payment;
+            return { payment, receiptResult, receiptError };
         });
 
+        const receiptData = result.receiptResult?.receipt ? parseReceiptJson(result.receiptResult.receipt) : null;
+        const receiptCreated = result.receiptResult?.created ?? false;
+        const receiptStatus = result.receiptError?.status || (receiptData ? 'ready' : 'missing');
+        const receiptMessage = result.receiptError?.message
+            || (!receiptCreated && receiptData ? 'Receipt already issued for this transaction' : null);
+        const transactionId = buildTransactionId('payment', result.payment.id);
 
         res.status(201).json({
             success: true,
             message: 'Payment recorded successfully',
-            data: result
+            data: {
+                ...result.payment,
+                paymentId: result.payment.id,
+                transactionId,
+                receipt: receiptData,
+                receiptCreated,
+                receiptStatus,
+                receiptMessage
+            }
         });
 
     } catch (error) {

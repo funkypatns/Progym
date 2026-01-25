@@ -4,11 +4,11 @@ import apiClient from '../../utils/api';
 import toast from 'react-hot-toast';
 import {
     X, Search, Check, CreditCard, User, Banknote, Camera,
-    Smartphone, ScanLine, Clock, ChevronRight, UserCircle, Printer
+    Smartphone, ScanLine, Clock, ChevronRight, UserCircle, Printer, Eye, RotateCcw, CheckCircle
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSettingsStore } from '../../store';
-import { PaymentReceipt } from './ReceiptTemplates';
+import ThermalReceipt from '../receipts/ThermalReceipt';
 
 const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubscriptionId }) => {
     const { t, i18n } = useTranslation();
@@ -19,7 +19,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         symbol: getSetting('currency_symbol', 'EGP')
     };
     const gymName = getSetting('gym_name', t('receipt.companyName', 'GYM MANAGEMENT'));
-    const gymLogoUrl = getSetting('gym_logo', '');
+    const gymPhone = getSetting('gym_phone', '');
     const roundMoney = (value) => {
         const num = Number(value);
         if (!Number.isFinite(num)) return 0;
@@ -46,7 +46,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const [payNowAmount, setPayNowAmount] = useState('');
     const [method, setMethod] = useState('cash');
     const [transactionRef, setTransactionRef] = useState('');
-    const [receiptPayment, setReceiptPayment] = useState(null);
+    const [receiptData, setReceiptData] = useState(null);
+    const [receiptStatus, setReceiptStatus] = useState('idle');
+    const [receiptMessage, setReceiptMessage] = useState('');
+    const [receiptCreated, setReceiptCreated] = useState(false);
+    const [receiptTransactionId, setReceiptTransactionId] = useState('');
+    const [receiptIsCopy, setReceiptIsCopy] = useState(false);
+    const [hasPrintedReceipt, setHasPrintedReceipt] = useState(false);
+    const [showReceiptPreview, setShowReceiptPreview] = useState(false);
     const [receiptLoading, setReceiptLoading] = useState(false);
     const [lastReceiptError, setLastReceiptError] = useState('');
     const [autoPrintReceipt, setAutoPrintReceipt] = useState(false);
@@ -63,7 +70,6 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     // -- Effects --
     useEffect(() => {
         if (open) {
-            if (receiptPayment) return;
             if (initialMember) {
                 setSelectedMember(initialMember);
                 setStep(2);
@@ -73,7 +79,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         } else {
             resetForm();
         }
-    }, [open, initialMember, receiptPayment]);
+    }, [open, initialMember]);
 
     useEffect(() => {
         if (open && initialSubscriptionId && memberSubscriptions.length > 0) {
@@ -122,13 +128,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
 
     useEffect(() => {
         if (!autoPrintReceipt) return;
-        if (!receiptPayment || !receiptRef.current) return;
+        if (!receiptData || !receiptRef.current) return;
         const timeoutId = setTimeout(() => {
             handlePrintReceipt();
+            setHasPrintedReceipt(true);
             setAutoPrintReceipt(false);
         }, 0);
         return () => clearTimeout(timeoutId);
-    }, [autoPrintReceipt, receiptPayment]);
+    }, [autoPrintReceipt, receiptData]);
 
     // -- Logic --
     const resetForm = () => {
@@ -145,7 +152,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setTransactionRef('');
         setLoading(false);
         setShowCamera(false);
-        setReceiptPayment(null);
+        setReceiptData(null);
+        setReceiptStatus('idle');
+        setReceiptMessage('');
+        setReceiptCreated(false);
+        setReceiptTransactionId('');
+        setReceiptIsCopy(false);
+        setHasPrintedReceipt(false);
+        setShowReceiptPreview(false);
         setReceiptLoading(false);
         setLastReceiptError('');
         setAutoPrintReceipt(false);
@@ -268,6 +282,73 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         }, 1000);
     };
 
+    const fetchReceiptByTransaction = async () => {
+        if (!receiptTransactionId) return null;
+        setReceiptLoading(true);
+        try {
+            const res = await apiClient.post('/receipts/from-transaction', {
+                transactionId: receiptTransactionId,
+                type: 'payment'
+            });
+            if (res.data.success) {
+                const payload = res.data.data || {};
+                setReceiptData(payload.receipt || null);
+                setReceiptStatus(payload.receiptStatus || 'ready');
+                setReceiptMessage(payload.receiptMessage || '');
+                setReceiptCreated(Boolean(payload.receiptCreated));
+                setReceiptTransactionId(payload.transactionId || receiptTransactionId);
+                setReceiptIsCopy(!payload.receiptCreated && Boolean(payload.receipt));
+                return payload.receipt || null;
+            }
+            return null;
+        } catch (err) {
+            return null;
+        } finally {
+            setReceiptLoading(false);
+        }
+    };
+
+    const requestPrintReceipt = async () => {
+        if (receiptStatus === 'not_initialized') {
+            toast.error(receiptMessage || t('payments.receiptsNotReady', 'Receipts are not initialized.'));
+            return;
+        }
+        let receipt = receiptData;
+        if (!receipt) {
+            receipt = await fetchReceiptByTransaction();
+        }
+        if (!receipt) {
+            toast.error(t('payments.noReceiptAvailable', 'No receipt available'));
+            return;
+        }
+        if (hasPrintedReceipt && !receiptIsCopy) {
+            setReceiptIsCopy(true);
+            setAutoPrintReceipt(true);
+            return;
+        }
+        handlePrintReceipt();
+        setHasPrintedReceipt(true);
+    };
+
+    const handleViewReceipt = async () => {
+        if (receiptStatus === 'not_initialized') {
+            toast.error(receiptMessage || t('payments.receiptsNotReady', 'Receipts are not initialized.'));
+            return;
+        }
+        if (!receiptData) {
+            const fetched = await fetchReceiptByTransaction();
+            if (!fetched) {
+                toast.error(t('payments.noReceiptAvailable', 'No receipt available'));
+                return;
+            }
+        }
+        setShowReceiptPreview(prev => !prev);
+    };
+
+    const handleNewPayment = () => {
+        resetForm();
+    };
+
     const fetchLatestReceipt = async (options = {}) => {
         const { autoPrint = false } = options;
         const query = selectedSubscriptionId
@@ -278,16 +359,35 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setReceiptLoading(true);
         try {
             const res = await apiClient.get(`/payments/latest?${query}`);
-            if (res.data.success && res.data.data) {
-                setReceiptPayment(res.data.data);
+            const payment = res.data?.data;
+            if (!res.data.success || !payment?.id) {
+                setReceiptData(null);
+                setLastReceiptError(t('payments.noReceiptAvailable', 'No receipt available'));
+                return;
+            }
+
+            const receiptRes = await apiClient.post('/receipts/from-transaction', {
+                transactionId: payment.id,
+                type: 'payment'
+            });
+            if (receiptRes.data.success) {
+                const payload = receiptRes.data.data || {};
+                setReceiptData(payload.receipt || null);
+                setReceiptStatus(payload.receiptStatus || 'ready');
+                setReceiptMessage(payload.receiptMessage || '');
+                setReceiptCreated(Boolean(payload.receiptCreated));
+                setReceiptTransactionId(payload.transactionId || '');
+                setReceiptIsCopy(!payload.receiptCreated && Boolean(payload.receipt));
+                setHasPrintedReceipt(false);
+                setShowReceiptPreview(false);
                 setStep(3);
-                if (autoPrint) setAutoPrintReceipt(true);
+                if (autoPrint && payload.receipt) setAutoPrintReceipt(true);
             } else {
-                setReceiptPayment(null);
+                setReceiptData(null);
                 setLastReceiptError(t('payments.noReceiptAvailable', 'No receipt available'));
             }
         } catch (err) {
-            setReceiptPayment(null);
+            setReceiptData(null);
             setLastReceiptError(t('payments.noReceiptAvailable', 'No receipt available'));
         } finally {
             setReceiptLoading(false);
@@ -343,13 +443,24 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                 payload.subscriptionId = parseInt(selectedSubscriptionId);
             }
 
-            await apiClient.post('/payments', payload);
+            const res = await apiClient.post('/payments', payload);
             toast.success(t('payments.paymentRecorded'));
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('payments:updated'));
             }
             if (onSuccess) onSuccess();
-            onClose();
+            const responseData = res.data?.data || {};
+            const receipt = responseData.receipt || null;
+            const status = responseData.receiptStatus || (receipt ? 'ready' : 'missing');
+            setReceiptData(receipt);
+            setReceiptStatus(status);
+            setReceiptMessage(responseData.receiptMessage || '');
+            setReceiptCreated(Boolean(responseData.receiptCreated));
+            setReceiptTransactionId(responseData.transactionId || responseData.paymentId || responseData.id || '');
+            setReceiptIsCopy(!responseData.receiptCreated && Boolean(receipt));
+            setHasPrintedReceipt(false);
+            setShowReceiptPreview(false);
+            setStep(3);
         } catch (e) {
             const msg = e.response?.data?.message || t('common.error');
             toast.error(msg);
@@ -378,28 +489,59 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const renderReceipt = () => (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <h3 className="text-sm font-black text-white uppercase tracking-widest">{t('payments.receipt', 'Receipt')}</h3>
-                {receiptPayment?.receiptNumber && (
-                    <span className="text-xs font-mono text-slate-400">{receiptPayment.receiptNumber}</span>
+                <div className="flex items-center gap-2">
+                    <CheckCircle size={16} className="text-emerald-400" />
+                    <div>
+                        <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                            {t('payments.successTitle', 'Payment successful')}
+                        </h3>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            {t('payments.successSubtitle', 'Choose an action')}
+                        </p>
+                    </div>
+                </div>
+                {receiptData?.receiptNo && (
+                    <span className="text-xs font-mono text-slate-400">{receiptData.receiptNo}</span>
                 )}
             </div>
+
+            {receiptStatus === 'not_initialized' && (
+                <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">
+                    {receiptMessage || t('payments.receiptsNotReady', 'Receipts are not initialized.')}
+                </div>
+            )}
+
             {receiptLoading ? (
                 <div className="flex items-center justify-center py-12">
                     <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 </div>
-            ) : receiptPayment ? (
-                <div ref={receiptRef} className="bg-white rounded-2xl p-4">
-                    <PaymentReceipt
-                        payment={receiptPayment}
+            ) : showReceiptPreview && receiptData ? (
+                <div className="bg-white rounded-2xl p-4">
+                    <ThermalReceipt
+                        receipt={receiptData}
                         currencyConf={currencyConf}
                         gymName={gymName}
-                        gymLogoUrl={gymLogoUrl}
-                        className="max-w-full"
+                        gymPhone={gymPhone}
+                        isCopy={receiptIsCopy}
                     />
                 </div>
-            ) : (
+            ) : (!receiptData && receiptStatus !== 'not_initialized') ? (
                 <div className="text-center text-xs text-slate-400">
                     {t('payments.receiptNotFound', 'Receipt not found')}
+                </div>
+            ) : null}
+
+            {receiptData && (
+                <div className="hidden">
+                    <div ref={receiptRef}>
+                        <ThermalReceipt
+                            receipt={receiptData}
+                            currencyConf={currencyConf}
+                            gymName={gymName}
+                            gymPhone={gymPhone}
+                            isCopy={receiptIsCopy}
+                        />
+                    </div>
                 </div>
             )}
         </div>
@@ -698,20 +840,37 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                             </div>
                         )}
                         {step === 3 && (
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={handlePrintReceipt}
-                                    disabled={!receiptPayment || receiptLoading}
-                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-900/30 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <Printer size={16} /> {t('payments.printReceipt', 'Print Receipt')}
-                                </button>
-                                <button
-                                    onClick={onClose}
-                                    className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
-                                >
-                                    {t('common.close', 'Done')}
-                                </button>
+                            <div className="space-y-3">
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={requestPrintReceipt}
+                                        disabled={receiptLoading || receiptStatus === 'not_initialized'}
+                                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-900/30 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Printer size={16} /> {t('payments.printReceipt', 'Print Receipt')}
+                                    </button>
+                                    <button
+                                        onClick={handleViewReceipt}
+                                        disabled={receiptLoading || receiptStatus === 'not_initialized'}
+                                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-900/30 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Eye size={16} /> {t('payments.viewReceipt', 'View Receipt')}
+                                    </button>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={handleNewPayment}
+                                        className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <RotateCcw size={16} /> {t('payments.newPayment', 'New Payment')}
+                                    </button>
+                                    <button
+                                        onClick={onClose}
+                                        className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                                    >
+                                        {t('common.close', 'Close')}
+                                    </button>
+                                </div>
                             </div>
                         )}
                         {step !== 3 && (
