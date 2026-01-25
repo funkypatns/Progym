@@ -391,6 +391,7 @@ const PaymentRemainingReport = ({ isActive }) => {
                                                     || row.member?.name
                                                     || [row.member?.firstName, row.member?.lastName].filter(Boolean).join(' ')
                                                     || '-';
+                                                const memberPhone = row.memberPhone || row.member?.phone || '';
                                                 const memberCode = row.memberCode || row.member?.memberId || '-';
                                                 const planName = row.planName || row.plan?.name || '-';
                                                 const priceValue = Number(row.price);
@@ -406,7 +407,14 @@ const PaymentRemainingReport = ({ isActive }) => {
                                                 const subscriptionId = row.subscriptionId || row.subscription?.id;
                                                 return (
                                                     <>
-                                                        <td className={`px-4 py-3 ${alignStart} font-medium text-white`}>{memberName}</td>
+                                                        <td className={`px-4 py-3 ${alignStart} font-medium text-white`}>
+                                                            <div className="leading-tight">
+                                                                <div>{memberName}</div>
+                                                                {memberPhone && memberPhone !== memberName && (
+                                                                    <div className="text-[10px] text-gray-500 font-mono">{memberPhone}</div>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                         <td className={`px-4 py-3 ${alignStart} text-gray-400 text-xs font-mono`}>{memberCode}</td>
                                                         <td className={`px-4 py-3 ${alignStart} text-white`}>{planName}</td>
                                                         <td className={`px-4 py-3 ${alignEnd} font-mono text-white`}>
