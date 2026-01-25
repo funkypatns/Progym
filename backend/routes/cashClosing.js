@@ -338,11 +338,14 @@ router.get('/sales-preview', async (req, res) => {
             });
         }
 
-        const start = new Date(startAt);
-        const end = new Date(endAt);
+        let start = new Date(startAt);
+        let end = new Date(endAt);
 
         if (isNaN(start.getTime()) || isNaN(end.getTime())) {
             return res.status(400).json({ success: false, message: 'Invalid date format' });
+        }
+        if (start > end) {
+            [start, end] = [end, start];
         }
 
         let targetEmpId = null;

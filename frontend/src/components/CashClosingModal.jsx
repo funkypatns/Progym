@@ -59,6 +59,26 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     const [isFetchingExpected, setIsFetchingExpected] = useState(false);
     const [isFetchingSales, setIsFetchingSales] = useState(false);
 
+    const toLocalInputValue = (date) => {
+        const pad = (val) => String(val).padStart(2, '0');
+        const d = new Date(date);
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
+    const getPeriodRange = (periodType) => {
+        const now = new Date();
+        if (periodType === 'daily') {
+            const start = new Date(now);
+            start.setHours(0, 0, 0, 0);
+            return { startAt: toLocalInputValue(start), endAt: toLocalInputValue(now) };
+        }
+        if (periodType === 'monthly') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            return { startAt: toLocalInputValue(start), endAt: toLocalInputValue(now) };
+        }
+        return null;
+    };
+
     const getErrorMessage = (error, fallback) => {
         const response = error?.response?.data;
         if (response?.message) return response.message;
@@ -71,11 +91,14 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     useEffect(() => {
         if (isOpen) {
             fetchEmployees();
-            // Set default dates to today
-            const today = new Date();
-            const start = new Date(today.setHours(0, 0, 0, 0)).toISOString().slice(0, 16);
-            const end = new Date().toISOString().slice(0, 16);
-            setFormData(prev => ({ ...prev, startAt: start, endAt: end, declaredCashAmount: '', declaredNonCashAmount: '' }));
+            const range = getPeriodRange('daily');
+            setFormData(prev => ({
+                ...prev,
+                startAt: range?.startAt || '',
+                endAt: range?.endAt || '',
+                declaredCashAmount: '',
+                declaredNonCashAmount: ''
+            }));
         }
     }, [isOpen]);
 
@@ -345,7 +368,15 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                 <select
                                     className="input"
                                     value={formData.periodType}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, periodType: e.target.value }))}
+                                    onChange={(e) => {
+                                        const nextPeriod = e.target.value;
+                                        const range = getPeriodRange(nextPeriod);
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            periodType: nextPeriod,
+                                            ...(range ? { startAt: range.startAt, endAt: range.endAt } : {})
+                                        }));
+                                    }}
                                 >
                                     <option value="daily">{t('cashClosing.periodType.daily')}</option>
                                     <option value="monthly">{t('cashClosing.periodType.monthly')}</option>
