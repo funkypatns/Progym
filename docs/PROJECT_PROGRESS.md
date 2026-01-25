@@ -61,6 +61,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-24 | 12889d5 | Disable report caching and normalize payments summary data. |
 | 2026-01-24 | 6e19e9a | Fix Outstanding report data mapping and totals. |
 | 2026-01-24 | ae54d41 | Show member name with phone in Outstanding report table. |
+| 2026-01-24 | 13197e9 | Show member name in cancellations report. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
