@@ -63,6 +63,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     // -- Effects --
     useEffect(() => {
         if (open) {
+            if (receiptPayment) return;
             if (initialMember) {
                 setSelectedMember(initialMember);
                 setStep(2);
@@ -72,7 +73,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         } else {
             resetForm();
         }
-    }, [open, initialMember]);
+    }, [open, initialMember, receiptPayment]);
 
     useEffect(() => {
         if (open && initialSubscriptionId && memberSubscriptions.length > 0) {
