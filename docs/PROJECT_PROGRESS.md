@@ -24,6 +24,7 @@ Context recovery checklist:
 - Quick payment in Assign Subscription flow, receipt fix, and reports refresh. Status: done, needs manual verification.
 - Payments list cancelled badge. Status: done, needs manual verification.
 - Record Payment modal embedded receipt + print. Status: done, needs manual verification.
+- POS receipts and unified Receipts report UI. Status: done, needs manual verification.
 
 ## Phase Plan
 
@@ -45,6 +46,12 @@ Phase 3 - Payments modal receipt embed
 - Render receipt preview inside modal with Print/Done actions. Status: done.
 - Use settings currency formatting for receipt. Status: done.
 - Manual test checklist for receipt. Status: pending.
+
+Phase 4 - Receipts system
+- Backend receipts storage and POS receipt creation. Status: done.
+- Receipts report UI with sales/general tabs and export. Status: done.
+- POS checkout success modal with receipt preview/print. Status: done.
+- Manual test checklist for receipts. Status: pending.
 
 ## Work Log (Commit Ledger)
 
@@ -70,12 +77,14 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-25 | 2f1789e | Add cash closing sales preview (product sales totals + top items). |
 | 2026-01-25 | 9be4d44 | Align cash closing preview range to local time and guard date order. |
 | 2026-01-25 | b160a85 | Add receipts storage, receipt service, and POS receipt generation backend. |
+| 2026-01-25 | d47463b | Add POS receipt modal/print and unified receipts report UI. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
 - Confirm receipt page opens without auth error.
 - Confirm Payments Summary and Outstanding reports refresh correctly.
 - Run receipt modal flow tests (no redirect, print works, currency matches settings).
+- Run receipts migration and test POS receipt printing + receipts report tabs.
 
 ## Notes for new sessions
 - If there are uncommitted changes, capture them in "Current Focus" and do not redo work.
