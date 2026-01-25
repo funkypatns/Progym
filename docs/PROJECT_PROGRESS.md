@@ -67,6 +67,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-25 | 3da7718 | Allow setting product quantity on create/edit with stock adjustments. |
 | 2026-01-25 | 3226010 | Allow direct quantity editing in POS cart views. |
 | 2026-01-25 | 6df5c07 | Improve POS cart quantity input to allow typing values directly. |
+| 2026-01-25 | 2f1789e | Add cash closing sales preview (product sales totals + top items). |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
