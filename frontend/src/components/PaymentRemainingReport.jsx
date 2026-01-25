@@ -380,55 +380,78 @@ const PaymentRemainingReport = ({ isActive }) => {
                                 <AnimatePresence>
                                     {data.rows.map((row, idx) => (
                                         <motion.tr
-                                            key={row.subscriptionId}
+                                            key={row.subscriptionId || row.subscription?.id || idx}
                                             initial={{ opacity: 0, x: -10 }}
                                             animate={{ opacity: 1, x: 0 }}
                                             transition={{ delay: idx * 0.02 }}
                                             className="hover:bg-slate-700/30 transition-colors"
                                         >
-                                            <td className={`px-4 py-3 ${alignStart} font-medium text-white`}>{row.memberName}</td>
-                                            <td className={`px-4 py-3 ${alignStart} text-gray-400 text-xs font-mono`}>{row.memberCode || '-'}</td>
-                                            <td className={`px-4 py-3 ${alignStart} text-white`}>{row.planName}</td>
-                                            <td className={`px-4 py-3 ${alignEnd} font-mono text-white`}>
-                                                {formatCurrency(row.price, i18n.language, currencyConf)}
-                                            </td>
-                                            <td className={`px-4 py-3 ${alignEnd} font-mono text-emerald-500`}>
-                                                {formatCurrency(row.paidAmount, i18n.language, currencyConf)}
-                                            </td>
-                                            <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-red-500`}>
-                                                {formatCurrency(row.remainingAmount, i18n.language, currencyConf)}
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                {getStatusBadge(row.status)}
-                                            </td>
-                                            <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400 font-mono`}>
-                                                {row.lastPaymentDate ? formatDateTime(row.lastPaymentDate, i18n.language) : '-'}
-                                            </td>
-                                            <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400`}>
-                                                {row.employeeName || '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <button
-                                                        onClick={() => setLedgerTarget({
-                                                            memberId: row.memberId,
-                                                            subscriptionId: row.subscriptionId,
-                                                            memberName: row.memberName
-                                                        })}
-                                                        className="p-1.5 hover:bg-slate-600 rounded text-indigo-400 transition-all text-xs border border-transparent hover:border-indigo-500/20"
-                                                        title={t('reports.paymentHistory', 'Payment history')}
-                                                    >
-                                                        {t('reports.ledger', 'Ledger')}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setViewMemberId(row.memberId)}
-                                                        className="p-1.5 hover:bg-slate-600 rounded text-gray-400 hover:text-white transition-all"
-                                                        title={t('reports.viewMember', 'View member')}
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
-                                                </div>
-                                            </td>
+                                            {(() => {
+                                                const memberName = row.memberName
+                                                    || row.member?.name
+                                                    || [row.member?.firstName, row.member?.lastName].filter(Boolean).join(' ')
+                                                    || '-';
+                                                const memberCode = row.memberCode || row.member?.memberId || '-';
+                                                const planName = row.planName || row.plan?.name || '-';
+                                                const priceValue = Number(row.price);
+                                                const paidValue = Number(row.paidAmount);
+                                                const remainingValue = Number(row.remainingAmount);
+                                                const price = Number.isFinite(priceValue) ? priceValue : (row.financial?.total ?? row.plan?.price ?? 0);
+                                                const paidAmount = Number.isFinite(paidValue) ? paidValue : (row.financial?.totalPaid ?? row.financial?.netPaid ?? 0);
+                                                const remainingAmount = Number.isFinite(remainingValue) ? remainingValue : (row.financial?.remaining ?? 0);
+                                                const status = row.status || row.financial?.status || 'unpaid';
+                                                const lastPaymentDate = row.lastPaymentDate || row.timeline?.lastPaymentDate || row.lastPayment?.paidAt || null;
+                                                const employeeName = row.employeeName || row.lastPayment?.employeeName || row.audit?.collectorName || '-';
+                                                const memberId = row.memberId || row.member?.id;
+                                                const subscriptionId = row.subscriptionId || row.subscription?.id;
+                                                return (
+                                                    <>
+                                                        <td className={`px-4 py-3 ${alignStart} font-medium text-white`}>{memberName}</td>
+                                                        <td className={`px-4 py-3 ${alignStart} text-gray-400 text-xs font-mono`}>{memberCode}</td>
+                                                        <td className={`px-4 py-3 ${alignStart} text-white`}>{planName}</td>
+                                                        <td className={`px-4 py-3 ${alignEnd} font-mono text-white`}>
+                                                            {formatCurrency(price, i18n.language, currencyConf)}
+                                                        </td>
+                                                        <td className={`px-4 py-3 ${alignEnd} font-mono text-emerald-500`}>
+                                                            {formatCurrency(paidAmount, i18n.language, currencyConf)}
+                                                        </td>
+                                                        <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-red-500`}>
+                                                            {formatCurrency(remainingAmount, i18n.language, currencyConf)}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {getStatusBadge(status)}
+                                                        </td>
+                                                        <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400 font-mono`}>
+                                                            {lastPaymentDate ? formatDateTime(lastPaymentDate, i18n.language) : '-'}
+                                                        </td>
+                                                        <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400`}>
+                                                            {employeeName}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button
+                                                                    onClick={() => setLedgerTarget({
+                                                                        memberId,
+                                                                        subscriptionId,
+                                                                        memberName
+                                                                    })}
+                                                                    className="p-1.5 hover:bg-slate-600 rounded text-indigo-400 transition-all text-xs border border-transparent hover:border-indigo-500/20"
+                                                                    title={t('reports.paymentHistory', 'Payment history')}
+                                                                >
+                                                                    {t('reports.ledger', 'Ledger')}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setViewMemberId(memberId)}
+                                                                    className="p-1.5 hover:bg-slate-600 rounded text-gray-400 hover:text-white transition-all"
+                                                                    title={t('reports.viewMember', 'View member')}
+                                                                >
+                                                                    <Eye size={16} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </>
+                                                );
+                                            })()}
                                         </motion.tr>
                                     ))}
                                 </AnimatePresence>

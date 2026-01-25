@@ -170,91 +170,128 @@ const handlePaymentRemaining = async (req, res) => {
         }
 
         // Fetch subscriptions with all related data
-        const subscriptions = await req.prisma.subscription.findMany({
-            where,
-            include: {
-                member: {
-                    select: {
-                        id: true,
-                        memberId: true,
-                        firstName: true,
-                        lastName: true,
-                        phone: true,
-                        gender: true
-                    }
-                },
-                plan: {
-                    select: {
-                        id: true,
-                        name: true,
-                        price: true
-                    }
-                },
-                payments: {
-                    where: {
-                        status: { in: ['completed', 'refunded', 'Partial Refund'] }
-                    },
-                    select: {
-                        id: true,
-                        amount: true,
-                        refundedTotal: true,
-                        paidAt: true,
-                        creator: {
-                            select: {
-                                firstName: true,
-                                lastName: true
-                            }
-                        }
-                    },
-                    orderBy: {
-                        paidAt: 'desc'
+          const subscriptions = await req.prisma.subscription.findMany({
+              where,
+              include: {
+                  member: {
+                      select: {
+                          id: true,
+                          memberId: true,
+                          firstName: true,
+                          lastName: true,
+                          phone: true,
+                          gender: true
+                      }
+                  },
+                  plan: {
+                      select: {
+                          id: true,
+                          name: true,
+                          price: true,
+                          duration: true
+                      }
+                  },
+                  payments: {
+                      where: {
+                          status: { in: ['completed', 'refunded', 'Partial Refund'] }
+                      },
+                      select: {
+                          id: true,
+                          amount: true,
+                          refundedTotal: true,
+                          paidAt: true,
+                          method: true,
+                          collectorName: true,
+                          creator: {
+                              select: {
+                                  firstName: true,
+                                  lastName: true
+                              }
+                          }
+                      },
+                      orderBy: {
+                          paidAt: 'desc'
                     }
                 }
             }
         });
 
         // Calculate financials for each subscription
-        let rows = subscriptions.map(sub => {
-            const financials = calculateSubscriptionFinancials(sub, sub.payments);
-            const paymentStatus = determinePaymentStatus(financials.remaining, financials.netPaid);
+          let rows = subscriptions.map(sub => {
+              const subscriptionPrice = sub.price != null
+                  ? sub.price
+                  : (sub.plan?.price || 0);
+              const financials = calculateSubscriptionFinancials({ ...sub, price: subscriptionPrice }, sub.payments);
+              const paymentStatus = determinePaymentStatus(financials.remaining, financials.netPaid);
 
-            const lastPayment = sub.payments.length > 0 ? sub.payments[0] : null;
+              const lastPayment = sub.payments.length > 0 ? sub.payments[0] : null;
+              const lastPaymentEmployee = lastPayment?.creator
+                  ? `${lastPayment.creator.firstName} ${lastPayment.creator.lastName}`
+                  : (lastPayment?.collectorName || null);
+              const memberName = `${sub.member.firstName} ${sub.member.lastName}`;
 
-            return {
-                subscription: {
-                    id: sub.id,
-                    startDate: sub.startDate,
-                    endDate: sub.endDate
-                },
-                member: {
-                    id: sub.member.id,
-                    memberId: sub.member.memberId,
-                    name: `${sub.member.firstName} ${sub.member.lastName}`,
-                    phone: sub.member.phone,
-                    gender: sub.member.gender || 'unknown'
-                },
-                plan: {
-                    id: sub.plan.id,
-                    name: sub.plan.name
-                },
-                financial: {
-                    total: financials.subscriptionPrice,
-                    totalPaid: financials.totalPaid,
-                    totalRefunded: financials.totalRefunded,
-                    netPaid: financials.netPaid,
-                    remaining: financials.remaining,
-                    status: paymentStatus.toLowerCase()
-                },
-                timeline: {
-                    lastPaymentDate: lastPayment?.paidAt || null
-                },
-                audit: {
-                    collectorName: lastPayment?.creator ?
-                        `${lastPayment.creator.firstName} ${lastPayment.creator.lastName}` :
-                        null
-                }
-            };
-        });
+              return {
+                  subscriptionId: sub.id,
+                  memberId: sub.member.id,
+                  memberName,
+                  memberCode: sub.member.memberId,
+                  planId: sub.plan.id,
+                  planName: sub.plan.name,
+                  planDuration: sub.plan.duration,
+                  status: paymentStatus.toLowerCase(),
+                  subscriptionStatus: sub.status,
+                  startDate: sub.startDate,
+                  endDate: sub.endDate,
+                  cancelledAt: sub.canceledAt || null,
+                  price: financials.subscriptionPrice,
+                  paidAmount: financials.totalPaid,
+                  refundedAmount: financials.totalRefunded,
+                  netPaid: financials.netPaid,
+                  remainingAmount: financials.remaining,
+                  lastPaymentDate: lastPayment?.paidAt || null,
+                  lastPayment: lastPayment ? {
+                      amount: lastPayment.amount,
+                      method: lastPayment.method,
+                      paidAt: lastPayment.paidAt,
+                      employeeName: lastPaymentEmployee
+                  } : null,
+                  employeeName: lastPaymentEmployee,
+                  subscription: {
+                      id: sub.id,
+                      startDate: sub.startDate,
+                      endDate: sub.endDate,
+                      status: sub.status,
+                      cancelledAt: sub.canceledAt || null
+                  },
+                  member: {
+                      id: sub.member.id,
+                      memberId: sub.member.memberId,
+                      name: memberName,
+                      phone: sub.member.phone,
+                      gender: sub.member.gender || 'unknown'
+                  },
+                  plan: {
+                      id: sub.plan.id,
+                      name: sub.plan.name,
+                      price: sub.plan.price,
+                      duration: sub.plan.duration
+                  },
+                  financial: {
+                      total: financials.subscriptionPrice,
+                      totalPaid: financials.totalPaid,
+                      totalRefunded: financials.totalRefunded,
+                      netPaid: financials.netPaid,
+                      remaining: financials.remaining,
+                      status: paymentStatus.toLowerCase()
+                  },
+                  timeline: {
+                      lastPaymentDate: lastPayment?.paidAt || null
+                  },
+                  audit: {
+                      collectorName: lastPaymentEmployee
+                  }
+              };
+          });
 
         // Apply filters
         if (search) {
