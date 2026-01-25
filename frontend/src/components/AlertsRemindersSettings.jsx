@@ -36,6 +36,20 @@ const AlertsRemindersSettings = () => {
         loadSettings();
     }, []);
 
+    const parseBoolean = (value, fallback = true) => {
+        if (value === undefined || value === null) return fallback;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') return value.toLowerCase() === 'true';
+        return fallback;
+    };
+
+    const parseNumber = (value, fallback) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        const parsed = parseInt(value, 10);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
     const loadSettings = async () => {
         setIsLoading(true);
         try {
@@ -44,9 +58,9 @@ const AlertsRemindersSettings = () => {
             if (response.data.success) {
                 const settings = response.data.data;
                 setReminderSettings({
-                    enableAutoReminders: settings.general?.enable_auto_reminders !== 'false',
-                    reminderDaysBeforeDue: parseInt(settings.general?.reminder_days_before_due || 3),
-                    dueSoonDays: parseInt(settings.general?.due_soon_days || 3)
+                    enableAutoReminders: parseBoolean(settings.general?.enable_auto_reminders, true),
+                    reminderDaysBeforeDue: parseNumber(settings.general?.reminder_days_before_due, 3),
+                    dueSoonDays: parseNumber(settings.general?.due_soon_days, 3)
                 });
             }
 
@@ -70,9 +84,11 @@ const AlertsRemindersSettings = () => {
         try {
             // Save reminder settings to backend
             await api.put('/settings', {
-                enable_auto_reminders: reminderSettings.enableAutoReminders.toString(),
-                reminder_days_before_due: reminderSettings.reminderDaysBeforeDue.toString(),
-                due_soon_days: reminderSettings.dueSoonDays.toString()
+                settings: {
+                    enable_auto_reminders: reminderSettings.enableAutoReminders,
+                    reminder_days_before_due: reminderSettings.reminderDaysBeforeDue,
+                    due_soon_days: reminderSettings.dueSoonDays
+                }
             });
 
             // Save voice/sound settings to localStorage
