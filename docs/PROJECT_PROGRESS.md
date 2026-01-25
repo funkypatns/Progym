@@ -69,6 +69,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-25 | 6df5c07 | Improve POS cart quantity input to allow typing values directly. |
 | 2026-01-25 | 2f1789e | Add cash closing sales preview (product sales totals + top items). |
 | 2026-01-25 | 9be4d44 | Align cash closing preview range to local time and guard date order. |
+| 2026-01-25 | b160a85 | Add receipts storage, receipt service, and POS receipt generation backend. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
