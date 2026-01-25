@@ -188,6 +188,29 @@
     },
     "reports": {
         "title": "Reports",
+        "receipts": {
+            "alreadyIssued": "Receipt already issued for this transaction",
+            "title": "Receipts",
+            "subtitle": "Review and reprint receipts",
+            "salesTab": "Sales Receipts",
+            "generalTab": "General Receipts",
+            "searchPlaceholder": "Receipt / Transaction / Customer",
+            "count": "Receipts",
+            "totalSales": "Total sales",
+            "totalPaid": "Total paid",
+            "totalRefunded": "Total refunded",
+            "notFound": "Receipt not found",
+            "lookupFailed": "Failed to lookup receipt",
+            "found": "Receipts found",
+            "scan": "Scan",
+            "manual": "Manual",
+            "allShifts": "All shifts",
+            "currentShift": "Current shift",
+            "receiptNumber": "Receipt number"
+        },
+        "errors": {
+            "serverError": "Failed to load report data"
+        },
         "filterByEmployee": "Filter by Employee",
         "memberReport": "Members Report",
         "revenueReport": "Revenue Report",
@@ -195,6 +218,8 @@
         "subscriptionReport": "Subscriptions Report",
         "export": "Export",
         "exportExcel": "Export to Excel",
+        "exportPdf": "Export to PDF",
+        "exportFailed": "Export failed",
         "dateRange": "Date Range",
         "from": "From",
         "to": "To",
@@ -504,6 +529,10 @@
         "refRequired": "Required for records"
     },
     "receipt": {
+        "title": "Receipt",
+        "companyName": "Gym Management",
+        "number": "Receipt #",
+        "date": "Date",
         "paymentTitle": "Payment Receipt",
         "fullPayment": "Full Payment",
         "partialPayment": "Partial Payment",
@@ -517,8 +546,30 @@
         "notes": "Notes",
         "refundLabel": "Refund",
         "refundedWatermark": "REFUNDED",
+        "transactionId": "Transaction",
+        "staff": "Cashier",
+        "customer": "Customer",
+        "memberId": "ID",
+        "phone": "Phone",
+        "items": "Items",
+        "noItems": "No items",
+        "subtotal": "Subtotal",
+        "discount": "Discount",
+        "tax": "Tax",
+        "paymentMethod": "Method",
+        "paid": "PAID",
+        "change": "Change",
+        "copy": "COPY",
+        "walkIn": "Walk-in Customer",
         "total": "Total",
         "paidNow": "Paid now",
-        "remaining": "Remaining"
+        "remaining": "Remaining",
+        "thankYou": "Thank you!"
+    },
+    "sales": {
+        "successTitle": "Sale completed",
+        "successSubtitle": "Choose an action",
+        "newSale": "Start New Sale",
+        "failed": "Sale failed"
     }
 }

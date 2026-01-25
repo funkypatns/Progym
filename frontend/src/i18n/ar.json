@@ -190,6 +190,29 @@
     },
     "reports": {
         "title": "التقارير",
+        "receipts": {
+            "alreadyIssued": "تم إصدار إيصال لهذه العملية بالفعل",
+            "title": "الإيصالات",
+            "subtitle": "عرض وإعادة طباعة الإيصالات",
+            "salesTab": "إيصالات المبيعات",
+            "generalTab": "إيصالات الاشتراكات",
+            "searchPlaceholder": "الإيصال / المعاملة / العميل",
+            "count": "عدد الإيصالات",
+            "totalSales": "إجمالي المبيعات",
+            "totalPaid": "إجمالي المدفوع",
+            "totalRefunded": "إجمالي المرتجع",
+            "notFound": "الإيصال غير موجود",
+            "lookupFailed": "فشل البحث عن الإيصال",
+            "found": "الإيصالات الموجودة",
+            "scan": "مسح",
+            "manual": "يدوي",
+            "allShifts": "كل الورديات",
+            "currentShift": "الوردية الحالية",
+            "receiptNumber": "رقم الإيصال"
+        },
+        "errors": {
+            "serverError": "فشل تحميل بيانات التقرير"
+        },
         "filterByEmployee": "فلتر بواسطة الموظف",
         "memberReport": "تقرير الأعضاء",
         "revenueReport": "تقرير الإيرادات",
@@ -197,6 +220,8 @@
         "subscriptionReport": "تقرير الاشتراكات",
         "export": "تصدير",
         "exportExcel": "تصدير إلى Excel",
+        "exportPdf": "تصدير إلى PDF",
+        "exportFailed": "فشل التصدير",
         "dateRange": "نطاق التاريخ",
         "from": "من تاريخ ووقت",
         "to": "إلى تاريخ ووقت",
@@ -438,6 +463,10 @@
         "refRequired": "مطلوب للسجلات"
     },
     "receipt": {
+        "title": "إيصال",
+        "companyName": "إدارة الجيم",
+        "number": "رقم الإيصال",
+        "date": "التاريخ",
         "paymentTitle": "إيصال الدفع",
         "fullPayment": "دفع كامل",
         "partialPayment": "دفعة جزئية",
@@ -451,9 +480,31 @@
         "notes": "ملاحظات",
         "refundLabel": "استرداد",
         "refundedWatermark": "تم الاسترداد",
+        "transactionId": "رقم العملية",
+        "staff": "الكاشير",
+        "customer": "العميل",
+        "memberId": "المعرف",
+        "phone": "الهاتف",
+        "items": "المنتجات",
+        "noItems": "لا توجد عناصر",
+        "subtotal": "الإجمالي الفرعي",
+        "discount": "الخصم",
+        "tax": "الضريبة",
+        "paymentMethod": "طريقة الدفع",
+        "paid": "المدفوع",
+        "change": "الباقي",
+        "copy": "نسخة",
+        "walkIn": "عميل عادي",
         "total": "الإجمالي",
         "paidNow": "المدفوع الآن",
-        "remaining": "المتبقي"
+        "remaining": "المتبقي",
+        "thankYou": "شكراً لكم!"
+    },
+    "sales": {
+        "successTitle": "تمت العملية",
+        "successSubtitle": "اختر إجراء",
+        "newSale": "بدء بيع جديد",
+        "failed": "فشل البيع"
     },
     "cashClosing": {
         "title": "تقفيل الكاش",

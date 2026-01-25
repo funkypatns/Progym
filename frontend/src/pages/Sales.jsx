@@ -1,18 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../utils/api';
 import { useTranslation } from 'react-i18next';
-import { usePosStore } from '../store';
+import { usePosStore, useSettingsStore } from '../store';
 import { toast } from 'react-hot-toast';
-import { ShoppingCart, Trash2, Plus, Minus, Search, CreditCard, Banknote, Package, TrendingUp, DollarSign, AlertCircle, CheckCircle } from 'lucide-react';
+import { ShoppingCart, Trash2, Plus, Minus, Search, CreditCard, Banknote, Package, TrendingUp, DollarSign, AlertCircle, CheckCircle, Printer, Eye, RotateCcw, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ThermalReceipt from '../components/receipts/ThermalReceipt';
 
 const Sales = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const { currentShift } = usePosStore();
+    const { getSetting } = useSettingsStore();
+    const receiptRef = useRef(null);
     const [products, setProducts] = useState([]);
     const [search, setSearch] = useState('');
     const [cart, setCart] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [saleReceipt, setSaleReceipt] = useState(null);
+    const [showReceiptModal, setShowReceiptModal] = useState(false);
+    const [showReceiptPreview, setShowReceiptPreview] = useState(false);
+    const [receiptIsCopy, setReceiptIsCopy] = useState(false);
+
+    const currencyConf = {
+        code: getSetting('currency_code', 'EGP'),
+        symbol: getSetting('currency_symbol', 'EGP')
+    };
+    const gymName = getSetting('gym_name', t('receipt.companyName', 'GYM MANAGEMENT'));
+    const gymPhone = getSetting('gym_phone', '');
 
     useEffect(() => {
         fetchProducts();
@@ -96,16 +110,69 @@ const Sales = () => {
     const handleCheckout = async () => {
         if (!cart.length) return;
         try {
-            await apiClient.post('/sales', {
+            const response = await apiClient.post('/sales', {
                 items: cart.map(x => ({ productId: x.id, qty: x.qty })),
                 paymentMethod: 'cash',
                 notes: 'Quick Sale'
             });
-            toast.success('Sale Completed Successfully! 🎉');
+            const receiptData = response.data?.data?.receipt || null;
+            const receiptCreated = response.data?.data?.receiptCreated ?? true;
+            if (receiptData) {
+                setSaleReceipt(receiptData);
+                setReceiptIsCopy(!receiptCreated);
+                setShowReceiptModal(true);
+                setShowReceiptPreview(false);
+            }
+            if (!receiptCreated) {
+                toast.success(t('reports.receipts.alreadyIssued', 'Receipt already issued for this transaction'));
+            } else {
+                toast.success(t('sales.successTitle', 'Sale completed'));
+            }
             setCart([]);
         } catch (e) {
-            toast.error('Sale Failed');
+            toast.error(t('sales.failed', 'Sale failed'));
         }
+    };
+
+    const handlePrintReceipt = () => {
+        if (!receiptRef.current) return;
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.setAttribute('title', 'receipt-print');
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(node => node.outerHTML)
+            .join('');
+        const printStyles = `
+            @page { margin: 10mm; }
+            body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        `;
+
+        doc.open();
+        doc.write(`<!doctype html><html><head>${styles}<style>${printStyles}</style></head><body dir="${i18n.language === 'ar' ? 'rtl' : 'ltr'}">${receiptRef.current.innerHTML}</body></html>`);
+        doc.close();
+
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 1000);
+    };
+
+    const handleStartNewSale = () => {
+        setShowReceiptModal(false);
+        setShowReceiptPreview(false);
+        setSaleReceipt(null);
+        setReceiptIsCopy(false);
     };
 
     return (
@@ -281,7 +348,7 @@ const Sales = () => {
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate mb-1">{item.name}</h4>
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                                                {item.salePrice} EGP × {item.qty}
+                                                {item.salePrice} EGP x {item.qty}
                                             </p>
                                             <div className="flex items-center gap-2">
                                                 <div className="flex items-center gap-1 bg-white dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-white/10">
@@ -368,6 +435,92 @@ const Sales = () => {
                     </div>
                 </motion.div>
             </div>
+
+            <AnimatePresence>
+                {showReceiptModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+                        onClick={handleStartNewSale}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-white/10"
+                        >
+                            <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20">
+                                <div>
+                                    <h3 className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">
+                                        {t('sales.successTitle', 'Sale completed')}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                                        {t('sales.successSubtitle', 'Choose an action')}
+                                    </p>
+                                </div>
+                                <button onClick={handleStartNewSale} className="p-2 hover:bg-white/50 dark:hover:bg-white/5 rounded-xl transition-colors">
+                                    <X size={24} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={handlePrintReceipt}
+                                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/30 transition-all"
+                                    >
+                                        <Printer size={18} />
+                                        {t('payments.printReceipt', 'Print Receipt')}
+                                    </button>
+                                    <button
+                                        onClick={() => setShowReceiptPreview(prev => !prev)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all"
+                                    >
+                                        <Eye size={18} />
+                                        {t('payments.receipt', 'View Receipt')}
+                                    </button>
+                                    <button
+                                        onClick={handleStartNewSale}
+                                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl font-bold transition-all"
+                                    >
+                                        <RotateCcw size={18} />
+                                        {t('sales.newSale', 'Start New Sale')}
+                                    </button>
+                                </div>
+
+                                {saleReceipt && (
+                                    <div className="hidden">
+                                        <div ref={receiptRef}>
+                                            <ThermalReceipt
+                                                receipt={saleReceipt}
+                                                currencyConf={currencyConf}
+                                                gymName={gymName}
+                                                gymPhone={gymPhone}
+                                                isCopy={receiptIsCopy}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {showReceiptPreview && saleReceipt && (
+                                    <div className="mt-4 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 border border-gray-200 dark:border-white/10">
+                                        <ThermalReceipt
+                                            receipt={saleReceipt}
+                                            currencyConf={currencyConf}
+                                            gymName={gymName}
+                                            gymPhone={gymPhone}
+                                            isCopy={receiptIsCopy}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

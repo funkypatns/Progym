@@ -1,5 +1,5 @@
 import React from 'react';
-import ReceiptLookupReport from '../../components/ReceiptLookupReport';
+import ReceiptsReport from '../../components/ReceiptsReport';
 import ReportsShell from '../../components/ReportsShell';
 import { useTranslation } from 'react-i18next';
 
@@ -8,11 +8,11 @@ const ReceiptLookupPage = () => {
 
     return (
         <ReportsShell
-            title={t('reports.receipts.title', 'Receipt lookup')}
-            subtitle={t('reports.receipts.subtitle', 'Scan or search for transaction receipts')}
+            title={t('reports.receipts.title', 'Receipts')}
+            subtitle={t('reports.receipts.subtitle', 'Review and reprint receipts')}
             centerHeader
         >
-            <ReceiptLookupReport isActive={true} />
+            <ReceiptsReport isActive={true} />
         </ReportsShell>
     );
 };
