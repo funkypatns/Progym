@@ -81,6 +81,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | 0c813bf | Mark receipt reprints as COPY for POS and reports. |
 | 2026-01-25 | 34c3a14 | Validate POS sale payload and send shift/cashier/paid fields. |
 | 2026-01-25 | d3801fc | Add receipts schema guard with clear error message. |
+| 2026-01-25 | f4a1fe4 | Export receipts via authenticated download. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
