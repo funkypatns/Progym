@@ -58,6 +58,7 @@ const productValidation = [
     body('name').trim().notEmpty().withMessage('Product name is required'),
     body('salePrice').isFloat({ min: 0 }).withMessage('Sale price must be positive'),
     body('sku').optional().trim(),
+    body('quantity').optional().isInt({ min: 0 }).withMessage('Quantity must be a non-negative integer'),
 ];
 
 const restockValidation = [
@@ -166,21 +167,45 @@ router.post('/', handleProductUpload, productValidation, async (req, res) => {
         if (!Number.isFinite(salePriceValue)) {
             return res.status(400).json({ success: false, message: 'Sale price must be a valid number' });
         }
+        const quantityInput = req.body.quantity;
+        const quantityValue = quantityInput === undefined || quantityInput === null || quantityInput === ''
+            ? null
+            : parseInt(quantityInput, 10);
+        if (quantityValue !== null && (!Number.isFinite(quantityValue) || quantityValue < 0)) {
+            return res.status(400).json({ success: false, message: 'Quantity must be a non-negative integer' });
+        }
 
         let imageUrl = null;
         if (req.file) {
             imageUrl = `/uploads/products/${req.file.filename}`;
         }
 
-        const product = await req.prisma.product.create({
-            data: {
-                name,
-                description,
-                salePrice: salePriceValue,
-                sku: sku || null,
-                isActive: isActive === 'true' || isActive === true,
-                imageUrl
+        const product = await req.prisma.$transaction(async (tx) => {
+            const created = await tx.product.create({
+                data: {
+                    name,
+                    description,
+                    salePrice: salePriceValue,
+                    sku: sku || null,
+                    isActive: isActive === 'true' || isActive === true,
+                    imageUrl
+                }
+            });
+
+            if (quantityValue && quantityValue > 0) {
+                await tx.stockMovement.create({
+                    data: {
+                        productId: created.id,
+                        type: 'IN',
+                        quantity: quantityValue,
+                        reason: 'Initial Stock',
+                        notes: 'Initial stock on create',
+                        employeeId: req.user.id
+                    }
+                });
             }
+
+            return created;
         });
 
         res.status(201).json({ success: true, data: product });
@@ -205,32 +230,79 @@ router.put('/:id', handleProductUpload, productValidation, async (req, res) => {
         if (!Number.isFinite(salePriceValue)) {
             return res.status(400).json({ success: false, message: 'Sale price must be a valid number' });
         }
-
-        const product = await req.prisma.product.findUnique({ where: { id: parseInt(id) } });
-        if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
-
-        let imageUrl = product.imageUrl;
-        if (req.file) {
-            imageUrl = `/uploads/products/${req.file.filename}`;
-            // Optional: We could delete the old image file here to save space
+        const quantityInput = req.body.quantity;
+        const quantityValue = quantityInput === undefined || quantityInput === null || quantityInput === ''
+            ? null
+            : parseInt(quantityInput, 10);
+        if (quantityValue !== null && (!Number.isFinite(quantityValue) || quantityValue < 0)) {
+            return res.status(400).json({ success: false, message: 'Quantity must be a non-negative integer' });
         }
 
-        const updated = await req.prisma.product.update({
-            where: { id: parseInt(id) },
-            data: {
-                name,
-                description,
-                salePrice: salePriceValue,
-                sku: sku || null,
-                isActive: isActive === 'true' || isActive === true,
-                imageUrl
+        const updated = await req.prisma.$transaction(async (tx) => {
+            const product = await tx.product.findUnique({
+                where: { id: parseInt(id) },
+                include: {
+                    stockMovements: {
+                        select: { type: true, quantity: true }
+                    }
+                }
+            });
+
+            if (!product) {
+                const notFoundError = new Error('Product not found');
+                notFoundError.status = 404;
+                throw notFoundError;
             }
+
+            let imageUrl = product.imageUrl;
+            if (req.file) {
+                imageUrl = `/uploads/products/${req.file.filename}`;
+                // Optional: We could delete the old image file here to save space
+            }
+
+            if (quantityValue !== null) {
+                let currentStock = 0;
+                product.stockMovements.forEach((m) => {
+                    if (m.type === 'IN') currentStock += m.quantity;
+                    else if (m.type === 'OUT') currentStock -= m.quantity;
+                    else if (m.type === 'ADJUST') currentStock += m.quantity;
+                });
+
+                const delta = quantityValue - currentStock;
+                if (delta !== 0) {
+                    await tx.stockMovement.create({
+                        data: {
+                            productId: product.id,
+                            type: delta > 0 ? 'IN' : 'OUT',
+                            quantity: Math.abs(delta),
+                            reason: 'Manual Update',
+                            notes: `Set stock to ${quantityValue}`,
+                            employeeId: req.user.id
+                        }
+                    });
+                }
+            }
+
+            return tx.product.update({
+                where: { id: parseInt(id) },
+                data: {
+                    name,
+                    description,
+                    salePrice: salePriceValue,
+                    sku: sku || null,
+                    isActive: isActive === 'true' || isActive === true,
+                    imageUrl
+                }
+            });
         });
 
         res.json({ success: true, data: updated });
 
     } catch (error) {
         console.error('Update product error:', error);
+        if (error.status === 404) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });

@@ -32,13 +32,13 @@ const Products = () => {
 
     const [showModal, setShowModal] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
-    const [newProduct, setNewProduct] = useState({ name: '', sku: '', salePrice: '', description: '', isActive: true });
+    const [newProduct, setNewProduct] = useState({ name: '', sku: '', salePrice: '', quantity: '', description: '', isActive: true });
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState('');
     const [imageError, setImageError] = useState('');
 
     const resetModalState = () => {
-        setNewProduct({ name: '', sku: '', salePrice: '', description: '', isActive: true });
+        setNewProduct({ name: '', sku: '', salePrice: '', quantity: '', description: '', isActive: true });
         setEditingProduct(null);
         setImageFile(null);
         setImagePreview('');
@@ -61,6 +61,7 @@ const Products = () => {
             name: product.name || '',
             sku: product.sku || '',
             salePrice: product.salePrice || '',
+            quantity: Number.isFinite(product.stock) ? String(product.stock) : '0',
             description: product.description || '',
             isActive: product.isActive ?? true
         });
@@ -100,6 +101,9 @@ const Products = () => {
             payload.append('name', newProduct.name);
             payload.append('sku', newProduct.sku || '');
             payload.append('salePrice', newProduct.salePrice);
+            if (newProduct.quantity !== '' && newProduct.quantity !== null) {
+                payload.append('quantity', newProduct.quantity);
+            }
             payload.append('description', newProduct.description || '');
             payload.append('isActive', newProduct.isActive);
             if (imageFile) {
@@ -465,6 +469,17 @@ const Products = () => {
                                                     onChange={e => setNewProduct({ ...newProduct, salePrice: e.target.value })}
                                                 />
                                             </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Quantity</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 dark:bg-slate-800 dark:text-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                                                value={newProduct.quantity}
+                                                onChange={e => setNewProduct({ ...newProduct, quantity: e.target.value })}
+                                            />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Description</label>
