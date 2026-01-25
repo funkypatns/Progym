@@ -255,6 +255,43 @@ model Payment {
   @@index([transactionRef])
 }
 
+/// Receipt counters for daily incremental receipt numbers
+model ReceiptCounter {
+  id         Int      @id @default(autoincrement())
+  date       String   @unique // YYYYMMDD
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+/// Unified receipts for payments, subscriptions, and sales
+model Receipt {
+  id              Int      @id @default(autoincrement())
+  receiptNo       String   @unique
+  transactionId   String   @unique
+  transactionType String
+  paymentMethod   String?
+
+  customerId    Int?
+  customerName  String?
+  customerPhone String?
+  customerCode  String?
+
+  staffId   Int?
+  staffName String?
+  branchName String?
+
+  itemsJson   String // JSON string
+  totalsJson  String // JSON string
+  status  String   @default("issued") // issued, voided, refunded
+  notes   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([transactionType, createdAt])
+  @@index([customerName, customerPhone])
+}
+
 
 /// Expense tracking
 model Expense {

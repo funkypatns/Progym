@@ -11,6 +11,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { authenticate, requirePermission, authorize, requireActiveShift, requireAnyPermission } = require('../middleware/auth');
 const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransaction } = require('../services/paymentService');
+const { createReceipt } = require('../services/receiptService');
 const { roundMoney, clampMoney } = require('../utils/money');
 
 // The global authenticate middleware is removed as it's now applied per route where needed,
@@ -400,6 +401,80 @@ router.post('/', [
                     collectorName: finalCollectorName
                 }, { receiptSuffix: '-INV' });
             }
+
+            if (createdPayment) {
+                await createReceipt(prisma, {
+                    transactionType: 'payment',
+                    transactionId: createdPayment.id,
+                    paymentMethod: createdPayment.method,
+                    customerId: sub.memberId,
+                    customerName: sub.member ? `${sub.member.firstName} ${sub.member.lastName}` : null,
+                    customerPhone: sub.member?.phone || null,
+                    customerCode: sub.member?.memberId || null,
+                    staffId: finalCreatedBy,
+                    staffName: finalCollectorName,
+                    items: [
+                        {
+                            type: 'subscription',
+                            name: plan.name,
+                            qty: 1,
+                            unitPrice: totalPrice,
+                            lineTotal: totalPrice,
+                            duration: plan.duration,
+                            startDate: sub.startDate,
+                            endDate: sub.endDate
+                        }
+                    ],
+                    totals: {
+                        subtotal: totalPrice,
+                        discount: numericDiscount || 0,
+                        tax: 0,
+                        total: totalPrice,
+                        paid: paidNow,
+                        paidToDate: sub.paidAmount || paidNow,
+                        remaining: remainingAmount,
+                        change: 0
+                    },
+                    notes: createdPayment.notes || null,
+                    createdAt: createdPayment.paidAt || createdPayment.createdAt
+                });
+            } else {
+                await createReceipt(prisma, {
+                    transactionType: 'subscription',
+                    transactionId: sub.id,
+                    paymentMethod: normalizedMethod,
+                    customerId: sub.memberId,
+                    customerName: sub.member ? `${sub.member.firstName} ${sub.member.lastName}` : null,
+                    customerPhone: sub.member?.phone || null,
+                    customerCode: sub.member?.memberId || null,
+                    staffId: finalCreatedBy,
+                    staffName: finalCollectorName,
+                    items: [
+                        {
+                            type: 'subscription',
+                            name: plan.name,
+                            qty: 1,
+                            unitPrice: totalPrice,
+                            lineTotal: totalPrice,
+                            duration: plan.duration,
+                            startDate: sub.startDate,
+                            endDate: sub.endDate
+                        }
+                    ],
+                    totals: {
+                        subtotal: totalPrice,
+                        discount: numericDiscount || 0,
+                        tax: 0,
+                        total: totalPrice,
+                        paid: 0,
+                        paidToDate: 0,
+                        remaining: totalPrice,
+                        change: 0
+                    },
+                    notes: notes || null,
+                    createdAt: sub.createdAt
+                });
+            }
             return { ...sub, payment: createdPayment };
         });
 
@@ -578,8 +653,9 @@ router.put('/:id/renew', async (req, res) => {
             const paidNow = roundMoney(numericPaidAmount);
 
             // Step A: Receipt for actual money
+            let createdPayment = null;
             if (paidNow > 0) {
-                await recordPaymentTransaction(prisma, {
+                const paymentResult = await recordPaymentTransaction(prisma, {
                     memberId: newSub.memberId,
                     subscriptionId: newSub.id,
                     amount: paidNow,
@@ -591,6 +667,7 @@ router.put('/:id/renew', async (req, res) => {
                     collectorName: finalCollectorName,
                     externalReference: externalReference
                 });
+                createdPayment = paymentResult.payment;
             }
 
             // Step B: Invoice for remaining balance
@@ -606,6 +683,80 @@ router.put('/:id/renew', async (req, res) => {
                     createdBy: finalCreatedBy,
                     collectorName: finalCollectorName
                 }, { receiptSuffix: '-INV' });
+            }
+
+            if (createdPayment) {
+                await createReceipt(prisma, {
+                    transactionType: 'payment',
+                    transactionId: createdPayment.id,
+                    paymentMethod: createdPayment.method,
+                    customerId: newSub.memberId,
+                    customerName: newSub.member ? `${newSub.member.firstName} ${newSub.member.lastName}` : null,
+                    customerPhone: newSub.member?.phone || null,
+                    customerCode: newSub.member?.memberId || null,
+                    staffId: finalCreatedBy,
+                    staffName: finalCollectorName,
+                    items: [
+                        {
+                            type: 'subscription',
+                            name: newPlan.name,
+                            qty: 1,
+                            unitPrice: fullPrice,
+                            lineTotal: fullPrice,
+                            duration: newPlan.duration,
+                            startDate: newSub.startDate,
+                            endDate: newSub.endDate
+                        }
+                    ],
+                    totals: {
+                        subtotal: fullPrice,
+                        discount: 0,
+                        tax: 0,
+                        total: fullPrice,
+                        paid: paidNow,
+                        paidToDate: newSub.paidAmount || paidNow,
+                        remaining: roundMoney(fullPrice - paidNow),
+                        change: 0
+                    },
+                    notes: createdPayment.notes || null,
+                    createdAt: createdPayment.paidAt || createdPayment.createdAt
+                });
+            } else {
+                await createReceipt(prisma, {
+                    transactionType: 'subscription',
+                    transactionId: newSub.id,
+                    paymentMethod: normalizedMethod,
+                    customerId: newSub.memberId,
+                    customerName: newSub.member ? `${newSub.member.firstName} ${newSub.member.lastName}` : null,
+                    customerPhone: newSub.member?.phone || null,
+                    customerCode: newSub.member?.memberId || null,
+                    staffId: finalCreatedBy,
+                    staffName: finalCollectorName,
+                    items: [
+                        {
+                            type: 'subscription',
+                            name: newPlan.name,
+                            qty: 1,
+                            unitPrice: fullPrice,
+                            lineTotal: fullPrice,
+                            duration: newPlan.duration,
+                            startDate: newSub.startDate,
+                            endDate: newSub.endDate
+                        }
+                    ],
+                    totals: {
+                        subtotal: fullPrice,
+                        discount: 0,
+                        tax: 0,
+                        total: fullPrice,
+                        paid: 0,
+                        paidToDate: 0,
+                        remaining: fullPrice,
+                        change: 0
+                    },
+                    notes: notes || null,
+                    createdAt: newSub.createdAt
+                });
             }
 
             return newSub;

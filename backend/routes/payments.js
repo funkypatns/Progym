@@ -11,6 +11,7 @@ const { body, validationResult } = require('express-validator');
 const PDFDocument = require('pdfkit');
 const { v4: uuidv4 } = require('uuid');
 const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransaction } = require('../services/paymentService');
+const { createReceipt } = require('../services/receiptService');
 const { roundMoney, clampMoney } = require('../utils/money');
 
 router.use(authenticate);
@@ -426,6 +427,77 @@ router.post('/', requirePermission('payments.create'), [
                 });
 
             }
+
+            const paymentDetails = await prisma.payment.findUnique({
+                where: { id: payment.id },
+                include: {
+                    member: {
+                        select: { id: true, firstName: true, lastName: true, phone: true, memberId: true }
+                    },
+                    subscription: {
+                        include: { plan: true }
+                    },
+                    creator: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
+                }
+            });
+
+            const member = paymentDetails?.member;
+            const subscription = paymentDetails?.subscription;
+            const plan = subscription?.plan;
+            const totalPrice = subscription?.price ?? plan?.price ?? payment.amount;
+            const paidNow = Number(payment.amount || 0);
+            const paidToDate = Number.isFinite(Number(subscription?.paidAmount)) ? Number(subscription.paidAmount) : paidNow;
+            const remaining = Number.isFinite(Number(subscription?.remainingAmount)) ? Number(subscription.remainingAmount) : 0;
+            const staffName = payment.collectorName || (paymentDetails?.creator ? `${paymentDetails.creator.firstName} ${paymentDetails.creator.lastName}` : 'System');
+
+            const items = [];
+            if (subscription) {
+                items.push({
+                    type: 'subscription',
+                    name: plan?.name || 'Subscription',
+                    qty: 1,
+                    unitPrice: totalPrice,
+                    lineTotal: totalPrice,
+                    duration: plan?.duration,
+                    startDate: subscription.startDate,
+                    endDate: subscription.endDate
+                });
+            } else {
+                items.push({
+                    type: 'payment',
+                    name: notes || 'Payment',
+                    qty: 1,
+                    unitPrice: paidNow,
+                    lineTotal: paidNow
+                });
+            }
+
+            await createReceipt(prisma, {
+                transactionType: 'payment',
+                transactionId: payment.id,
+                paymentMethod: payment.method,
+                customerId: member?.id,
+                customerName: member ? `${member.firstName} ${member.lastName}` : null,
+                customerPhone: member?.phone || null,
+                customerCode: member?.memberId || null,
+                staffId: payment.createdBy || null,
+                staffName,
+                items,
+                totals: {
+                    subtotal: totalPrice,
+                    discount: subscription?.discount || 0,
+                    tax: 0,
+                    total: totalPrice,
+                    paid: paidNow,
+                    paidToDate,
+                    remaining,
+                    change: 0
+                },
+                notes: payment.notes || null,
+                createdAt: payment.paidAt || payment.createdAt
+            });
 
             // 5. Log Activity
             await prisma.activityLog.create({

@@ -10,6 +10,7 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { authenticate, requireActiveShift } = require('../middleware/auth');
+const { createReceipt, parseReceiptJson } = require('../services/receiptService');
 
 router.use(authenticate);
 
@@ -34,6 +35,7 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
         const { items, paymentMethod, notes } = req.body;
         const shiftId = req.activeShift.id;
         const employeeId = req.user.id;
+        const staffName = `${req.user.firstName} ${req.user.lastName}`;
 
         // Transactional execution
         const result = await req.prisma.$transaction(async (prisma) => {
@@ -41,6 +43,7 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
             // 1. Calculate Total & Validate Stock
             let totalAmount = 0;
             const saleItemsData = [];
+            const receiptItems = [];
 
             for (const item of items) {
                 const product = await prisma.product.findUnique({
@@ -69,6 +72,14 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
                     productId: product.id,
                     quantity: item.qty,
                     unitPrice: product.salePrice, // Lock price at time of sale
+                    lineTotal
+                });
+
+                receiptItems.push({
+                    type: 'product',
+                    name: product.name,
+                    qty: item.qty,
+                    unitPrice: product.salePrice,
                     lineTotal
                 });
             }
@@ -102,10 +113,40 @@ router.post('/', requireActiveShift, saleValidation, async (req, res) => {
                 });
             }
 
-            return sale;
+            const receiptResult = await createReceipt(prisma, {
+                transactionType: 'sale',
+                transactionId: sale.id,
+                paymentMethod: paymentMethod,
+                customerName: null,
+                customerPhone: null,
+                staffId: employeeId,
+                staffName,
+                items: receiptItems,
+                totals: {
+                    subtotal: totalAmount,
+                    discount: 0,
+                    tax: 0,
+                    total: totalAmount,
+                    paid: totalAmount,
+                    remaining: 0,
+                    change: 0
+                },
+                createdAt: sale.createdAt
+            });
+
+            return { sale, receipt: receiptResult.receipt, receiptCreated: receiptResult.created };
         });
 
-        res.status(201).json({ success: true, message: 'Sale completed', data: result });
+        const responseReceipt = parseReceiptJson(result.receipt);
+        res.status(201).json({
+            success: true,
+            message: result.receiptCreated ? 'Sale completed' : 'Receipt already issued for this transaction',
+            data: {
+                sale: result.sale,
+                receipt: responseReceipt,
+                receiptCreated: result.receiptCreated
+            }
+        });
 
     } catch (error) {
         console.error('Sale transaction error:', error);
