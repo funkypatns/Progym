@@ -65,6 +65,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-24 | b5c1495 | Always show cancellation details under status. |
 | 2026-01-25 | ced334e | Harden product create upload handling and surface save errors. |
 | 2026-01-25 | 3da7718 | Allow setting product quantity on create/edit with stock adjustments. |
+| 2026-01-25 | 3226010 | Allow direct quantity editing in POS cart views. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
