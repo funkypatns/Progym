@@ -33,13 +33,23 @@ const upload = multer({
     storage: storage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|webp/;
+        const filetypes = /jpeg|jpg|png|webp|gif|jfif/;
         const mimetype = filetypes.test(file.mimetype);
         const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
         if (mimetype && extname) return cb(null, true);
         cb(new Error('Error: File upload only supports following filetypes - ' + filetypes));
     }
 });
+
+const handleProductUpload = (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+        if (err) {
+            const message = err.message || 'Invalid image upload';
+            return res.status(400).json({ success: false, message });
+        }
+        return next();
+    });
+};
 
 router.use(authenticate);
 
@@ -144,7 +154,7 @@ router.get('/', async (req, res) => {
  * POST /api/products
  * Create new product
  */
-router.post('/', upload.single('image'), productValidation, async (req, res) => {
+router.post('/', handleProductUpload, productValidation, async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -152,6 +162,10 @@ router.post('/', upload.single('image'), productValidation, async (req, res) => 
         }
 
         const { name, description, salePrice, sku, isActive } = req.body;
+        const salePriceValue = parseFloat(salePrice);
+        if (!Number.isFinite(salePriceValue)) {
+            return res.status(400).json({ success: false, message: 'Sale price must be a valid number' });
+        }
 
         let imageUrl = null;
         if (req.file) {
@@ -162,7 +176,7 @@ router.post('/', upload.single('image'), productValidation, async (req, res) => 
             data: {
                 name,
                 description,
-                salePrice: parseFloat(salePrice),
+                salePrice: salePriceValue,
                 sku: sku || null,
                 isActive: isActive === 'true' || isActive === true,
                 imageUrl
@@ -183,10 +197,14 @@ router.post('/', upload.single('image'), productValidation, async (req, res) => 
  * PUT /api/products/:id
  * Update product
  */
-router.put('/:id', upload.single('image'), productValidation, async (req, res) => {
+router.put('/:id', handleProductUpload, productValidation, async (req, res) => {
     try {
         const { id } = req.params;
         const { name, description, salePrice, sku, isActive } = req.body;
+        const salePriceValue = parseFloat(salePrice);
+        if (!Number.isFinite(salePriceValue)) {
+            return res.status(400).json({ success: false, message: 'Sale price must be a valid number' });
+        }
 
         const product = await req.prisma.product.findUnique({ where: { id: parseInt(id) } });
         if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
@@ -202,7 +220,7 @@ router.put('/:id', upload.single('image'), productValidation, async (req, res) =
             data: {
                 name,
                 description,
-                salePrice: parseFloat(salePrice),
+                salePrice: salePriceValue,
                 sku: sku || null,
                 isActive: isActive === 'true' || isActive === true,
                 imageUrl

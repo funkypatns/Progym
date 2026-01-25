@@ -123,7 +123,11 @@ const Products = () => {
             fetchProducts();
         } catch (error) {
             console.error(error);
-            toast.error('Failed to save product');
+            const message = error.response?.data?.message
+                || error.response?.data?.errors?.[0]?.msg
+                || error.message
+                || 'Failed to save product';
+            toast.error(message);
         }
     };
 
