@@ -153,13 +153,21 @@ const Products = () => {
     };
 
     const updateQuantity = (productId, delta) => {
-        setCart(cart.map(item => {
+        setCart(prev => prev.map(item => {
             if (item.id === productId) {
                 const newQty = item.quantity + delta;
                 return newQty > 0 ? { ...item, quantity: newQty } : item;
             }
             return item;
         }).filter(item => item.quantity > 0));
+    };
+
+    const setItemQuantity = (productId, value) => {
+        const nextQty = parseInt(value, 10);
+        if (!Number.isFinite(nextQty) || nextQty < 1) return;
+        setCart(prev => prev.map(item => (
+            item.id === productId ? { ...item, quantity: nextQty } : item
+        )));
     };
 
     const cartTotal = cart.reduce((sum, item) => sum + (item.salePrice * item.quantity), 0);
@@ -564,7 +572,15 @@ const Products = () => {
                                             >
                                                 -
                                             </button>
-                                            <span className="w-12 text-center font-bold text-gray-900 dark:text-white">{item.quantity}</span>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                step="1"
+                                                inputMode="numeric"
+                                                value={item.quantity}
+                                                onChange={(e) => setItemQuantity(item.id, e.target.value)}
+                                                className="w-12 text-center font-bold text-gray-900 dark:text-white bg-transparent outline-none"
+                                            />
                                             <button
                                                 onClick={() => updateQuantity(item.id, 1)}
                                                 className="w-8 h-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors"

@@ -45,13 +45,21 @@ const Sales = () => {
     };
 
     const updateQty = (id, delta) => {
-        setCart(cart.map(item => {
+        setCart(prev => prev.map(item => {
             if (item.id === id) {
                 const newQty = Math.max(1, item.qty + delta);
                 return { ...item, qty: newQty };
             }
             return item;
         }));
+    };
+
+    const setQty = (id, value) => {
+        const nextQty = parseInt(value, 10);
+        if (!Number.isFinite(nextQty) || nextQty < 1) return;
+        setCart(prev => prev.map(item => (
+            item.id === id ? { ...item, qty: nextQty } : item
+        )));
     };
 
     const remove = (id) => {
@@ -260,7 +268,15 @@ const Sales = () => {
                                                     >
                                                         <Minus size={14} />
                                                     </button>
-                                                    <span className="px-3 font-bold text-sm">{item.qty}</span>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        step="1"
+                                                        inputMode="numeric"
+                                                        value={item.qty}
+                                                        onChange={(e) => setQty(item.id, e.target.value)}
+                                                        className="w-12 px-1 text-center font-bold text-sm bg-transparent outline-none"
+                                                    />
                                                     <button
                                                         onClick={() => updateQty(item.id, 1)}
                                                         className="p-2 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-r-lg transition-colors"
