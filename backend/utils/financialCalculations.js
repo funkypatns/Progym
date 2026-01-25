@@ -19,7 +19,10 @@ function calculateSubscriptionFinancials(subscription, payments = []) {
 
     // Separate payments by type
     const paymentRecords = payments.filter(p => {
-        const s = (p.status || '').toUpperCase();
+        const s = (p.status || '').toUpperCase().trim();
+        if (!s) {
+            return true;
+        }
         return s === 'PAID' || s === 'COMPLETED' || s === 'REFUNDED' || s === 'PARTIAL' || s === 'PARTIAL REFUND';
     });
 
@@ -56,19 +59,19 @@ function calculateSubscriptionFinancials(subscription, payments = []) {
  * @returns {string} Status: 'PAID', 'PARTIAL', 'REFUNDED', 'UNPAID'
  */
 function determinePaymentStatus(remaining, netPaid) {
-    if (remaining === 0 && netPaid > 0) {
-        return 'PAID';
+    if (netPaid < 0) {
+        return 'REFUNDED';
     }
 
-    if (netPaid <= 0) {
-        return 'REFUNDED'; // Or 'CANCELLED' / 'VOID'
+    if (netPaid === 0) {
+        return remaining > 0 ? 'UNPAID' : 'PAID';
     }
 
-    if (remaining > 0 && netPaid > 0) {
+    if (remaining > 0) {
         return 'PARTIAL';
     }
 
-    return 'UNPAID';
+    return 'PAID';
 }
 
 /**

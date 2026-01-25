@@ -400,7 +400,8 @@ const PaymentRemainingReport = ({ isActive }) => {
                                                 const price = Number.isFinite(priceValue) ? priceValue : (row.financial?.total ?? row.plan?.price ?? 0);
                                                 const paidAmount = Number.isFinite(paidValue) ? paidValue : (row.financial?.totalPaid ?? row.financial?.netPaid ?? 0);
                                                 const remainingAmount = Number.isFinite(remainingValue) ? remainingValue : (row.financial?.remaining ?? 0);
-                                                const status = row.status || row.financial?.status || 'unpaid';
+                                                const rawStatus = row.status || row.financial?.status || 'unpaid';
+                                                const status = rawStatus === 'paid' ? 'settled' : rawStatus;
                                                 const lastPaymentDate = row.lastPaymentDate || row.timeline?.lastPaymentDate || row.lastPayment?.paidAt || null;
                                                 const employeeName = row.employeeName || row.lastPayment?.employeeName || row.audit?.collectorName || '-';
                                                 const memberId = row.memberId || row.member?.id;

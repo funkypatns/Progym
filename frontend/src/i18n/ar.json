@@ -227,6 +227,7 @@
         "to": "إلى تاريخ ووقت",
         "generate": "إنشاء التقرير",
         "summary": "الملخص",
+        "transactions": "المعاملات",
         "fields": {
             "totalRevenue": "إجمالي الإيرادات",
             "paymentCount": "عدد المدفوعات",

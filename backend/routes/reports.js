@@ -10,7 +10,6 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { calculateSubscriptionFinancials,
-    determinePaymentStatus,
     getOutstandingSubscriptions,
     calculateNetRevenue
 } = require('../utils/financialCalculations');
@@ -202,6 +201,7 @@ const handlePaymentRemaining = async (req, res) => {
                           paidAt: true,
                           method: true,
                           collectorName: true,
+                          status: true,
                           creator: {
                               select: {
                                   firstName: true,
@@ -222,7 +222,15 @@ const handlePaymentRemaining = async (req, res) => {
                   ? sub.price
                   : (sub.plan?.price || 0);
               const financials = calculateSubscriptionFinancials({ ...sub, price: subscriptionPrice }, sub.payments);
-              const paymentStatus = determinePaymentStatus(financials.remaining, financials.netPaid);
+              const totalDue = financials.subscriptionPrice;
+              const netPaid = financials.netPaid;
+              const epsilon = 0.01;
+              let paymentStatus = 'unpaid';
+              if (netPaid > epsilon && netPaid + epsilon < totalDue) {
+                  paymentStatus = 'partial';
+              } else if (netPaid + epsilon >= totalDue) {
+                  paymentStatus = netPaid > totalDue + epsilon ? 'overpaid' : 'settled';
+              }
 
               const lastPayment = sub.payments.length > 0 ? sub.payments[0] : null;
               const lastPaymentEmployee = lastPayment?.creator
@@ -238,7 +246,7 @@ const handlePaymentRemaining = async (req, res) => {
                   planId: sub.plan.id,
                   planName: sub.plan.name,
                   planDuration: sub.plan.duration,
-                  status: paymentStatus.toLowerCase(),
+                  status: paymentStatus,
                   subscriptionStatus: sub.status,
                   startDate: sub.startDate,
                   endDate: sub.endDate,
@@ -282,7 +290,7 @@ const handlePaymentRemaining = async (req, res) => {
                       totalRefunded: financials.totalRefunded,
                       netPaid: financials.netPaid,
                       remaining: financials.remaining,
-                      status: paymentStatus.toLowerCase()
+                      status: paymentStatus
                   },
                   timeline: {
                       lastPaymentDate: lastPayment?.paidAt || null
@@ -321,8 +329,8 @@ const handlePaymentRemaining = async (req, res) => {
             totalRemaining: rows.reduce((sum, r) => sum + r.financial.remaining, 0),
             countUnpaid: rows.filter(r => r.financial.status === 'unpaid').length,
             countPartial: rows.filter(r => r.financial.status === 'partial').length,
-            countSettled: rows.filter(r => r.financial.status === 'paid').length,
-            countRefunded: rows.filter(r => r.financial.status === 'refunded').length
+            countSettled: rows.filter(r => ['settled', 'overpaid'].includes(r.financial.status)).length,
+            countOverpaid: rows.filter(r => r.financial.status === 'overpaid').length
         };
 
         if (req.query.format === 'excel') {
@@ -1020,6 +1028,152 @@ router.get('/payments/summary', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to generate payments summary'
+        });
+    }
+});
+
+/**
+ * GET /api/reports/payments/transactions
+ * Transaction-level details for payments summary
+ */
+router.get('/payments/transactions', async (req, res) => {
+    try {
+        const { from, to, employeeId, method, q, limit } = req.query;
+        const { startDate, endDate, error } = parseDateRange(from, to);
+        if (error) {
+            return res.status(400).json({ success: false, message: error });
+        }
+
+        const allowedMethods = ['cash', 'card', 'transfer', 'other'];
+        const normalizedMethod = method ? String(method).toLowerCase() : null;
+        if (normalizedMethod && normalizedMethod !== 'all' && !allowedMethods.includes(normalizedMethod)) {
+            return res.status(400).json({ success: false, message: 'Invalid payment method' });
+        }
+
+        const parsedLimit = parseInt(limit, 10);
+        const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 300) : 100;
+
+        const statusFilter = ['completed', 'refunded', 'Partial Refund', 'COMPLETED', 'REFUNDED', 'PARTIAL REFUND'];
+        const dateRange = { gte: startDate, lte: endDate };
+        const where = {
+            status: { in: statusFilter },
+            amount: { gt: 0 },
+            OR: [
+                { paidAt: dateRange },
+                { createdAt: dateRange }
+            ]
+        };
+
+        if (employeeId && employeeId !== 'all') {
+            const parsedEmployeeId = parseInt(employeeId, 10);
+            if (!Number.isInteger(parsedEmployeeId)) {
+                return res.status(400).json({ success: false, message: 'Invalid staff ID' });
+            }
+            where.createdBy = parsedEmployeeId;
+        }
+
+        if (normalizedMethod && normalizedMethod !== 'all') {
+            where.method = normalizedMethod;
+        }
+
+        if (q && String(q).trim()) {
+            const search = String(q).trim();
+            where.member = {
+                OR: [
+                    { firstName: { contains: search } },
+                    { lastName: { contains: search } },
+                    { phone: { contains: search } },
+                    { memberId: { contains: search } },
+                    { email: { contains: search } }
+                ]
+            };
+        }
+
+        const payments = await req.prisma.payment.findMany({
+            where,
+            include: {
+                member: {
+                    select: {
+                        id: true,
+                        memberId: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true
+                    }
+                },
+                subscription: {
+                    select: {
+                        id: true,
+                        price: true,
+                        startDate: true,
+                        endDate: true,
+                        plan: {
+                            select: { name: true, duration: true, price: true }
+                        }
+                    }
+                },
+                creator: {
+                    select: { id: true, firstName: true, lastName: true }
+                }
+            },
+            orderBy: { paidAt: 'desc' },
+            take
+        });
+
+        const rows = payments.map((payment) => {
+            const memberName = payment.member
+                ? `${payment.member.firstName} ${payment.member.lastName}`
+                : 'Unknown';
+            const staffName = payment.creator
+                ? `${payment.creator.firstName} ${payment.creator.lastName}`
+                : (payment.collectorName || null);
+            const planName = payment.subscription?.plan?.name || null;
+            const planDuration = payment.subscription?.plan?.duration ?? null;
+            const planTotal = payment.subscription?.price ?? payment.subscription?.plan?.price ?? null;
+
+            return {
+                id: payment.id,
+                paidAt: payment.paidAt || payment.createdAt,
+                amount: payment.amount || 0,
+                method: (payment.method || 'other').toLowerCase(),
+                status: (payment.status || '').toLowerCase(),
+                member: {
+                    id: payment.member?.id || null,
+                    memberId: payment.member?.memberId || null,
+                    name: memberName,
+                    phone: payment.member?.phone || null
+                },
+                subscription: {
+                    id: payment.subscription?.id || null,
+                    planName,
+                    duration: planDuration,
+                    startDate: payment.subscription?.startDate || null,
+                    endDate: payment.subscription?.endDate || null,
+                    total: planTotal
+                },
+                staff: {
+                    id: payment.creator?.id || null,
+                    name: staffName
+                },
+                reference: {
+                    receiptNumber: payment.receiptNumber || null,
+                    transactionRef: payment.transactionRef || null,
+                    externalReference: payment.externalReference || null
+                }
+            };
+        });
+
+        res.json({
+            success: true,
+            data: {
+                rows
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Payments transactions error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to generate payments transactions'
         });
     }
 });

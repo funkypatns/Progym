@@ -225,6 +225,7 @@
         "to": "To",
         "generate": "Generate",
         "summary": "Summary",
+        "transactions": "Transactions",
         "fields": {
             "totalRevenue": "Total Revenue",
             "paymentCount": "Payment Count",

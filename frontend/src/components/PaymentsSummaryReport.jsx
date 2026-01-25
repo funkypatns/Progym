@@ -5,6 +5,7 @@ import { Loader2, Receipt, Banknote, CreditCard, ArrowLeftRight } from 'lucide-r
 import { toast } from 'react-hot-toast';
 import apiClient from '../utils/api';
 import { formatNumber, formatCurrency } from '../utils/numberFormatter';
+import { formatDateTime } from '../utils/dateFormatter';
 import { useAuthStore, useSettingsStore } from '../store';
 
 const PaymentsSummaryReport = ({ isActive }) => {
@@ -15,6 +16,7 @@ const PaymentsSummaryReport = ({ isActive }) => {
     const [data, setData] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [employees, setEmployees] = useState([]);
+    const [transactions, setTransactions] = useState([]);
 
     const [filters, setFilters] = useState({
         from: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
@@ -52,17 +54,35 @@ const PaymentsSummaryReport = ({ isActive }) => {
                 scope: filters.scope
             });
             params.append('_ts', Date.now().toString());
-            const response = await apiClient.get(`/reports/payments/summary?${params}`, {
-                headers: { 'Cache-Control': 'no-cache' }
-            });
-            if (response.data.success) {
-                setData(response.data.data);
+            const transactionsParams = new URLSearchParams(params);
+            transactionsParams.set('limit', '100');
+
+            const [summaryRes, transactionsRes] = await Promise.all([
+                apiClient.get(`/reports/payments/summary?${params}`, {
+                    headers: { 'Cache-Control': 'no-cache' }
+                }),
+                apiClient.get(`/reports/payments/transactions?${transactionsParams}`, {
+                    headers: { 'Cache-Control': 'no-cache' }
+                })
+            ]);
+
+            if (summaryRes.data.success) {
+                setData(summaryRes.data.data);
             } else {
-                toast.error(response.data.message || t('common.error'));
+                setData(null);
+                toast.error(summaryRes.data.message || t('common.error'));
+            }
+
+            if (transactionsRes.data.success) {
+                setTransactions(transactionsRes.data.data?.rows || []);
+            } else {
+                setTransactions([]);
             }
         } catch (error) {
             console.error('Failed to fetch payments summary', error);
             toast.error('Failed to load payments summary');
+            setData(null);
+            setTransactions([]);
         } finally {
             setIsLoading(false);
         }
@@ -254,6 +274,77 @@ const PaymentsSummaryReport = ({ isActive }) => {
                         Transfer: {byMethod.transfer.count}
                     </span>
                 </div>
+            </div>
+
+            {/* Transactions Table */}
+            <div className="bg-white dark:bg-dark-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-700">
+                <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                        {t('reports.transactions', 'Transactions')}
+                    </h4>
+                </div>
+                {isLoading ? (
+                    <div className="py-8 flex items-center justify-center text-gray-400">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                ) : transactions.length > 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-dark-700/60 border-b border-gray-100 dark:border-dark-600">
+                                <tr>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-left">{t('reports.fields.paidAt', 'Date')}</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-left">{t('reports.fields.memberName', 'Member')}</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-left">{t('reports.fields.planName', 'Plan')}</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">{t('reports.fields.amount', 'Amount')}</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">{t('reports.fields.method', 'Method')}</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">{t('reports.fields.paidBy', 'Paid By')}</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">{t('reports.fields.receiptNumber', 'Receipt No')}</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-dark-700">
+                                {transactions.map((row) => {
+                                    const memberName = row.member?.name || '-';
+                                    const memberId = row.member?.memberId || null;
+                                    const planName = row.subscription?.planName || '-';
+                                    const staffName = row.staff?.name || '-';
+                                    const receiptRef = row.reference?.receiptNumber || row.id;
+                                    return (
+                                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-dark-700/40">
+                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-left font-mono text-xs">
+                                                {row.paidAt ? formatDateTime(row.paidAt, i18n.language) : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-800 dark:text-gray-200 text-left">
+                                                <div className="leading-tight">
+                                                    <div className="font-medium">{memberName}</div>
+                                                    {memberId && <div className="text-xs text-gray-400 font-mono">{memberId}</div>}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-left">
+                                                {planName}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-gray-800 dark:text-gray-200">
+                                                {formatCurrency(row.amount || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300 uppercase text-xs">
+                                                {(row.method || 'other').toString()}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">
+                                                {staffName}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-xs text-gray-500 dark:text-gray-400">
+                                                {receiptRef}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="py-8 text-center text-sm text-gray-400">
+                        {t('common.noResults', 'No results found')}
+                    </div>
+                )}
             </div>
 
             {/* Empty State */}
