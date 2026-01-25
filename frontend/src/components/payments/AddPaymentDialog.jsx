@@ -28,6 +28,9 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
 
     // -- State --
     const [step, setStep] = useState(initialMember ? 2 : 1);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const submitLockRef = useRef(false);
+    const successToastRef = useRef(false);
 
     // Search
     const [memberSearch, setMemberSearch] = useState('');
@@ -163,6 +166,9 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setReceiptLoading(false);
         setLastReceiptError('');
         setAutoPrintReceipt(false);
+        submitLockRef.current = false;
+        successToastRef.current = false;
+        setIsSubmitting(false);
     };
 
     const fetchInitialMembers = async () => {
@@ -308,6 +314,13 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         }
     };
 
+    const handleCloseModal = () => {
+        resetForm();
+        submitLockRef.current = false;
+        successToastRef.current = false;
+        onClose();
+    };
+
     const requestPrintReceipt = async () => {
         if (receiptStatus === 'not_initialized') {
             toast.error(receiptMessage || t('payments.receiptsNotReady', 'Receipts are not initialized.'));
@@ -394,41 +407,53 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         }
     };
 
-    const handleSubmit = async () => {
-        if (loading) return;
+    const handleSubmit = async (event) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        if (submitLockRef.current || isSubmitting) return;
+        submitLockRef.current = true;
+        setIsSubmitting(true);
         setLoading(true);
-        if (!selectedMember) {
+
+        const abortSubmit = () => {
+            submitLockRef.current = false;
+            setIsSubmitting(false);
             setLoading(false);
-            return;
-        }
-        setLastReceiptError('');
-        if (!selectedSubscriptionId) {
-            toast.error(t('payments.selectSubscription', 'Select a subscription first'));
-            setLoading(false);
-            return;
-        }
-        const amountValue = roundMoney(payNowAmount);
-        if (!Number.isFinite(amountValue) || amountValue <= 0) {
-            toast.error(t('payments.invalidAmount', 'Enter a valid amount'));
-            setLoading(false);
-            return;
-        }
-        if (totalDue <= 0) {
-            toast.error(t('payments.alreadyPaid', 'Subscription is already fully paid'));
-            setLoading(false);
-            return;
-        }
-        if (amountValue > totalDue + 0.01) {
-            toast.error(t('payments.amountExceedsRemaining', 'Amount exceeds remaining balance'));
-            setLoading(false);
-            return;
-        }
-        if ((method === 'card' || method === 'transfer') && !transactionRef.trim()) {
-            toast.error(t('payments.refRequired', 'Transaction Ref is required'));
-            setLoading(false);
-            return;
-        }
+        };
+
         try {
+            if (!selectedMember) {
+                abortSubmit();
+                return;
+            }
+            setLastReceiptError('');
+            if (!selectedSubscriptionId) {
+                toast.error(t('payments.selectSubscription', 'Select a subscription first'));
+                abortSubmit();
+                return;
+            }
+            const amountValue = roundMoney(payNowAmount);
+            if (!Number.isFinite(amountValue) || amountValue <= 0) {
+                toast.error(t('payments.invalidAmount', 'Enter a valid amount'));
+                abortSubmit();
+                return;
+            }
+            if (totalDue <= 0) {
+                toast.error(t('payments.alreadyPaid', 'Subscription is already fully paid'));
+                abortSubmit();
+                return;
+            }
+            if (amountValue > totalDue + 0.01) {
+                toast.error(t('payments.amountExceedsRemaining', 'Amount exceeds remaining balance'));
+                abortSubmit();
+                return;
+            }
+            if ((method === 'card' || method === 'transfer') && !transactionRef.trim()) {
+                toast.error(t('payments.refRequired', 'Transaction Ref is required'));
+                abortSubmit();
+                return;
+            }
+
             const payload = {
                 memberId: selectedMember.id,
                 amount: amountValue,
@@ -440,15 +465,19 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             };
 
             if (type === 'subscription') {
-                payload.subscriptionId = parseInt(selectedSubscriptionId);
+                payload.subscriptionId = parseInt(selectedSubscriptionId, 10);
             }
 
             const res = await apiClient.post('/payments', payload);
-            toast.success(t('payments.paymentRecorded'));
+            if (!successToastRef.current) {
+                toast.success(t('payments.paymentRecorded'));
+                successToastRef.current = true;
+            }
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('payments:updated'));
             }
             if (onSuccess) onSuccess();
+
             const responseData = res.data?.data || {};
             const receipt = responseData.receipt || null;
             const status = responseData.receiptStatus || (receipt ? 'ready' : 'missing');
@@ -464,7 +493,9 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         } catch (e) {
             const msg = e.response?.data?.message || t('common.error');
             toast.error(msg);
+            abortSubmit();
         } finally {
+            setIsSubmitting(false);
             setLoading(false);
         }
     };
@@ -554,7 +585,8 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const isFullyPaid = totalDue <= 0;
     const amountValue = roundMoney(payNowAmount);
     const isAmountValid = Number.isFinite(amountValue) && amountValue > 0 && amountValue <= totalDue + 0.01;
-    const isConfirmDisabled = !isSubscriptionSelected || isFullyPaid || !isAmountValid || loading || ((method === 'card' || method === 'transfer') && !transactionRef);
+    const isConfirmDisabled = step !== 2 || !isSubscriptionSelected || isFullyPaid || !isAmountValid || loading || isSubmitting || ((method === 'card' || method === 'transfer') && !transactionRef);
+    const isButtonBusy = isSubmitting || loading;
 
     return (
         <AnimatePresence>
@@ -574,7 +606,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                             <h2 className="text-xl font-black text-white tracking-tight uppercase">Record Payment</h2>
                             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-0.5">Financial Transaction</p>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-slate-500 hover:text-white transition-all">
+                        <button onClick={handleCloseModal} className="p-2 hover:bg-white/5 rounded-full text-slate-500 hover:text-white transition-all">
                             <X size={20} />
                         </button>
                     </div>
@@ -820,7 +852,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                 disabled={isConfirmDisabled}
                                 className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-900/40 transition-all flex justify-center items-center gap-2 active:scale-95"
                             >
-                                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <div className="flex items-center gap-2 tracking-tighter font-black uppercase">Confirm Payment <Check size={18} strokeWidth={4} /></div>}
+                                {isButtonBusy ? (
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <div className="flex items-center gap-2 tracking-tighter font-black uppercase">
+                                        Confirm Payment
+                                        <Check size={18} strokeWidth={4} />
+                                    </div>
+                                )}
                             </button>
                         )}
                         {step === 2 && isFullyPaid && isSubscriptionSelected && (
@@ -865,7 +904,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                         <RotateCcw size={16} /> {t('payments.newPayment', 'New Payment')}
                                     </button>
                                     <button
-                                        onClick={onClose}
+                                        onClick={handleCloseModal}
                                         className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
                                     >
                                         {t('common.close', 'Close')}
@@ -874,7 +913,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                             </div>
                         )}
                         {step !== 3 && (
-                            <button onClick={onClose} className="w-full py-2 text-[10px] font-black text-slate-500 hover:text-slate-300 uppercase tracking-widest transition-colors">
+                            <button onClick={handleCloseModal} className="w-full py-2 text-[10px] font-black text-slate-500 hover:text-slate-300 uppercase tracking-widest transition-colors">
                                 Cancel & Exit
                             </button>
                         )}
