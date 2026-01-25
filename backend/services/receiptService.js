@@ -42,7 +42,18 @@ function safeJsonStringify(value, fallback) {
     }
 }
 
+function ensureReceiptModels(prisma) {
+    const hasReceipt = prisma && prisma.receipt && prisma.receiptCounter;
+    if (!hasReceipt) {
+        const err = new Error('Receipts tables are not initialized. Run prisma migrate/generate.');
+        err.code = 'RECEIPTS_NOT_READY';
+        err.status = 400;
+        throw err;
+    }
+}
+
 async function createReceipt(prisma, input) {
+    ensureReceiptModels(prisma);
     const transactionType = String(input.transactionType || 'payment').toLowerCase();
     const transactionId = buildTransactionId(transactionType, input.transactionId);
 
