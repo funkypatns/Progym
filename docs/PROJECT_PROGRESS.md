@@ -60,6 +60,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-24 | bffbc9f  | Always show Print Last Receipt in Assign Subscription modal step 3. |
 | 2026-01-24 | 12889d5 | Disable report caching and normalize payments summary data. |
 | 2026-01-24 | 6e19e9a | Fix Outstanding report data mapping and totals. |
+| 2026-01-24 | ae54d41 | Show member name with phone in Outstanding report table. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
