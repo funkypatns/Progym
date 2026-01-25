@@ -82,6 +82,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | 34c3a14 | Validate POS sale payload and send shift/cashier/paid fields. |
 | 2026-01-25 | d3801fc | Add receipts schema guard with clear error message. |
 | 2026-01-25 | f4a1fe4 | Export receipts via authenticated download. |
+| 2026-01-25 | 1dd674d | Refresh settings from backend after save to prevent revert. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
