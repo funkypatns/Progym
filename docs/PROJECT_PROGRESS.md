@@ -86,6 +86,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | 69f02b1 | Use saved gym name in sidebar branding. |
 | 2026-01-25 | 68ca654 | Fix alerts settings save payload and parsing. |
 | 2026-01-25 | 705b509 | Fix backup create db path resolution and error message. |
+| 2026-01-25 | a3ca17c | Keep Record Payment modal on receipt view after confirm. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
