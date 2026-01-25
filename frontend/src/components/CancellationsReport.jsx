@@ -257,6 +257,17 @@ const CancellationsReport = ({ isActive }) => {
                                                     ? t('reports.status.cancelled', 'Cancelled')
                                                     : t('reports.status.ended', 'Ended')}
                                             </span>
+                                            <div className="mt-1 text-[10px] text-gray-400 space-y-0.5">
+                                                <div>
+                                                    {t(`${tPath}.reason`, 'Reason')}: {item.cancelReason || t(`${tPath}.noReason`, 'Not specified')}
+                                                </div>
+                                                <div>
+                                                    {t(`${tPath}.source`, 'Source')}: {item.cancelSource || t(`${tPath}.unknownSource`, 'Unknown')}
+                                                </div>
+                                                <div>
+                                                    {t(`${tPath}.processedBy`, 'Processed by')}: {item.processedBy || t('common.unknown', 'Unknown')}
+                                                </div>
+                                            </div>
                                         </td>
                                         <td className={`px-4 py-3 ${alignEnd}`}>
                                             <span className="font-mono font-semibold text-emerald-400">
