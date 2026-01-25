@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-01-24
+Last updated: 2026-01-25
 
 Purpose:
 This file is the single source of truth for plans, tasks, and progress tracking. It is meant to help resume work after context compaction or a new chat session, and to prevent duplicate work.
@@ -63,6 +63,7 @@ Phase 3 - Payments modal receipt embed
 | 2026-01-24 | ae54d41 | Show member name with phone in Outstanding report table. |
 | 2026-01-24 | 13197e9 | Show member name in cancellations report. |
 | 2026-01-24 | b5c1495 | Always show cancellation details under status. |
+| 2026-01-25 | ced334e | Harden product create upload handling and surface save errors. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
