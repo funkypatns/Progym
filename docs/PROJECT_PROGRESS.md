@@ -85,6 +85,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | 1dd674d | Refresh settings from backend after save to prevent revert. |
 | 2026-01-25 | 69f02b1 | Use saved gym name in sidebar branding. |
 | 2026-01-25 | 68ca654 | Fix alerts settings save payload and parsing. |
+| 2026-01-25 | 705b509 | Fix backup create db path resolution and error message. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
