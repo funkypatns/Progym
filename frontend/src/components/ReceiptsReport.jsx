@@ -149,6 +149,16 @@ const ReceiptsReport = ({ isActive }) => {
         }, 1000);
     };
 
+    const requestPrint = (forceCopy = false) => {
+        if (!selectedReceipt) return;
+        if (forceCopy && !isCopy) {
+            setIsCopy(true);
+            setAutoPrint(true);
+            return;
+        }
+        handlePrint();
+    };
+
     useEffect(() => {
         if (!autoPrint || !selectedReceipt) return;
         let tries = 0;
@@ -439,7 +449,7 @@ const ReceiptsReport = ({ isActive }) => {
                                 </div>
                                 <div className="flex justify-end gap-3">
                                     <button
-                                        onClick={handlePrint}
+                                        onClick={() => requestPrint(true)}
                                         className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold"
                                     >
                                         {t('payments.printReceipt', 'Print Receipt')}

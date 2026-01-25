@@ -20,6 +20,8 @@ const Sales = () => {
     const [showReceiptModal, setShowReceiptModal] = useState(false);
     const [showReceiptPreview, setShowReceiptPreview] = useState(false);
     const [receiptIsCopy, setReceiptIsCopy] = useState(false);
+    const [hasPrintedReceipt, setHasPrintedReceipt] = useState(false);
+    const [autoPrintReceipt, setAutoPrintReceipt] = useState(false);
 
     const currencyConf = {
         code: getSetting('currency_code', 'EGP'),
@@ -120,6 +122,7 @@ const Sales = () => {
             if (receiptData) {
                 setSaleReceipt(receiptData);
                 setReceiptIsCopy(!receiptCreated);
+                setHasPrintedReceipt(false);
                 setShowReceiptModal(true);
                 setShowReceiptPreview(false);
             }
@@ -133,6 +136,14 @@ const Sales = () => {
             toast.error(t('sales.failed', 'Sale failed'));
         }
     };
+
+    useEffect(() => {
+        if (!autoPrintReceipt || !saleReceipt) return;
+        if (!receiptRef.current) return;
+        handlePrintReceipt();
+        setAutoPrintReceipt(false);
+        setHasPrintedReceipt(true);
+    }, [autoPrintReceipt, saleReceipt]);
 
     const handlePrintReceipt = () => {
         if (!receiptRef.current) return;
@@ -168,11 +179,23 @@ const Sales = () => {
         }, 1000);
     };
 
+    const requestPrintReceipt = () => {
+        if (!saleReceipt) return;
+        if (hasPrintedReceipt && !receiptIsCopy) {
+            setReceiptIsCopy(true);
+            setAutoPrintReceipt(true);
+            return;
+        }
+        handlePrintReceipt();
+        setHasPrintedReceipt(true);
+    };
+
     const handleStartNewSale = () => {
         setShowReceiptModal(false);
         setShowReceiptPreview(false);
         setSaleReceipt(null);
         setReceiptIsCopy(false);
+        setHasPrintedReceipt(false);
     };
 
     return (
@@ -469,7 +492,7 @@ const Sales = () => {
                             <div className="p-6 space-y-4">
                                 <div className="flex flex-wrap gap-3">
                                     <button
-                                        onClick={handlePrintReceipt}
+                                        onClick={requestPrintReceipt}
                                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/30 transition-all"
                                     >
                                         <Printer size={18} />
