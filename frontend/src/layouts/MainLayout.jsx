@@ -14,7 +14,7 @@ import {
     ChevronLeft, ClipboardList, Package, ShieldCheck, Shield,
     Bell, ArrowUpCircle, ShoppingCart, Menu, Search
 } from 'lucide-react';
-import { useAuthStore, useThemeStore, useSidebarStore, usePosStore } from '../store';
+import { useAuthStore, useThemeStore, useSidebarStore, usePosStore, useSettingsStore } from '../store';
 import PosShiftModal from '../components/PosShiftModal';
 import NotificationBell from '../components/NotificationBell';
 import { usePermissions } from '../hooks/usePermissions';
@@ -29,6 +29,8 @@ const MainLayout = () => {
     const { theme, toggleTheme } = useThemeStore();
     const { isCollapsed, toggle } = useSidebarStore();
     const isDark = theme === 'dark';
+    const { getSetting } = useSettingsStore();
+    const gymName = getSetting('gym_name', 'GYMPRO') || 'GYMPRO';
 
     // Voice & Alerts
     useVoiceAlerts(true);
@@ -148,8 +150,11 @@ const MainLayout = () => {
                         <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30">
                             <Dumbbell className="text-white w-6 h-6" />
                         </div>
-                        <span className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
-                            GYM<span className="text-indigo-400">PRO</span>
+                        <span
+                            title={gymName}
+                            className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 truncate max-w-[180px]"
+                        >
+                            {gymName}
                         </span>
                     </div>
                     {isCollapsed && (
