@@ -13,6 +13,33 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.use(authenticate);
 router.use(authorize('admin'));
 
+const resolveDbPath = (userDataPath) => {
+    const candidates = [];
+    const defaultPath = path.join(userDataPath, 'data', 'gym.db');
+    candidates.push(defaultPath);
+
+    const dbUrl = process.env.DATABASE_URL || '';
+    if (dbUrl.startsWith('file:')) {
+        const rawPath = dbUrl.replace('file:', '');
+        if (path.isAbsolute(rawPath)) {
+            candidates.push(rawPath);
+        } else {
+            candidates.push(path.join(__dirname, '..', 'prisma', rawPath));
+            candidates.push(path.join(__dirname, '..', rawPath));
+        }
+    }
+
+    candidates.push(path.join(__dirname, '..', 'prisma', 'gym.db'));
+
+    for (const candidate of candidates) {
+        if (candidate && fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+
+    return { missing: true, candidates };
+};
+
 /**
  * GET /api/backup/list
  * List available backups
@@ -61,16 +88,17 @@ router.get('/list', async (req, res) => {
  */
 router.post('/create', async (req, res) => {
     try {
-        const dataDir = path.join(req.userDataPath, 'data');
         const backupDir = path.join(req.userDataPath, 'backups');
-        const dbPath = path.join(dataDir, 'gym.db');
+        const dbPathResult = resolveDbPath(req.userDataPath);
 
-        if (!fs.existsSync(dbPath)) {
+        if (dbPathResult?.missing) {
             return res.status(404).json({
                 success: false,
-                message: 'Database file not found'
+                message: 'Database file not found',
+                details: dbPathResult.candidates
             });
         }
+        const dbPath = dbPathResult;
 
         if (!fs.existsSync(backupDir)) {
             fs.mkdirSync(backupDir, { recursive: true });

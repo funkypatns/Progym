@@ -115,7 +115,8 @@ const Settings = () => {
             toast.success(t('backup.backupCreated'), { id: toastId });
             fetchBackups();
         } catch (error) {
-            toast.error('Failed to create backup');
+            const message = error.response?.data?.message || 'Failed to create backup';
+            toast.error(message);
         }
     };
 
