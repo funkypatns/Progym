@@ -51,7 +51,6 @@ const ReceiptsReport = ({ isActive }) => {
     const gymPhone = getSetting('gym_phone', '');
 
     const tabType = tab === 'sales' ? 'sale' : 'general';
-    const apiBase = (api.defaults.baseURL || '/api').replace(/\/$/, '');
 
     const fetchEmployees = async () => {
         try {
@@ -108,8 +107,23 @@ const ReceiptsReport = ({ isActive }) => {
             if (filters.staffId) params.append('staffId', filters.staffId);
             if (filters.search) params.append('search', filters.search);
 
-            const url = `${apiBase}/receipts?${params.toString()}`;
-            window.open(url, '_blank');
+            const response = await api.get(`/receipts?${params.toString()}`, {
+                responseType: 'blob'
+            });
+            const contentType = response.headers?.['content-type'] || 'application/octet-stream';
+            const blob = new Blob([response.data], { type: contentType });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const disposition = response.headers?.['content-disposition'] || '';
+            const match = /filename=([^;]+)/i.exec(disposition);
+            const fallbackName = format === 'excel' ? 'receipts-report.xlsx' : 'receipts-report.pdf';
+            const filename = match ? match[1].replace(/"/g, '') : fallbackName;
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
         } catch (error) {
             toast.error(t('reports.exportFailed', 'Export failed'));
         }
