@@ -80,6 +80,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | d47463b | Add POS receipt modal/print and unified receipts report UI. |
 | 2026-01-25 | 0c813bf | Mark receipt reprints as COPY for POS and reports. |
 | 2026-01-25 | 34c3a14 | Validate POS sale payload and send shift/cashier/paid fields. |
+| 2026-01-25 | d3801fc | Add receipts schema guard with clear error message. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
