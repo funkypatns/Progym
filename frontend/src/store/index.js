@@ -167,7 +167,7 @@ export const useSettingsStore = create(
             updateSettings: async (newSettings) => {
                 try {
                     await api.put('/settings', { settings: newSettings });
-                    set({ settings: { ...get().settings, ...newSettings } });
+                    await get().fetchSettings();
                     return { success: true };
                 } catch (error) {
                     return { success: false, message: error.response?.data?.message };
