@@ -30,7 +30,9 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const [step, setStep] = useState(initialMember ? 2 : 1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const submitLockRef = useRef(false);
+    const partialSubmitRef = useRef(false);
     const successToastRef = useRef(false);
+    const abortControllerRef = useRef(null);
 
     // Search
     const [memberSearch, setMemberSearch] = useState('');
@@ -168,7 +170,10 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         setAutoPrintReceipt(false);
         submitLockRef.current = false;
         successToastRef.current = false;
+        partialSubmitRef.current = false;
         setIsSubmitting(false);
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
     };
 
     const fetchInitialMembers = async () => {
@@ -411,6 +416,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         event?.preventDefault?.();
         event?.stopPropagation?.();
         if (submitLockRef.current || isSubmitting) return;
+        if (paymentMode === 'partial' && partialSubmitRef.current) return;
         submitLockRef.current = true;
         setIsSubmitting(true);
         setLoading(true);
@@ -419,6 +425,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             submitLockRef.current = false;
             setIsSubmitting(false);
             setLoading(false);
+            abortControllerRef.current = null;
         };
 
         try {
@@ -468,7 +475,16 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                 payload.subscriptionId = parseInt(selectedSubscriptionId, 10);
             }
 
-            const res = await apiClient.post('/payments', payload);
+            abortControllerRef.current?.abort();
+            const controller = new AbortController();
+            abortControllerRef.current = controller;
+            const idempotencyKey = window.crypto?.randomUUID?.() || `payment-${Date.now()}`;
+            const res = await apiClient.post('/payments', payload, {
+                headers: {
+                    'Idempotency-Key': idempotencyKey
+                },
+                signal: controller.signal
+            });
             if (!successToastRef.current) {
                 toast.success(t('payments.paymentRecorded'));
                 successToastRef.current = true;
@@ -490,12 +506,14 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             setHasPrintedReceipt(false);
             setShowReceiptPreview(false);
             setStep(3);
+            if (paymentMode === 'partial') {
+                partialSubmitRef.current = true;
+            }
         } catch (e) {
             const msg = e.response?.data?.message || t('common.error');
             toast.error(msg);
             abortSubmit();
         } finally {
-            setIsSubmitting(false);
             setLoading(false);
         }
     };
