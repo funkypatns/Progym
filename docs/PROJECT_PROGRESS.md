@@ -96,6 +96,7 @@ Phase 4 - Receipts system
 | 2026-01-25 | 00dd324 | Guard Record Payment confirm button, add single-flight + print-ready success view. |
 | 2026-01-26 | 99a745b | Prevent partial payment auto-repeat in Record Payment modal. |
 | 2026-01-26 | 22d2dcb | Prevent Record Payment modal from reinitializing after success. |
+| 2026-01-26 | 5d80430 | Stabilize idempotency key per modal session to block repeat submits. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
@@ -104,7 +105,8 @@ Phase 4 - Receipts system
 - Run receipt modal flow tests (no redirect, print works, currency matches settings).
 - Run receipts migration and test POS receipt printing + receipts report tabs.
 - Verify partial payment no-repeat behavior in Record Payment modal.
- - Verify Record Payment modal stays on receipt after partial payment.
+- Verify Record Payment modal stays on receipt after partial payment.
+ - Verify partial payments dedupe using stable idempotency key.
 
 ## Notes for new sessions
 - If there are uncommitted changes, capture them in "Current Focus" and do not redo work.
