@@ -33,6 +33,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const partialSubmitRef = useRef(false);
     const successToastRef = useRef(false);
     const abortControllerRef = useRef(null);
+    const idempotencyKeyRef = useRef(null);
 
     // Search
     const [memberSearch, setMemberSearch] = useState('');
@@ -174,6 +175,7 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         submitLockRef.current = false;
         successToastRef.current = false;
         partialSubmitRef.current = false;
+        idempotencyKeyRef.current = null;
         setIsSubmitting(false);
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
@@ -481,7 +483,10 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             abortControllerRef.current?.abort();
             const controller = new AbortController();
             abortControllerRef.current = controller;
-            const idempotencyKey = window.crypto?.randomUUID?.() || `payment-${Date.now()}`;
+            if (!idempotencyKeyRef.current) {
+                idempotencyKeyRef.current = window.crypto?.randomUUID?.() || `payment-${Date.now()}`;
+            }
+            const idempotencyKey = idempotencyKeyRef.current;
             const res = await apiClient.post('/payments', payload, {
                 headers: {
                     'Idempotency-Key': idempotencyKey
