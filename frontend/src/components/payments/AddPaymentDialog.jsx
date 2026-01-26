@@ -74,21 +74,18 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const [loading, setLoading] = useState(false);
 
     // -- Effects --
-    const wasOpenRef = useRef(false);
-
     useEffect(() => {
-        if (open && !wasOpenRef.current) {
+        if (open) {
             if (initialMember) {
                 setSelectedMember(initialMember);
                 setStep(2);
             } else {
                 fetchInitialMembers();
             }
-        } else if (!open && wasOpenRef.current) {
+        } else {
             resetForm();
         }
-        wasOpenRef.current = open;
-    }, [open, initialMember]);
+    }, [open]);
 
     useEffect(() => {
         if (open && initialSubscriptionId && memberSubscriptions.length > 0) {
