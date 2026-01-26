@@ -40,6 +40,47 @@ function generateReceiptNumber() {
     return `RCP-${year}${month}-${time}-${random}`;
 }
 
+const RECEIPT_INIT_MESSAGE = 'Receipts tables are not initialized. Run prisma migrate dev & prisma generate.';
+
+const buildPaymentResponsePayload = async (payment, prisma, receiptError = null) => {
+    const transactionId = buildTransactionId('payment', payment.id);
+    let parsedReceipt = null;
+    try {
+        const receiptRecord = await prisma.receipt.findUnique({
+            where: { transactionId }
+        });
+        parsedReceipt = receiptRecord ? parseReceiptJson(receiptRecord) : null;
+    } catch (err) {
+        console.warn('[PAYMENTS] Receipt lookup failed (maybe migrations missing):', err.message);
+        if (!receiptError) {
+            receiptError = {
+                status: 'not_initialized',
+                message: RECEIPT_INIT_MESSAGE
+            };
+        }
+    }
+    let status = receiptError?.status || (parsedReceipt ? 'ready' : 'missing');
+    let message = receiptError?.message || '';
+    if (!message) {
+        if (status === 'not_initialized') {
+            message = RECEIPT_INIT_MESSAGE;
+        } else if (status === 'missing' && parsedReceipt) {
+            status = 'ready';
+            message = '';
+        }
+    }
+
+    return {
+        ...payment,
+        paymentId: payment.id,
+        transactionId,
+        receipt: parsedReceipt,
+        receiptCreated: Boolean(parsedReceipt),
+        receiptStatus: status,
+        receiptMessage: message
+    };
+};
+
 /**
  * GET /api/payments
  * Get all payments
@@ -217,6 +258,7 @@ router.post('/', requirePermission('payments.create'), [
     body('amount').optional().isFloat({ min: 0 }).withMessage('Amount must be a positive number'),
     body('method').isIn(['cash', 'card', 'transfer', 'other']).withMessage('Invalid payment method')
 ], async (req, res) => {
+    let idempotencyKey = null;
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -233,6 +275,38 @@ router.post('/', requirePermission('payments.create'), [
             return res.status(400).json({ success: false, message: 'Invalid payment amount' });
         }
         const amountValue = rawAmount !== null ? roundMoney(rawAmount) : null;
+
+        idempotencyKey = String(req.header('Idempotency-Key') || '').trim();
+        if (!idempotencyKey) {
+            const fallbackParts = [
+                'AUTO',
+                memberId ?? 'member',
+                subscriptionId ?? 'subscription',
+                normalizedPaymentMode || 'mode',
+                method || 'method',
+                amountValue ?? 'amount'
+            ];
+            idempotencyKey = fallbackParts.join('-');
+        }
+
+        if (idempotencyKey) {
+            let existingPayment = null;
+            try {
+                existingPayment = await req.prisma.payment.findUnique({
+                    where: { transactionRef: idempotencyKey }
+                });
+            } catch (lookupErr) {
+                console.warn('[PAYMENTS] Failed to lookup idempotency key:', lookupErr.message);
+            }
+            if (existingPayment) {
+                const existingPayload = await buildPaymentResponsePayload(existingPayment, req.prisma);
+                return res.json({
+                    success: true,
+                    message: 'Payment already processed',
+                    data: existingPayload
+                });
+            }
+        }
 
 
         let shiftId = null;
@@ -375,21 +449,22 @@ router.post('/', requirePermission('payments.create'), [
             // collectorName String?
 
             // 3. Create Payment (shared service)
-            const paymentResult = await recordPaymentTransaction(prisma, {
-                memberId,
-                subscriptionId,
-                amount: resolvedAmount,
-                method: normalizedMethod,
-                status: 'completed',
-                notes,
-                shiftId,
-                createdBy: finalCreatedBy,
-                collectorName: finalCollectorName,
-                externalReference: safeRef,
-                transactionRef,
-                verificationMode,
-                posAmountVerified
-            });
+        const finalTransactionRef = idempotencyKey || transactionRef;
+        const paymentResult = await recordPaymentTransaction(prisma, {
+            memberId,
+            subscriptionId,
+            amount: resolvedAmount,
+            method: normalizedMethod,
+            status: 'completed',
+            notes,
+            shiftId,
+            createdBy: finalCreatedBy,
+            collectorName: finalCollectorName,
+            externalReference: safeRef,
+            transactionRef: finalTransactionRef,
+            verificationMode,
+            posAmountVerified
+        });
             const payment = paymentResult.payment;
 
             // 4. Update subscription payment status if applicable
@@ -474,10 +549,9 @@ router.post('/', requirePermission('payments.create'), [
                 });
             }
 
-            let receiptResult = null;
             let receiptError = null;
             try {
-                receiptResult = await createReceipt(prisma, {
+                await createReceipt(prisma, {
                     transactionType: 'payment',
                     transactionId: payment.id,
                     paymentMethod: payment.method,
@@ -527,28 +601,14 @@ router.post('/', requirePermission('payments.create'), [
                 }
             });
 
-            return { payment, receiptResult, receiptError };
+            return { payment, receiptError };
         });
 
-        const receiptData = result.receiptResult?.receipt ? parseReceiptJson(result.receiptResult.receipt) : null;
-        const receiptCreated = result.receiptResult?.created ?? false;
-        const receiptStatus = result.receiptError?.status || (receiptData ? 'ready' : 'missing');
-        const receiptMessage = result.receiptError?.message
-            || (!receiptCreated && receiptData ? 'Receipt already issued for this transaction' : null);
-        const transactionId = buildTransactionId('payment', result.payment.id);
-
+        const payload = await buildPaymentResponsePayload(result.payment, req.prisma, result.receiptError);
         res.status(201).json({
             success: true,
             message: 'Payment recorded successfully',
-            data: {
-                ...result.payment,
-                paymentId: result.payment.id,
-                transactionId,
-                receipt: receiptData,
-                receiptCreated,
-                receiptStatus,
-                receiptMessage
-            }
+            data: payload
         });
 
     } catch (error) {
@@ -591,6 +651,24 @@ router.post('/', requirePermission('payments.create'), [
 
         // PRISMA ERRORS
         if (error.code === 'P2002') {
+            const target = String(error.meta?.target || '');
+            if (target.includes('transactionRef') && idempotencyKey) {
+                try {
+                    const existingPayment = await req.prisma.payment.findUnique({
+                        where: { transactionRef: idempotencyKey }
+                    });
+                    if (existingPayment) {
+                        const existingPayload = await buildPaymentResponsePayload(existingPayment, req.prisma);
+                        return res.json({
+                            success: true,
+                            message: 'Payment already processed',
+                            data: existingPayload
+                        });
+                    }
+                } catch (lookupErr) {
+                    console.warn('[PAYMENTS] Failed to recover duplicate transactionRef:', lookupErr.message);
+                }
+            }
             return res.status(409).json({
                 success: false,
                 message: 'Duplicate entry detected (Receipt Number collision). Please try again.'

@@ -223,12 +223,13 @@ model Payment {
   method         String   @default("cash") // cash, card, transfer
   status         String   @default("completed") // pending, completed, refunded
   
+  idempotencyKey String?  @unique
   // Receipt info
   receiptNumber  String   @unique
   notes          String?
   
   // Card/Visa transaction reference
-  transactionRef String?  @map("transaction_ref") // Deprecated, use externalReference
+  transactionRef String?  @unique @map("transaction_ref") // Deprecated, use externalReference
   externalReference String? // POS/Bank transaction reference (uniqueness enforced at app level)
   
   // Card Payment Verification (Hybrid System)

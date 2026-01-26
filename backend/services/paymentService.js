@@ -63,15 +63,24 @@ async function createPaymentWithRetry(prisma, data, options = {}) {
 }
 
 async function recordPaymentTransaction(prisma, input, options = {}) {
-    const status = input.status || 'completed';
-    const normalizedMethod = normalizePaymentMethod(input.method);
-    const paidAt = input.paidAt || new Date();
-    const safeRef = resolvePaymentReference(normalizedMethod, input.externalReference, input.transactionRef);
+const status = input.status || 'completed';
+const normalizedMethod = normalizePaymentMethod(input.method);
+const paidAt = input.paidAt || new Date();
+const safeRef = resolvePaymentReference(normalizedMethod, input.externalReference, input.transactionRef);
 
     const idempotencyWindowMs = Number.isFinite(options.idempotencyWindowMs)
         ? options.idempotencyWindowMs
         : DEFAULT_IDEMPOTENCY_WINDOW_MS;
     const shouldCheckDuplicate = !options.skipIdempotency && status === 'completed';
+
+    if (options.idempotencyKey) {
+        const existingByIdempotency = await prisma.payment.findUnique({
+            where: { idempotencyKey: options.idempotencyKey }
+        });
+        if (existingByIdempotency) {
+            return { payment: existingByIdempotency, created: false };
+        }
+    }
 
     if (shouldCheckDuplicate) {
         const idempotencyWhere = {
@@ -125,9 +134,11 @@ async function recordPaymentTransaction(prisma, input, options = {}) {
     if (input.createdBy) prismaData.createdBy = parseInt(input.createdBy);
     if (input.collectorName) prismaData.collectorName = String(input.collectorName).trim();
 
+    if (input.transactionRef) prismaData.transactionRef = String(input.transactionRef).trim();
     if (safeRef) prismaData.externalReference = safeRef;
     if (input.verificationMode) prismaData.verificationMode = input.verificationMode;
     if (input.posAmountVerified) prismaData.posAmountVerified = parseFloat(input.posAmountVerified);
+    if (options.idempotencyKey) prismaData.idempotencyKey = options.idempotencyKey;
 
     const payment = await createPaymentWithRetry(prisma, prismaData, {
         attempts: options.attempts,
