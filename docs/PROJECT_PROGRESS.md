@@ -98,6 +98,7 @@ Phase 4 - Receipts system
 | 2026-01-26 | 22d2dcb | Prevent Record Payment modal from reinitializing after success. |
 | 2026-01-26 | 5d80430 | Stabilize idempotency key per modal session to block repeat submits. |
 | 2026-01-26 | 3d3313d | Enforce payment idempotency via transactionRef unique + backend dedupe. |
+| 2026-01-26 | 3a570a3 | Prevent Record Payment reinit when parent refreshes while open. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
