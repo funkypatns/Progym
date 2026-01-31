@@ -140,4 +140,5 @@ api.interceptors.response.use(
     }
 );
 
+export const getStaffTrainers = () => api.get('/staff-trainers');
 export default api;
