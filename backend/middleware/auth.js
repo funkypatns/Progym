@@ -116,6 +116,14 @@ async function authenticate(req, res, next) {
         }
 
         console.error('[AUTH MIDDLEWARE ERROR]', error);
+        const originalUrl = typeof req.originalUrl === 'string' ? req.originalUrl : '';
+        const isMeRoute = originalUrl.includes('/auth/me') || originalUrl === '/api/me' || originalUrl.endsWith('/me');
+        if (isMeRoute) {
+            return res.status(401).json({
+                success: false,
+                message: 'User session invalid. Please login again.'
+            });
+        }
         return res.status(500).json({
             success: false,
             message: 'Authentication error',

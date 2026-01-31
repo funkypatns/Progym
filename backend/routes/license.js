@@ -24,7 +24,10 @@ router.get('/status', async (req, res) => {
         // Always return 200 - the status object contains valid: true/false
         res.json({
             success: true,
-            data: status
+            data: {
+                licensed: Boolean(status?.valid),
+                ...status
+            }
         });
 
     } catch (error) {
@@ -49,19 +52,22 @@ router.get('/status', async (req, res) => {
 router.get('/hardware-id', (req, res) => {
     try {
         const hardwareId = licenseService.getHardwareId();
+        const hasHardwareId = typeof hardwareId === 'string' && hardwareId.length > 0;
+        const displayHardwareId = hasHardwareId ? `${hardwareId.slice(0, 16)}...` : null;
 
         res.json({
-            success: true,
+            success: hasHardwareId,
             data: {
-                hardwareId: hardwareId.substring(0, 16) + '...' // Partial for display
-            }
+                hardwareId: displayHardwareId
+            },
+            message: hasHardwareId ? undefined : 'Failed to generate hardware ID'
         });
 
     } catch (error) {
         console.error('Hardware ID error:', error);
         res.json({
             success: false,
-            data: { hardwareId: 'Unknown' },
+            data: { hardwareId: null },
             message: 'Failed to generate hardware ID'
         });
     }
@@ -95,7 +101,7 @@ router.post('/activate', async (req, res) => {
         // Map error codes to HTTP status codes
         let httpStatus = 400;
         if (result.code === 'NETWORK_ERROR') {
-            httpStatus = 503; // Service Unavailable
+            httpStatus = 200; // Keep client flow stable; still return success: false
         } else if (result.code === 'HARDWARE_MISMATCH') {
             httpStatus = 409; // Conflict
         } else if (result.code === 'EXPIRED' || result.code === 'INVALID' || result.code === 'REVOKED') {
@@ -110,8 +116,9 @@ router.post('/activate', async (req, res) => {
 
     } catch (error) {
         console.error('Activation unexpected error:', error);
-        res.status(500).json({
+        res.status(200).json({
             success: false,
+            code: 'UNEXPECTED_ERROR',
             message: 'Unexpected error during activation',
             debug: process.env.NODE_ENV === 'development' ? error.message : undefined
         });

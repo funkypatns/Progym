@@ -119,6 +119,7 @@ const remindersRoutes = require('./routes/reminders');
 const staffNotificationsRoutes = require('./routes/staff-notifications');
 const alertsRoutes = require('./routes/alerts');
 const receiptsRoutes = require('./routes/receipts');
+const staffTrainersRoutes = require('./routes/staffTrainers');
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -133,6 +134,7 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/license', licenseRoutes);
+app.use('/api', licenseRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/packages', packagesRoutes);
 app.use('/api/pos', posRoutes);
@@ -141,10 +143,14 @@ app.use('/api/reminders', remindersRoutes);
 app.use('/api/notifications', staffNotificationsRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/receipts', receiptsRoutes);
+app.use('/api/staff-trainers', staffTrainersRoutes);
 app.use('/api/subscription-alerts', require('./routes/subscription-alerts'));
 app.use('/api/cash-movements', require('./routes/cash-movements'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/sales', require('./routes/sales'));
+app.use('/api/services', require('./routes/services'));
+app.use('/api/appointments', require('./routes/appointments'));
+app.use('/api/coaches', require('./routes/coaches'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -218,9 +224,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-// ============================================
-// SERVER STARTUP
-// ============================================
+const SessionJobs = require('./jobs/sessionJobs');
 
 /**
  * Start the server
@@ -233,6 +237,9 @@ async function startServer() {
         // Test database connection
         await prisma.$connect();
         console.log('✅ Database connected');
+
+        // Start session scanner
+        SessionJobs.startScanner();
 
         // Start listening
         app.listen(PORT, () => {

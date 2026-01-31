@@ -43,6 +43,20 @@ app.use((req, res, next) => {
 // ROUTES
 // ============================================
 
+// Root - friendly status
+app.get('/', (req, res) => {
+    res.json({
+        success: true,
+        message: 'License server is running',
+        endpoints: {
+            health: '/health',
+            activate: '/api/licenses/activate',
+            validate: '/api/licenses/validate',
+            status: '/api/licenses/status/:key'
+        }
+    });
+});
+
 // Health check
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -92,7 +106,7 @@ async function startServer() {
             console.log('Endpoints:');
             console.log('  POST /api/licenses/activate   - Activate license');
             console.log('  POST /api/licenses/validate   - Validate license');
-            console.log('  GET  /api/licenses/status     - Check status');
+            console.log('  GET  /api/licenses/status/:key - Check status');
             console.log('  POST /api/admin/login         - Admin login');
             console.log('  GET  /api/admin/licenses      - List all licenses');
             console.log('');
