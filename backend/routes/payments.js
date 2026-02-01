@@ -147,7 +147,7 @@ router.get('/', async (req, res) => {
                 orderBy: { paidAt: 'desc' },
                 include: {
                     member: {
-                        select: { id: true, memberId: true, firstName: true, lastName: true }
+                        select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
                     },
                     subscription: {
                         include: {

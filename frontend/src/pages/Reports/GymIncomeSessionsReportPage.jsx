@@ -52,7 +52,8 @@ const GymIncomeSessionsReportPage = () => {
         trainerId: '',
         serviceId: '',
         employeeId: '',
-        method: ''
+        method: '',
+        search: ''
     });
 
     const currency = { code: 'EGP', symbol: 'EGP' };
@@ -92,6 +93,7 @@ const GymIncomeSessionsReportPage = () => {
             const endDate = toEndOfDay(filters.to);
             const params = new URLSearchParams({
                 type: 'SESSION',
+                status: 'completed',
                 startDate,
                 endDate,
                 page: '1',
@@ -110,6 +112,7 @@ const GymIncomeSessionsReportPage = () => {
             const serviceName = filters.serviceId
                 ? (services.find(service => String(service.id) === String(filters.serviceId))?.name || '').toLowerCase()
                 : '';
+            const searchValue = filters.search.trim().toLowerCase();
 
             const byMethod = { CASH: 0, CARD: 0, TRANSFER: 0 };
             const rowsMap = new Map();
@@ -144,6 +147,7 @@ const GymIncomeSessionsReportPage = () => {
                         amount: 0,
                         customerName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
                         customerCode: member.memberId || '',
+                        customerPhone: member.phone || '',
                         serviceName: appointment.title || '',
                         trainerName: appointment.trainer?.name || '',
                         employeeName: payment.creator
@@ -168,12 +172,17 @@ const GymIncomeSessionsReportPage = () => {
                 sessionDate: row.sessionDate,
                 customerName: row.customerName,
                 customerCode: row.customerCode,
+                customerPhone: row.customerPhone,
                 serviceName: row.serviceName,
                 trainerName: row.trainerName,
                 employeeName: row.employeeName,
                 paymentMethod: row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED',
                 amount: row.amount || 0
-            }));
+            })).filter((row) => {
+                if (!searchValue) return true;
+                const haystack = `${row.customerName} ${row.customerCode} ${row.customerPhone}`.toLowerCase();
+                return haystack.includes(searchValue);
+            });
 
             const totalRevenue = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
             const sessionsCount = rows.length;
@@ -197,7 +206,7 @@ const GymIncomeSessionsReportPage = () => {
 
     useEffect(() => {
         fetchReport();
-    }, [filters.from, filters.to, filters.trainerId, filters.serviceId, filters.employeeId, filters.method]);
+    }, [filters.from, filters.to, filters.trainerId, filters.serviceId, filters.employeeId, filters.method, filters.search]);
 
     const methodLabel = (value) => {
         const normalized = (value || '').toUpperCase();
@@ -346,6 +355,13 @@ const GymIncomeSessionsReportPage = () => {
                         ]}
                         icon={CreditCard}
                         placeholder={isRTL ? 'الكل' : 'All'}
+                    />
+
+                    <ReportsToolbar.SearchInput
+                        label={isRTL ? 'بحث' : 'Search'}
+                        value={filters.search}
+                        onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                        placeholder={isRTL ? 'اسم / كود / تليفون' : 'Name / code / phone'}
                     />
 
                     <ReportsToolbar.Actions>
