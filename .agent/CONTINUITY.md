@@ -88,3 +88,7 @@
 [PROGRESS]
 - 2026-02-01T23:31:44+02:00 [CODE] Restored UTF-8 Arabic translations from known-good commit and removed BOM to stop mojibake; added i18n encoding check script and npm script.
 
+
+[PROGRESS]
+- 2026-02-02T00:09:14+02:00 [CODE] Added gym income sessions report (frontend page + nav/route) and backend /api/reports/gym-income-sessions endpoint for session-only revenue totals and rows.
+

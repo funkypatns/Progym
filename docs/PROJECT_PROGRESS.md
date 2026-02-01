@@ -128,3 +128,4 @@ Phase 4 - Receipts system
 - Use `git diff` to understand what already changed before coding.
 | 2026-02-01 | 3bceee1 | Add trainer report in Reports with trainer earnings, payouts, filters, and payout actions. |
 | 2026-02-01 | 2fb5e39 | Fix Arabic mojibake by restoring UTF-8 ar.json and add i18n encoding check script. |
+| 2026-02-01 | f5c16b9 | Add gym income sessions report with filters, summary cards, and CSV export. |
