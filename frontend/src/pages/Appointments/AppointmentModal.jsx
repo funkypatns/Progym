@@ -63,8 +63,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             if (appointment) {
                 // Edit Mode
                 setSelectedMember(appointment.member);
-            setSelectedCoachId(appointment.coachId?.toString());
-            setSelectedTrainerId(appointment.trainerId?.toString() || '');
+                setSelectedCoachId(appointment.coachId?.toString());
+                setSelectedTrainerId(appointment.trainerId?.toString() || '');
 
                 const start = parseISO(appointment.start);
                 const end = parseISO(appointment.end);
@@ -85,8 +85,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 // Reset for create mode
                 setMemberSearch('');
                 setSelectedMember(null);
-            setSelectedCoachId('');
-            setSelectedTrainerId('');
+                setSelectedCoachId('');
+                setSelectedTrainerId('');
 
                 if (initialDate) {
                     setSelectedDate(format(initialDate, 'yyyy-MM-dd'));
@@ -248,14 +248,14 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         : null;
 
     const timeError = useMemo(() => {
-        if (!selectedTime) return isArabic ? 'Ø§Ù„ÙˆÙ‚Øª Ù…Ø·Ù„ÙˆØ¨.' : 'Time is required.';
-        if (!startTimeParsed) return isArabic ? 'ÙˆÙ‚Øª ØºÙŠØ± ØµØ§Ù„Ø­.' : 'Invalid time format.';
+        if (!selectedTime) return isArabic ? 'الوقت مطلوب.' : 'Time is required.';
+        if (!startTimeParsed) return isArabic ? 'وقت غير صالح.' : 'Invalid time format.';
         return '';
     }, [selectedTime, startTimeParsed, isArabic]);
 
     const durationError = useMemo(() => {
-        if (!durationInput) return isArabic ? 'Ø§Ù„Ù…Ø¯Ø© Ù…Ø·Ù„ÙˆØ¨Ø©.' : 'Duration is required.';
-        if (!durationValid) return isArabic ? 'Ø§Ù„Ù…Ø¯Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø¨ÙŠÙ† 1 Ùˆ 600 Ø¯Ù‚ÙŠÙ‚Ø©.' : 'Duration must be between 1 and 600 minutes.';
+        if (!durationInput) return isArabic ? 'المدة مطلوبة.' : 'Duration is required.';
+        if (!durationValid) return isArabic ? 'المدة يجب أن تكون بين 1 و 600 دقيقة.' : 'Duration must be between 1 and 600 minutes.';
         return '';
     }, [durationInput, durationValid, isArabic]);
 
@@ -313,17 +313,17 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 return;
             }
 
-                const payload = {
-                    ...form,
-                    start: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
-                    end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
-                    memberId: selectedMember.id,
-                    coachId: parseInt(selectedCoachId),
-                    price: parseFloat(form.price)
-                };
-                payload.durationMinutes = durationNumber;
-                payload.startTime = selectedTime;
-                payload.trainerId = selectedTrainerId ? parseInt(selectedTrainerId) : null;
+            const payload = {
+                ...form,
+                start: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
+                end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
+                memberId: selectedMember.id,
+                coachId: parseInt(selectedCoachId),
+                price: parseFloat(form.price)
+            };
+            payload.durationMinutes = durationNumber;
+            payload.startTime = selectedTime;
+            payload.trainerId = selectedTrainerId ? parseInt(selectedTrainerId) : null;
 
             let res;
             if (appointment) {
@@ -367,7 +367,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
         if (!ended) {
             const confirmMessage = isRtl
-                ? 'Ø§Ù„Ø¬Ù„Ø³Ø© Ù„Ù… ØªÙ†ØªÙ‡Ù Ø¨Ø¹Ø¯ØŒ Ù‡Ù„ Ø£Ù†Øª Ù…ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø¥ÙƒÙ…Ø§Ù„ØŸ'
+                ? 'الجلسة لم تنتهِ بعد، هل أنت متأكد من الإكمال؟'
                 : 'Session has not ended yet. Are you sure you want to complete it?';
             if (!window.confirm(confirmMessage)) return;
         }
@@ -479,130 +479,118 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <fieldset disabled={isReadOnly} className={isReadOnly ? 'opacity-80' : ''}>
 
-                                {/* 1. Member Search */}
-                                {!appointment && (
-                                    <div className="space-y-2 relative">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.member')}</label>
-                                        <div className="relative">
-                                            <input
-                                                type="text"
-                                                value={selectedMember ? `${selectedMember.firstName} ${selectedMember.lastName}` : memberSearch}
-                                                onChange={(e) => {
-                                                    setSelectedMember(null);
-                                                    searchMembers(e.target.value);
-                                                }}
-                                                placeholder={t('appointments.searchMemberPlaceholder')}
-                                                className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
-                                            />
-                                            {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">âŒ›</div>}
-                                        </div>
-                                        {/* Results Dropdown */}
-                                        {members.length > 0 && !selectedMember && (
-                                            <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-                                                {members.map(m => (
-                                                    <div key={m.id}
-                                                        className="p-3 hover:bg-white/5 cursor-pointer flex justify-between items-center"
-                                                        onClick={() => { setSelectedMember(m); setMembers([]); }}>
-                                                        <span className="text-white font-bold">{m.firstName} {m.lastName}</span>
-                                                        <span className="text-xs text-slate-500">{m.memberId}</span>
-                                                    </div>
-                                                ))}
+                                    {/* 1. Member Search */}
+                                    {!appointment && (
+                                        <div className="space-y-2 relative">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.member')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={selectedMember ? `${selectedMember.firstName} ${selectedMember.lastName}` : memberSearch}
+                                                    onChange={(e) => {
+                                                        setSelectedMember(null);
+                                                        searchMembers(e.target.value);
+                                                    }}
+                                                    placeholder={t('appointments.searchMemberPlaceholder')}
+                                                    className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
+                                                />
+                                                {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">⌛</div>}
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-                                {selectedMember && (
-                                    <div className="text-xs text-slate-400">
-                                        {`${selectedMember.firstName || ''} ${selectedMember.lastName || ''}`.trim()} • {selectedMember.memberId || '-'} • {selectedMember.phone || '-'}
-                                    </div>
-                                )}
+                                            {/* Results Dropdown */}
+                                            {members.length > 0 && !selectedMember && (
+                                                <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+                                                    {members.map(m => (
+                                                        <div key={m.id}
+                                                            className="p-3 hover:bg-white/5 cursor-pointer flex justify-between items-center"
+                                                            onClick={() => { setSelectedMember(m); setMembers([]); }}>
+                                                            <span className="text-white font-bold">{m.firstName} {m.lastName}</span>
+                                                            <span className="text-xs text-slate-500">{m.memberId}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {selectedMember && (
+                                        <div className="text-xs text-slate-400">
+                                            {`${selectedMember.firstName || ''} ${selectedMember.lastName || ''}`.trim()} • {selectedMember.memberId || '-'} • {selectedMember.phone || '-'}
+                                        </div>
+                                    )}
 
-                                {/* 2. Coach Select + Show Schedule Button */}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.coach')}</label>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                            <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                            <select
-                                                required
-                                                value={selectedCoachId}
-                                                onChange={e => setSelectedCoachId(e.target.value)}
-                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                    {/* 2. Coach Select + Show Schedule Button */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('payInOut.employee')}</label>
+                                        <div className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                                <select
+                                                    required
+                                                    value={selectedCoachId || ''}
+                                                    onChange={e => setSelectedCoachId(e.target.value)}
+                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                                >
+                                                    <option value="">{t('appointments.selectCoach')}</option>
+                                                    {coaches.map(c => (
+                                                        <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowSchedule(true)}
+                                                disabled={!selectedCoachId}
+                                                className="px-4 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-xl text-slate-300 disabled:opacity-50 transition text-xs font-bold whitespace-nowrap"
                                             >
-                                                <option value="">{t('appointments.selectCoach')}</option>
-                                                {coaches.map(c => (
-                                                    <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
-                                                ))}
+                                                {t('appointments.showSchedule')}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 3. Date & Status */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.date')}</label>
+                                            <div className="relative">
+                                                <Calendar className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                                <input
+                                                    type="date"
+                                                    required
+                                                    min={format(new Date(), 'yyyy-MM-dd')}
+                                                    disabled={isReadOnly || (appointment && format(parseISO(appointment.start), 'yyyy-MM-dd') <= format(new Date(), 'yyyy-MM-dd'))}
+                                                    value={selectedDate}
+                                                    onChange={e => setSelectedDate(e.target.value)}
+                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.status')}</label>
+                                            <select
+                                                value={form.status}
+                                                onChange={e => setForm({ ...form, status: e.target.value })}
+                                                className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
+                                            >
+                                                <option value="scheduled">{t('appointments.scheduled')}</option>
+                                                <option value="completed">{t('appointments.completed')}</option>
+                                                <option value="no_show">{t('appointments.noShow')}</option>
+                                                <option value="cancelled">{t('appointments.cancelled')}</option>
                                             </select>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowSchedule(true)}
-                                            disabled={!selectedCoachId}
-                                            className="px-4 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-xl text-slate-300 disabled:opacity-50 transition text-xs font-bold whitespace-nowrap"
-                                        >
-                                            {t('appointments.showSchedule')}
-                                        </button>
-                                    </div>
-                                </div>
-
-
-
-                                {/* 3. Date & Status */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.date')}</label>
-                                        <div className="relative">
-                                            <Calendar className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                            <input
-                                                type="date"
-                                                required
-                                                min={format(new Date(), 'yyyy-MM-dd')}
-                                                value={selectedDate}
-                                                onChange={e => setSelectedDate(e.target.value)}
-                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                            />
-                                        </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.status')}</label>
-                                        <select
-                                            value={form.status}
-                                            onChange={e => setForm({ ...form, status: e.target.value })}
-                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
-                                        >
-                                            <option value="scheduled">{t('appointments.scheduled')}</option>
-                                            <option value="completed">{t('appointments.completed')}</option>
-                                            <option value="no_show">{t('appointments.noShow')}</option>
-                                            <option value="cancelled">{t('appointments.cancelled')}</option>
-                                        </select>
-                                    </div>
-                                </div>
 
-                                {/* Display audit info */}
-                                {appointment && (
-                                    <div className="space-y-1">
-                                        <div className="text-xs text-slate-400">
-                                            {appointment?.createdByEmployee
-                                                ? `${isArabic ? 'ØªÙ… Ø§Ù„Ø­Ø¬Ø² Ø¨ÙˆØ§Ø³Ø·Ø©:' : 'Booked by:'} ${appointment.createdByEmployee.firstName} ${appointment.createdByEmployee.lastName}`
-                                                : `${isArabic ? 'ØªÙ… Ø§Ù„Ø­Ø¬Ø² Ø¨ÙˆØ§Ø³Ø·Ø©:' : 'Booked by:'} -`}
-                                        </div>
-                                        {appointment?.completedByEmployee && (
-                                            <div className="text-xs text-slate-400">
-                                                {`${isArabic ? 'ØªÙ… Ø§Ù„Ø¥ÙƒÙ…Ø§Ù„ Ø¨ÙˆØ§Ø³Ø·Ø©:' : 'Completed by:'} ${appointment.completedByEmployee.firstName} ${appointment.completedByEmployee.lastName}`}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
 
-                                {/* 4. Start Time & 5. Duration */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.startTime')}</label>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <div className="relative">
-                                                <Clock className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                    {/* 4. Start Time & 5. Duration */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.startTime')}</label>
+
+                                            {/* Unified Time Input Control */}
+                                            <div className="flex items-center bg-slate-800 border border-white/5 rounded-xl px-2 py-1 focus-within:border-blue-500 transition relative">
+                                                <Clock className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500 opacity-0`} size={18} />
+
+                                                {/* Hour */}
                                                 <select
                                                     value={selectedHour}
                                                     onChange={(e) => {
@@ -610,215 +598,220 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                         setSelectedHour(nextHour);
                                                         setSelectedTime(buildTimeFromParts(nextHour, selectedMinute, selectedPeriod));
                                                     }}
-                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                                    className="bg-transparent text-white text-lg font-bold p-2 outline-none cursor-pointer appearance-none text-center w-16 hover:bg-white/5 rounded"
                                                 >
                                                     {hourOptions.map(hour => (
-                                                        <option key={hour} value={hour}>{hour}</option>
+                                                        <option key={hour} value={hour} className="bg-slate-800">{hour}</option>
                                                     ))}
                                                 </select>
-                                            </div>
-                                            <div className="relative">
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    list="minute-options"
-                                                    placeholder="00"
-                                                    value={selectedMinute}
-                                                    onChange={(e) => {
-                                                        const next = e.target.value.replace(/\D/g, '').slice(0, 2);
-                                                        setSelectedMinute(next);
-                                                        setSelectedTime(buildTimeFromParts(selectedHour, next, selectedPeriod));
-                                                    }}
-                                                    onBlur={() => {
-                                                        const parsed = parseInt(selectedMinute, 10);
-                                                        if (Number.isNaN(parsed)) {
-                                                            setSelectedMinute('00');
-                                                            setSelectedTime(buildTimeFromParts(selectedHour, '00', selectedPeriod));
-                                                            return;
-                                                        }
-                                                        const clamped = Math.min(59, Math.max(0, parsed));
-                                                        const normalized = String(clamped).padStart(2, '0');
-                                                        setSelectedMinute(normalized);
-                                                        setSelectedTime(buildTimeFromParts(selectedHour, normalized, selectedPeriod));
-                                                    }}
-                                                    className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-center"
-                                                />
-                                                <datalist id="minute-options">
-                                                    {minuteOptions.map(minute => (
-                                                        <option key={minute} value={String(minute).padStart(2, '0')} />
-                                                    ))}
-                                                </datalist>
-                                            </div>
-                                            <select
-                                                value={selectedPeriod}
-                                                onChange={(e) => {
-                                                    const nextPeriod = e.target.value;
-                                                    setSelectedPeriod(nextPeriod);
-                                                    setSelectedTime(buildTimeFromParts(selectedHour, selectedMinute, nextPeriod));
-                                                }}
-                                                className="w-full bg-slate-800 border border-white/5 rounded-xl px-3 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
-                                            >
-                                                <option value="AM">AM</option>
-                                                <option value="PM">PM</option>
-                                            </select>
-                                        </div>
-                                        {(() => {
-                                            if (!selectedTime) {
-                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'Ø§Ù„ÙˆÙ‚Øª Ù…Ø·Ù„ÙˆØ¨.' : 'Time is required.'}</div>;
-                                            }
-                                            if (!startTimeParsed) {
-                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'ÙˆÙ‚Øª ØºÙŠØ± ØµØ§Ù„Ø­.' : 'Invalid time format.'}</div>;
-                                            }
-                                            return null;
-                                        })()}
-                                    </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.duration')}</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="600"
-                                            inputMode="numeric"
-                                            placeholder="15"
-                                            value={durationInput}
-                                            onChange={e => setDurationInput(e.target.value.replace(/\D/g, ''))}
-                                            onBlur={() => {
-                                                const parsed = parseInt(durationInput, 10);
-                                                if (!Number.isNaN(parsed)) {
-                                                    setDurationInput(parsed.toString());
+                                                <span className="text-slate-500 font-bold px-1">:</span>
+
+                                                {/* Minute */}
+                                                <div className="relative w-16">
+                                                    <input
+                                                        type="text"
+                                                        inputMode="numeric"
+                                                        value={selectedMinute}
+                                                        onChange={(e) => {
+                                                            const next = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                                            setSelectedMinute(next);
+                                                            setSelectedTime(buildTimeFromParts(selectedHour, next, selectedPeriod));
+                                                        }}
+                                                        onBlur={() => {
+                                                            let val = parseInt(selectedMinute, 10);
+                                                            if (Number.isNaN(val)) val = 0;
+                                                            const clamped = Math.min(59, Math.max(0, val));
+                                                            const normalized = String(clamped).padStart(2, '0');
+                                                            setSelectedMinute(normalized);
+                                                            setSelectedTime(buildTimeFromParts(selectedHour, normalized, selectedPeriod));
+                                                        }}
+                                                        className="w-full bg-transparent text-white text-lg font-bold p-2 text-center outline-none hover:bg-white/5 rounded"
+                                                    />
+                                                </div>
+
+                                                {/* AM/PM */}
+                                                <div className="flex bg-slate-900 rounded-lg p-1 ml-auto gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedPeriod('AM');
+                                                            setSelectedTime(buildTimeFromParts(selectedHour, selectedMinute, 'AM'));
+                                                        }}
+                                                        className={`px-3 py-1 text-xs font-bold rounded-md transition ${selectedPeriod === 'AM' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        {t('appointments.am', 'AM')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedPeriod('PM');
+                                                            setSelectedTime(buildTimeFromParts(selectedHour, selectedMinute, 'PM'));
+                                                        }}
+                                                        className={`px-3 py-1 text-xs font-bold rounded-md transition ${selectedPeriod === 'PM' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        {t('appointments.pm', 'PM')}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {(() => {
+                                                if (!selectedTime) {
+                                                    return <div className="text-xs text-rose-400">{t('appointments.timeRequired', 'Time is required')}</div>;
                                                 }
-                                            }}
-                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500"
-                                        />
-                                        {(durationInput && !durationValid) && (
-                                            <div className="text-xs text-rose-400">
-                                                {i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø¯Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø¨ÙŠÙ† 1 Ùˆ 600 Ø¯Ù‚ÙŠÙ‚Ø©.' : 'Duration must be between 1 and 600 minutes.'}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* 6. Ends At (Auto-Calculated Read-only) */}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.endsAt')}</label>
-                                    <div className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-slate-400 cursor-not-allowed">
-                                        {endTimeLabel}
-                                    </div>
-                                </div>
-
-                                {isPastSelection && (
-                                    <div className="text-xs text-rose-400">
-                                        {i18n.language === 'ar' ? 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø¶Ø§ÙØ© Ø­Ø¬Ø² ÙÙŠ ØªØ§Ø±ÙŠØ® Ø³Ø§Ø¨Ù‚.' : 'You canâ€™t create a booking in a past date.'}
-                                    </div>
-                                )}
-
-                                {isOverlapping && (
-                                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-400 text-sm font-bold animate-pulse">
-                                        <Activity size={16} />
-                                        {t('appointments.overlap')}
-                                    </div>
-                                )}
-
-                                {/* 7. Service Dropdown & Price */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.service')}</label>
-                                        <div className="relative">
-                                            <Activity className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                            <select
-                                                required
-                                                value={form.title}
-                                                onChange={(e) => {
-                                                    const selectedName = e.target.value;
-                                                    const service = services.find(s => s.name === selectedName);
-                                                    setForm(prev => ({
-                                                        ...prev,
-                                                        title: selectedName,
-                                                        price: service ? service.defaultPrice.toString() : prev.price
-                                                    }));
-                                                }}
-                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                            >
-                                                <option value="">{t('appointments.selectService', 'Select Service')}</option>
-                                                {services.length > 0 ? (
-                                                    services.map(service => (
-                                                        <option key={service.id} value={service.name}>
-                                                            {service.name}
-                                                        </option>
-                                                    ))
-                                                ) : (
-                                                    <>
-                                                        <option value="PT Session">{t('appointments.ptSession')}</option>
-                                                        <option value="Consultation">{t('appointments.consultation')}</option>
-                                                        <option value="Assessment">{t('appointments.assessment')}</option>
-                                                        <option value="Class">{t('appointments.class')}</option>
-                                                        <option value="Other">{t('appointments.other')}</option>
-                                                    </>
-                                                )}
-                                                {services.length > 0 && <option value="Other">{t('appointments.other')}</option>}
-                                            </select>
+                                                if (!startTimeParsed) {
+                                                    return <div className="text-xs text-rose-400">{t('appointments.invalidTime', 'Invalid time format')}</div>;
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.sessionPrice')}</label>
-                                        <div className="relative">
-                                            <DollarSign className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.duration')}</label>
                                             <input
                                                 type="number"
-                                                min="0"
-                                                step="0.01"
-                                                required
-                                                value={form.price}
-                                                onChange={e => setForm({ ...form, price: e.target.value })}
-                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                                min="1"
+                                                max="600"
+                                                inputMode="numeric"
+                                                placeholder="15"
+                                                value={durationInput}
+                                                onChange={e => setDurationInput(e.target.value.replace(/\D/g, ''))}
+                                                onBlur={() => {
+                                                    const parsed = parseInt(durationInput, 10);
+                                                    if (!Number.isNaN(parsed)) {
+                                                        setDurationInput(parsed.toString());
+                                                    }
+                                                }}
+                                                className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500"
                                             />
+                                            {(durationInput && !durationValid) && (
+                                                <div className="text-xs text-rose-400">
+                                                    {t('appointments.durationRange', 'Duration must be between 1 and 600 minutes')}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.trainer')}</label>
-                                    <div className="relative">
-                                        <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                        <select
-                                            value={selectedTrainerId}
-                                            onChange={e => setSelectedTrainerId(e.target.value)}
-                                            className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                        >
-                                            <option value="">{t('appointments.selectTrainer')}</option>
-                                            {trainers.map(trainer => (
-                                                <option key={trainer.id} value={trainer.id}>{trainer.name}</option>
-                                            ))}
-                                        </select>
-                                        {trainerLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">âŒ›</div>}
-                                    </div>
-                                </div>
-
-                                {selectedTrainer && (
-                                    <div className="p-3 bg-slate-800/60 border border-white/5 rounded-xl text-xs text-slate-300">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-400">{t('appointments.commissionPreview')}</span>
-                                            <span className="font-bold">
-                                                {t('appointments.commissionPercent')}: {commissionPercentValue ?? 0}%
-                                            </span>
-                                        </div>
-                                        <div className="mt-1 text-slate-200 font-bold">
-                                            {t('appointments.commissionAmount')}: {Number(commissionAmountValue || 0).toFixed(2)}
+                                    {/* 6. Ends At (Auto-Calculated Read-only) */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.endsAt')}</label>
+                                        <div className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-slate-400 cursor-not-allowed">
+                                            {endTimeLabel}
                                         </div>
                                     </div>
-                                )}
 
-                                {/* 8. Notes */}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.notes')}</label>
-                                    <textarea
-                                        value={form.notes}
-                                        onChange={e => setForm({ ...form, notes: e.target.value })}
-                                        className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 h-24 resize-none"
-                                        placeholder="Add notes..."
-                                    />
-                                </div>
+                                    {isPastSelection && (
+                                        <div className="text-xs text-rose-400">
+                                            {t('appointments.pastDateError', 'You cannot create a booking in a past date')}
+                                        </div>
+                                    )}
+
+                                    {isOverlapping && (
+                                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-400 text-sm font-bold animate-pulse">
+                                            <Activity size={16} />
+                                            {t('appointments.overlap')}
+                                        </div>
+                                    )}
+
+                                    {/* 7. Service Dropdown & Price */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.service')}</label>
+                                            <div className="relative">
+                                                <Activity className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                                <select
+                                                    required
+                                                    value={form.title}
+                                                    onChange={(e) => {
+                                                        const selectedName = e.target.value;
+                                                        const service = services.find(s => s.name === selectedName);
+                                                        setForm(prev => ({
+                                                            ...prev,
+                                                            title: selectedName,
+                                                            price: service ? service.defaultPrice.toString() : prev.price
+                                                        }));
+                                                    }}
+                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                                >
+                                                    <option value="">{t('appointments.selectService', 'Select Service')}</option>
+                                                    {services.length > 0 ? (
+                                                        services.map(service => (
+                                                            <option key={service.id} value={service.name}>
+                                                                {service.name}
+                                                            </option>
+                                                        ))
+                                                    ) : (
+                                                        <>
+                                                            <option value="PT Session">{t('appointments.ptSession')}</option>
+                                                            <option value="Consultation">{t('appointments.consultation')}</option>
+                                                            <option value="Assessment">{t('appointments.assessment')}</option>
+                                                            <option value="Class">{t('appointments.class')}</option>
+                                                            <option value="Other">{t('appointments.other')}</option>
+                                                        </>
+                                                    )}
+                                                    {services.length > 0 && <option value="Other">{t('appointments.other')}</option>}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.sessionPrice')}</label>
+                                            <div className="relative">
+                                                <DollarSign className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    required
+                                                    value={form.price}
+                                                    onChange={e => setForm({ ...form, price: e.target.value })}
+                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.trainer')}</label>
+                                        <div className="relative">
+                                            <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                            <select
+                                                value={selectedTrainerId}
+                                                onChange={e => setSelectedTrainerId(e.target.value)}
+                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                            >
+                                                <option value="">{t('appointments.selectTrainer')}</option>
+                                                {trainers.map(trainer => (
+                                                    <option key={trainer.id} value={trainer.id}>{trainer.name}</option>
+                                                ))}
+                                            </select>
+                                            {trainerLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">âŒ›</div>}
+                                        </div>
+                                    </div>
+
+                                    {selectedTrainer && (
+                                        <div className="p-3 bg-slate-800/60 border border-white/5 rounded-xl text-xs text-slate-300">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-400">{t('appointments.commissionPreview')}</span>
+                                                <span className="font-bold">
+                                                    {t('appointments.commissionPercent')}: {commissionPercentValue ?? 0}%
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-slate-200 font-bold">
+                                                {t('appointments.commissionAmount')}: {Number(commissionAmountValue || 0).toFixed(2)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 8. Notes */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.notes')}</label>
+                                        <textarea
+                                            value={form.notes}
+                                            onChange={e => setForm({ ...form, notes: e.target.value })}
+                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 h-24 resize-none"
+                                            placeholder="Add notes..."
+                                        />
+                                    </div>
 
                                 </fieldset>
 
