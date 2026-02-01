@@ -104,3 +104,7 @@
 [PROGRESS]
 - 2026-02-02T01:06:42.2453699+02:00 [CODE] Gym Income Sessions report now filters completed session payments, supports search (name/code/phone), and includes member phone in payments payload for report search.
 
+
+[PROGRESS]
+- 2026-02-02T01:18:34.8706941+02:00 [CODE] Gym Income Sessions report now mirrors Payments endpoint params (type=SESSION only) and logs request/row counts in dev for verification.
+
