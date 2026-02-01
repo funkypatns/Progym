@@ -101,6 +101,7 @@ Phase 4 - Receipts system
 | 2026-01-26 | 3a570a3 | Prevent Record Payment reinit when parent refreshes while open. |
 | 2026-01-31 | e84f6bc | Stabilize license endpoints and add license server root status. |
 | 2026-02-01 | 9d39fc5 | Trainer commissions, appointments completion/alerts, and check-in enhancements. |
+| 2026-02-01 | f1344b5 | Pending completion alerts/settings, trainer delete disabled, and i18n/check-in fixes. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
