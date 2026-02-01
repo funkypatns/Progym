@@ -127,3 +127,4 @@ Phase 4 - Receipts system
 - If there are uncommitted changes, capture them in "Current Focus" and do not redo work.
 - Use `git diff` to understand what already changed before coding.
 | 2026-02-01 | 3bceee1 | Add trainer report in Reports with trainer earnings, payouts, filters, and payout actions. |
+| 2026-02-01 | 2fb5e39 | Fix Arabic mojibake by restoring UTF-8 ar.json and add i18n encoding check script. |

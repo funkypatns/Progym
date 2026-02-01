@@ -84,3 +84,7 @@
 - 2026-02-01T23:06:13+02:00 [CODE] Added trainer report page in Reports with trainer earnings/payouts tables, CSV export, and payout modal wired to TrainerEarning/TrainerPayout endpoints.
 - 2026-02-01T23:06:13+02:00 [CODE] Added reports endpoints for trainer earnings/payouts and mounted /api/trainers payout route for report settlements.
 
+
+[PROGRESS]
+- 2026-02-01T23:31:44+02:00 [CODE] Restored UTF-8 Arabic translations from known-good commit and removed BOM to stop mojibake; added i18n encoding check script and npm script.
+
