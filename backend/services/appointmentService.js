@@ -221,6 +221,20 @@ const AppointmentService = {
 
             if (!existing) throw new Error('Appointment not found');
             if (existing.isCompleted || existing.status === 'completed') {
+                const existingPending = await tx.payment.findFirst({
+                    where: { appointmentId: parseInt(id), status: 'pending' }
+                });
+                const remainingDue = Math.max(0, (existing.price || 0) - (existing.paidAmount || 0));
+                if (!existingPending && remainingDue > 0) {
+                    await recordPaymentTransaction(tx, {
+                        memberId: existing.memberId,
+                        appointmentId: parseInt(id),
+                        amount: remainingDue,
+                        method: 'other',
+                        status: 'pending',
+                        notes: 'Remaining balance for session'
+                    }, { receiptSuffix: '-INV' });
+                }
                 return await tx.appointment.findUnique({
                     where: { id: parseInt(id) },
                     include: { member: true, coach: true, payments: true }
@@ -308,10 +322,27 @@ const AppointmentService = {
                 include: { member: true, coach: true, payments: true }
             });
 
-            // 4. Process commission
+            // 4. Create pending invoice if unpaid balance remains
+            if (sessionRemaining > 0) {
+                const existingPending = await tx.payment.findFirst({
+                    where: { appointmentId: parseInt(id), status: 'pending' }
+                });
+                if (!existingPending) {
+                    await recordPaymentTransaction(tx, {
+                        memberId: existing.memberId,
+                        appointmentId: parseInt(id),
+                        amount: sessionRemaining,
+                        method: 'other',
+                        status: 'pending',
+                        notes: 'Remaining balance for session'
+                    }, { receiptSuffix: '-INV' });
+                }
+            }
+
+            // 5. Process commission
             await CommissionService.processSessionCommission(updated.id, tx);
 
-            // 5. Create trainer earning (StaffTrainer) if applicable
+            // 6. Create trainer earning (StaffTrainer) if applicable
             if (aptDetails?.trainerId) {
                 const existingEarning = await tx.trainerEarning.findUnique({
                     where: { appointmentId: updated.id }

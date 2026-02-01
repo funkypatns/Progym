@@ -70,6 +70,7 @@
 - 2026-02-01T08:20:00+02:00 [CODE] Calendar/list overdue sessions get a warning highlight while still requiring manual completion.
 - 2026-02-01T08:12:00+02:00 [CODE] Added TrainerEarning/TrainerPayout models (schema) and staff-trainer payout/earnings endpoints; appointment completion now records trainer earnings.
 - 2026-02-01T08:12:00+02:00 [CODE] Coach management UI now includes trainer payout modal and updated earnings data shape.
+- 2026-02-01T09:05:00+02:00 [CODE] Appointment completion now creates pending payment invoices when balance remains to surface in Payments page.
 
 [DISCOVERIES]
 - 2026-02-01T08:12:00+02:00 [CODE] Existing staff-trainers route already handled commission/earnings; updated to persistent trainer earnings/payouts.
