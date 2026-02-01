@@ -108,6 +108,7 @@ Phase 4 - Receipts system
 | 2026-02-01 | 80a2f85 | Create pending payment invoice on appointment completion when balance remains. |
 | 2026-02-01 | 4694b35 | Persist trainerId on appointment create/update so trainer earnings are recorded on completion. |
 | 2026-02-01 | 9cad451 | Allow same-day past-time bookings, simplify appointment modal fields, and update time UI. |
+| 2026-02-01 | 913c4f9 | Restore appointment modal details with trainer/coach selection, member info, and commission preview. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
