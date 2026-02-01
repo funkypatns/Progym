@@ -338,10 +338,13 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const handleCompletionClick = async () => {
-        if (!appointment) return;
+        if (!appointment || appointment?.isCompleted) return;
         const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
-        if (!ended || appointment?.isCompleted) {
-            return;
+        if (!ended) {
+            const confirmMessage = isRtl
+                ? 'الجلسة لم تنتهِ بعد، هل أنت متأكد من الإكمال؟'
+                : 'Session has not ended yet. Are you sure you want to complete it?';
+            if (!window.confirm(confirmMessage)) return;
         }
         setCompletionLoading(true);
         try {
@@ -369,8 +372,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [receiptData, setReceiptData] = useState(null);
 
     const confirmCompletion = async (payload) => {
-        const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
-        if (!appointment || !ended || appointment?.isCompleted) {
+        if (!appointment || appointment?.isCompleted) {
             return;
         }
         setCompletionLoading(true);
@@ -418,7 +420,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const hasEnded = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
-    const canComplete = appointment && hasEnded && !appointment.isCompleted;
+    const isCompletableStatus = appointment && !['cancelled', 'no_show'].includes(appointment.status);
+    const canComplete = appointment && !appointment.isCompleted && isCompletableStatus;
     const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError;
 
     return (

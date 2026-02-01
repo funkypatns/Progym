@@ -296,8 +296,14 @@ const Appointments = () => {
         const aptEnd = apt?.end ? parseISO(apt.end) : null;
         const hasEnded = aptEnd ? isBefore(aptEnd, new Date()) : false;
         if (status === 'completed') {
-            if (!hasEnded || apt?.isCompleted) {
+            if (apt?.isCompleted) {
                 return;
+            }
+            if (!hasEnded) {
+                const confirmMessage = isRtl
+                    ? 'الجلسة لم تنتهِ بعد، هل أنت متأكد من الإكمال؟'
+                    : 'Session has not ended yet. Are you sure you want to complete it?';
+                if (!window.confirm(confirmMessage)) return;
             }
             try {
                 await apiClient.post(`/appointments/${apt.id}/complete`, {});
@@ -510,7 +516,10 @@ const Appointments = () => {
 
                                 {/* Appointment Cards */}
                                 <div className="space-y-1.5">
-                                    {dayApts.slice(0, PREVIEW_LIMIT).map(apt => (
+                                    {dayApts.slice(0, PREVIEW_LIMIT).map(apt => {
+                                        const hasEnded = apt?.end ? isBefore(parseISO(apt.end), new Date()) : false;
+                                        const isOverdue = hasEnded && !apt.isCompleted && !['cancelled', 'no_show'].includes(apt.status);
+                                        return (
                                         <div
                                             key={apt.id}
                                             onClick={(e) => { e.stopPropagation(); handleEdit(apt); }}
@@ -525,6 +534,7 @@ const Appointments = () => {
                                                             ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30 shadow-rose-900/20'
                                                             : 'bg-blue-500/20 border-blue-500/40 text-blue-300 hover:bg-blue-500/30 shadow-blue-900/20'
                                                 }
+                                                ${isOverdue ? 'ring-1 ring-amber-400/40' : ''}
                                             `}
                                         >
                                             <div className="flex items-center gap-1.5">
@@ -544,7 +554,7 @@ const Appointments = () => {
                                                 <div className="text-[10px] uppercase font-black tracking-widest mt-1 opacity-70">No Show</div>
                                             )}
                                         </div>
-                                    ))}
+                                    )})}
                                     {dayApts.length > PREVIEW_LIMIT && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setSelectedDayDate(dayItem); }}
@@ -622,8 +632,11 @@ const Appointments = () => {
 
     const renderList = () => (
         <div className="space-y-2">
-            {appointments.map(apt => (
-                <div key={apt.id} className="flex items-center justify-between p-4 bg-slate-800/50 border border-white/5 rounded-2xl hover:bg-slate-800 transition-all group">
+            {appointments.map(apt => {
+                const hasEnded = apt?.end ? isBefore(parseISO(apt.end), new Date()) : false;
+                const isOverdue = hasEnded && !apt.isCompleted && !['cancelled', 'no_show'].includes(apt.status);
+                return (
+                <div key={apt.id} className={`flex items-center justify-between p-4 bg-slate-800/50 border rounded-2xl hover:bg-slate-800 transition-all group ${isOverdue ? 'border-amber-500/40 bg-amber-500/5' : 'border-white/5'}`}>
                     <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold 
                             ${apt.status === 'completed' || apt.status === 'auto_completed' ? 'bg-teal-500/20 text-teal-500' :
@@ -656,7 +669,7 @@ const Appointments = () => {
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Quick Actions for Scheduled Items */}
-                        {(apt.status === 'scheduled' || apt.status === 'pending') && !apt.isCompleted && (
+                        {!apt.isCompleted && !['cancelled', 'no_show'].includes(apt.status) && (
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                     onClick={(e) => handleQuickStatus(e, apt, 'completed')}
@@ -690,7 +703,7 @@ const Appointments = () => {
                         </button>
                     </div>
                 </div>
-            ))}
+            )})}
             {appointments.length === 0 && (
                 <div className="text-center py-20 text-slate-500">
                     {t('appointments.noAppointments')}

@@ -65,7 +65,8 @@ router.get('/pending-completion', authenticate, async (req, res) => {
         const { startDate, endDate } = req.query;
         const where = {
             end: { lt: now },
-            isCompleted: false
+            isCompleted: false,
+            status: { notIn: ['cancelled', 'no_show'] }
         };
         if (startDate && endDate) {
             where.end = {

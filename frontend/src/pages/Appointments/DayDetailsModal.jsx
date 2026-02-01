@@ -124,8 +124,7 @@ export default function DayDetailsModal({ isOpen, onClose, date, appointments, r
 
                                 <div className="flex items-center gap-1">
                                     {(() => {
-                                        const hasEnded = apt?.end ? isBefore(parseISO(apt.end), new Date()) : false;
-                                        const canComplete = hasEnded && !apt?.isCompleted;
+                                        const canComplete = !apt?.isCompleted && !['cancelled', 'no_show'].includes(apt.status);
                                         return canComplete ? (
                                             <>
                                                 <button
