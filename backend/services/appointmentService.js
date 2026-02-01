@@ -214,11 +214,18 @@ const AppointmentService = {
                     memberId: true,
                     status: true,
                     price: true,
-                    paidAmount: true
+                    paidAmount: true,
+                    isCompleted: true
                 }
             });
 
             if (!existing) throw new Error('Appointment not found');
+            if (existing.isCompleted || existing.status === 'completed') {
+                return await tx.appointment.findUnique({
+                    where: { id: parseInt(id) },
+                    include: { member: true, coach: true, payments: true }
+                });
+            }
 
             const sessionPrice = existing.price || 0;
             const paidSoFar = existing.paidAmount || 0;
@@ -303,6 +310,44 @@ const AppointmentService = {
 
             // 4. Process commission
             await CommissionService.processSessionCommission(updated.id, tx);
+
+            // 5. Create trainer earning (StaffTrainer) if applicable
+            if (aptDetails?.trainerId) {
+                const existingEarning = await tx.trainerEarning.findUnique({
+                    where: { appointmentId: updated.id }
+                });
+                if (!existingEarning) {
+                    const trainer = await tx.staffTrainer.findUnique({
+                        where: { id: aptDetails.trainerId },
+                        select: {
+                            commissionType: true,
+                            commissionValue: true,
+                            commissionPercent: true,
+                            internalSessionValue: true
+                        }
+                    });
+                    if (trainer) {
+                        const commissionType = trainer.commissionType || (trainer.commissionPercent !== null ? 'percentage' : 'percentage');
+                        const commissionValue = trainer.commissionValue ?? trainer.commissionPercent ?? 0;
+                        const basisAmount = commissionType === 'fixed'
+                            ? price
+                            : ((trainer.internalSessionValue || 0) > 0 ? trainer.internalSessionValue : price);
+                        const commissionAmount = commissionType === 'fixed'
+                            ? commissionValue
+                            : (basisAmount * commissionValue) / 100;
+                        await tx.trainerEarning.create({
+                            data: {
+                                trainerId: aptDetails.trainerId,
+                                appointmentId: updated.id,
+                                baseAmount: Number(basisAmount) || 0,
+                                commissionPercent: commissionType === 'percentage' ? commissionValue : null,
+                                commissionAmount: Number(commissionAmount) || 0,
+                                status: 'UNPAID'
+                            }
+                        });
+                    }
+                }
+            }
 
             return updated;
         });

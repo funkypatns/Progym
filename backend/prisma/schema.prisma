@@ -68,6 +68,7 @@ model User {
   financialRecords    AppointmentFinancialRecord[]
   createdAppointments Appointment[] @relation("AppointmentCreatedBy")
   completedAppointments Appointment[] @relation("AppointmentCompletedBy")
+  trainerPayouts      TrainerPayout[] @relation("TrainerPayoutPaidBy")
 }
 
 /// Activity log for audit trail
@@ -571,6 +572,43 @@ model StaffTrainer {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   appointments      Appointment[]
+  earnings          TrainerEarning[]
+  payouts           TrainerPayout[]
+}
+
+model TrainerPayout {
+  id                Int      @id @default(autoincrement())
+  trainerId         Int
+  totalAmount       Float
+  method            String   // CASH, TRANSFER
+  note              String?
+  paidAt            DateTime @default(now())
+  paidByEmployeeId  Int?
+  createdAt         DateTime @default(now())
+
+  trainer           StaffTrainer @relation(fields: [trainerId], references: [id])
+  paidByEmployee    User?        @relation("TrainerPayoutPaidBy", fields: [paidByEmployeeId], references: [id])
+  earnings          TrainerEarning[]
+
+  @@index([trainerId])
+}
+
+model TrainerEarning {
+  id                Int      @id @default(autoincrement())
+  trainerId         Int
+  appointmentId     Int      @unique
+  baseAmount        Float    @default(0)
+  commissionPercent Float?
+  commissionAmount  Float    @default(0)
+  status            String   @default("UNPAID") // UNPAID, PAID
+  payoutId          Int?
+  createdAt         DateTime @default(now())
+
+  trainer           StaffTrainer @relation(fields: [trainerId], references: [id])
+  appointment       Appointment  @relation(fields: [appointmentId], references: [id])
+  payout            TrainerPayout? @relation(fields: [payoutId], references: [id])
+
+  @@index([trainerId, status])
 }
 
 // ============================================
@@ -691,10 +729,11 @@ model Appointment {
   completedByEmployee User? @relation("AppointmentCompletedBy", fields: [completedByEmployeeId], references: [id])
   
     trainerId   Int?
-    trainer     StaffTrainer? @relation(fields: [trainerId], references: [id])
-    payments    Payment[]
-    earnings    CoachEarning[]
-    financialRecord AppointmentFinancialRecord?
+  trainer     StaffTrainer? @relation(fields: [trainerId], references: [id])
+  payments    Payment[]
+  earnings    CoachEarning[]
+  financialRecord AppointmentFinancialRecord?
+  trainerEarning TrainerEarning?
 }
 
 /// Commission configuration per coach

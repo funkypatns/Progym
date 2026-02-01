@@ -5,7 +5,7 @@ import apiClient from '../../utils/api';
 import toast from 'react-hot-toast';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 
-const CoachEarningsModal = ({ open, onClose, coach }) => {
+const CoachEarningsModal = ({ open, onClose, coach, onRequestPayout }) => {
     const [loading, setLoading] = useState(false);
     const [earningsData, setEarningsData] = useState(null);
     const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -52,13 +52,14 @@ const CoachEarningsModal = ({ open, onClose, coach }) => {
             return;
         }
 
-        if (!confirm(`Settle ${pendingAmount.toFixed(2)} for ${coach?.name || coach?.firstName || 'trainer'}? This will create an expense record.`)) return;
+        if (typeof onRequestPayout !== 'function') {
+            toast.error('Payout modal is not available');
+            return;
+        }
 
         setSettling(true);
         try {
-            toast.error('Settlement is not available for trainers yet');
-        } catch (error) {
-            toast.error('Failed to settle earnings');
+            onRequestPayout(coach);
         } finally {
             setSettling(false);
         }
@@ -70,7 +71,7 @@ const CoachEarningsModal = ({ open, onClose, coach }) => {
         pendingEarnings: 0,
         paidEarnings: 0
     };
-    const earnings = earningsData?.rows || [];
+    const earnings = earningsData?.earnings || earningsData?.rows || [];
 
     return (
         <Transition appear show={open} as={Fragment}>

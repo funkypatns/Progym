@@ -5,9 +5,11 @@ import apiClient from '../../utils/api';
 import toast from 'react-hot-toast';
 import CommissionSettingsModal from './CommissionSettingsModal';
 import CoachEarningsModal from './CoachEarningsModal';
+import TrainerPayoutModal from './TrainerPayoutModal';
 
 const Coaches = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
+    const isRtl = i18n.dir() === 'rtl';
     const [coaches, setCoaches] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -15,6 +17,8 @@ const Coaches = () => {
     const [selectedCoach, setSelectedCoach] = useState(null);
     const [showSettings, setShowSettings] = useState(false);
     const [showEarnings, setShowEarnings] = useState(false);
+    const [showPayout, setShowPayout] = useState(false);
+    const [payoutCoach, setPayoutCoach] = useState(null);
 
     const fetchCoaches = async () => {
         setLoading(true);
@@ -52,6 +56,15 @@ const Coaches = () => {
         }
         setSelectedCoach(coach);
         setShowEarnings(true);
+    };
+
+    const handlePayout = (coach) => {
+        if (!coach?.id) {
+            toast.error('Trainer not available');
+            return;
+        }
+        setPayoutCoach(coach);
+        setShowPayout(true);
     };
 
     return (
@@ -99,6 +112,15 @@ const Coaches = () => {
                                 <TrendingUp size={24} className="mb-2 text-emerald-500 transition-colors" />
                                 <span className="text-xs font-bold text-emerald-400 uppercase">Earnings</span>
                             </button>
+                            <button
+                                onClick={() => handlePayout(coach)}
+                                className="col-span-2 flex items-center justify-center gap-2 p-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/30 transition-all"
+                            >
+                                <DollarSign size={18} className="text-amber-400" />
+                                <span className="text-xs font-bold text-amber-400 uppercase">
+                                    {isRtl ? 'سداد المستحقات' : 'Pay Out'}
+                                </span>
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -124,6 +146,16 @@ const Coaches = () => {
                     open={showEarnings}
                     onClose={() => setShowEarnings(false)}
                     coach={selectedCoach}
+                    onRequestPayout={handlePayout}
+                />
+            )}
+
+            {showPayout && payoutCoach && (
+                <TrainerPayoutModal
+                    open={showPayout}
+                    onClose={() => setShowPayout(false)}
+                    trainer={payoutCoach}
+                    onSuccess={fetchCoaches}
                 />
             )}
         </div>

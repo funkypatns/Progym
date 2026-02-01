@@ -64,3 +64,12 @@
 
 [PROGRESS]
 - 2026-02-01T07:16:28+02:00 [CODE] Added trainer delete UI and hard-delete endpoint with dependency checks.
+
+[PROGRESS]
+- 2026-02-01T08:20:00+02:00 [CODE] Appointment completion UI no longer time-gated; early completion now confirms; pending completion excludes cancelled/no_show.
+- 2026-02-01T08:20:00+02:00 [CODE] Calendar/list overdue sessions get a warning highlight while still requiring manual completion.
+- 2026-02-01T08:12:00+02:00 [CODE] Added TrainerEarning/TrainerPayout models (schema) and staff-trainer payout/earnings endpoints; appointment completion now records trainer earnings.
+- 2026-02-01T08:12:00+02:00 [CODE] Coach management UI now includes trainer payout modal and updated earnings data shape.
+
+[DISCOVERIES]
+- 2026-02-01T08:12:00+02:00 [CODE] Existing staff-trainers route already handled commission/earnings; updated to persistent trainer earnings/payouts.

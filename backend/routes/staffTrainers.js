@@ -119,12 +119,14 @@ router.delete('/:id', async (req, res) => {
   }
   try {
     await req.prisma.$transaction(async (tx) => {
-      const [appointmentsCount, earningsCount, paymentsCount] = await Promise.all([
+      const [appointmentsCount, earningsCount, paymentsCount, trainerEarningsCount, trainerPayoutsCount] = await Promise.all([
         tx.appointment.count({ where: { trainerId } }),
         tx.coachEarning.count({ where: { appointment: { trainerId } } }),
-        tx.payment.count({ where: { appointment: { trainerId } } })
+        tx.payment.count({ where: { appointment: { trainerId } } }),
+        tx.trainerEarning.count({ where: { trainerId } }),
+        tx.trainerPayout.count({ where: { trainerId } })
       ]);
-      if (appointmentsCount > 0 || earningsCount > 0 || paymentsCount > 0) {
+      if (appointmentsCount > 0 || earningsCount > 0 || paymentsCount > 0 || trainerEarningsCount > 0 || trainerPayoutsCount > 0) {
         const error = new Error('لا يمكن حذف المدرب لوجود بيانات مرتبطة به');
         error.status = 400;
         throw error;
@@ -214,78 +216,197 @@ router.get('/:id/earnings', async (req, res) => {
   try {
     const trainerId = parseInt(req.params.id);
     if (Number.isNaN(trainerId)) {
-      return res.json({ success: true, data: { summary: { sessionsCount: 0, totalEarnings: 0, pendingEarnings: 0, paidEarnings: 0 }, rows: [] } });
+      return res.json({ success: true, data: { trainer: null, totals: { unpaidAmount: 0, unpaidCount: 0, paidAmount: 0, paidCount: 0 }, earnings: [] } });
     }
 
     const trainer = await req.prisma.staffTrainer.findUnique({
       where: { id: trainerId },
-      select: { commissionType: true, commissionValue: true, commissionPercent: true }
+      select: { id: true, name: true }
     });
     if (!trainer) {
-      return res.json({ success: true, data: { summary: { sessionsCount: 0, totalEarnings: 0, pendingEarnings: 0, paidEarnings: 0 }, rows: [] } });
+      return res.json({ success: true, data: { trainer: null, totals: { unpaidAmount: 0, unpaidCount: 0, paidAmount: 0, paidCount: 0 }, earnings: [] } });
     }
 
+    const statusParam = typeof req.query.status === 'string' ? req.query.status.toUpperCase() : null;
     const startDate = req.query.startDate || req.query.from;
     const endDate = req.query.endDate || req.query.to;
-    const where = {
-      trainerId,
-      status: { in: ['completed', 'auto_completed'] }
-    };
+    const where = { trainerId };
+    if (statusParam === 'PAID' || statusParam === 'UNPAID') {
+      where.status = statusParam;
+    }
     if (startDate && endDate) {
-      where.start = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
+      where.appointment = {
+        start: {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        }
       };
     }
 
-    const appointments = await req.prisma.appointment.findMany({
+    const earnings = await req.prisma.trainerEarning.findMany({
       where,
       include: {
-        member: { select: { firstName: true, lastName: true } }
+        appointment: {
+          select: {
+            id: true,
+            title: true,
+            price: true,
+            start: true,
+            end: true,
+            member: { select: { firstName: true, lastName: true } }
+          }
+        }
       },
-      orderBy: { start: 'asc' }
+      orderBy: { createdAt: 'asc' }
     });
 
-    const commissionType = trainer.commissionType || (trainer.commissionPercent !== null ? 'percentage' : 'percentage');
-    const commissionValue = trainer.commissionValue ?? trainer.commissionPercent ?? 0;
-
-    const rows = appointments.map(apt => {
-      const basisAmount = apt.price || 0;
-      const earningAmount = commissionType === 'fixed'
-        ? commissionValue
-        : (basisAmount * commissionValue) / 100;
+    const mapped = earnings.map(item => {
+      const memberName = `${item.appointment?.member?.firstName || ''} ${item.appointment?.member?.lastName || ''}`.trim();
+      const basisAmount = item.baseAmount ?? item.appointment?.price ?? 0;
+      const ruleText = item.commissionPercent !== null && item.commissionPercent !== undefined
+        ? `${item.commissionPercent}% of ${basisAmount || 0}`
+        : `Fixed ${item.commissionAmount || 0}`;
+      const dateValue = item.appointment?.end || item.appointment?.start || item.createdAt;
+      const date = dateValue instanceof Date ? dateValue.toISOString() : dateValue;
       return {
-        id: apt.id,
-        date: (apt.completedAt || apt.end || apt.start),
-        customerName: `${apt.member?.firstName || ''} ${apt.member?.lastName || ''}`.trim(),
-        sourceRef: apt.title || 'Session',
-        appointmentId: apt.id,
+        id: item.id,
+        appointmentId: item.appointmentId,
+        date,
+        customerName: memberName,
+        sourceRef: item.appointment?.title || 'Session',
         basisAmount,
-        ruleText: commissionType === 'fixed'
-          ? `Fixed ${commissionValue}`
-          : `${commissionValue}% of ${basisAmount || 0}`,
-        earningAmount: Number(earningAmount.toFixed(2)),
-        status: 'pending'
+        ruleText,
+        earningAmount: Number(item.commissionAmount || 0),
+        status: item.status === 'PAID' ? 'paid' : 'pending'
       };
     });
 
-    const totalEarnings = rows.reduce((sum, r) => sum + (r.earningAmount || 0), 0);
+    const unpaid = earnings.filter(item => item.status === 'UNPAID');
+    const paid = earnings.filter(item => item.status === 'PAID');
+    const totals = {
+      unpaidAmount: unpaid.reduce((sum, item) => sum + (item.commissionAmount || 0), 0),
+      unpaidCount: unpaid.length,
+      paidAmount: paid.reduce((sum, item) => sum + (item.commissionAmount || 0), 0),
+      paidCount: paid.length
+    };
 
     return res.json({
       success: true,
       data: {
+        trainer,
+        totals,
+        earnings: mapped,
         summary: {
-          sessionsCount: rows.length,
-          totalEarnings,
-          pendingEarnings: totalEarnings,
-          paidEarnings: 0
-        },
-        rows
+          sessionsCount: mapped.length,
+          totalEarnings: totals.unpaidAmount + totals.paidAmount,
+          pendingEarnings: totals.unpaidAmount,
+          paidEarnings: totals.paidAmount
+        }
       }
     });
   } catch (error) {
     console.error('[STAFF TRAINERS] Earnings error:', error);
-    return res.json({ success: true, data: { summary: { sessionsCount: 0, totalEarnings: 0, pendingEarnings: 0, paidEarnings: 0 }, rows: [] } });
+    return res.json({ success: true, data: { trainer: null, totals: { unpaidAmount: 0, unpaidCount: 0, paidAmount: 0, paidCount: 0 }, earnings: [] } });
+  }
+});
+
+/**
+ * POST /api/staff-trainers/:id/payout
+ * Pay out unpaid trainer earnings
+ */
+router.post('/:id/payout', async (req, res) => {
+  const trainerId = parseInt(req.params.id);
+  if (Number.isNaN(trainerId)) {
+    return res.status(400).json({ success: false, message: 'Invalid trainer id' });
+  }
+  try {
+    const methodRaw = typeof req.body.method === 'string' ? req.body.method.toUpperCase() : '';
+    const method = methodRaw === 'TRANSFER' ? 'TRANSFER' : 'CASH';
+    const note = typeof req.body.note === 'string' ? req.body.note.trim() : null;
+    const earningIds = Array.isArray(req.body.earningIds)
+      ? req.body.earningIds.map(id => parseInt(id)).filter(id => !Number.isNaN(id))
+      : null;
+
+    const result = await req.prisma.$transaction(async (tx) => {
+      const trainer = await tx.staffTrainer.findUnique({ where: { id: trainerId } });
+      if (!trainer) {
+        const error = new Error('Trainer not found');
+        error.status = 404;
+        throw error;
+      }
+
+      const where = { trainerId, status: 'UNPAID' };
+      if (earningIds && earningIds.length > 0) {
+        where.id = { in: earningIds };
+      }
+
+      const earnings = await tx.trainerEarning.findMany({ where });
+      if (earningIds && earnings.length !== earningIds.length) {
+        const error = new Error('Some earnings are already paid or missing');
+        error.status = 400;
+        throw error;
+      }
+      if (!earnings.length) {
+        const error = new Error('No unpaid earnings');
+        error.status = 400;
+        throw error;
+      }
+
+      const totalAmount = earnings.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+      const payout = await tx.trainerPayout.create({
+        data: {
+          trainerId,
+          totalAmount,
+          method,
+          note,
+          paidByEmployeeId: req.user?.id ?? null
+        }
+      });
+
+      await tx.trainerEarning.updateMany({
+        where: { id: { in: earnings.map(item => item.id) } },
+        data: { status: 'PAID', payoutId: payout.id }
+      });
+
+      return { payout, totalAmount, count: earnings.length };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        payoutId: result.payout.id,
+        totalAmount: result.totalAmount,
+        count: result.count
+      }
+    });
+  } catch (error) {
+    console.error('[STAFF TRAINERS] Payout error:', error);
+    return res.status(error.status || 400).json({
+      success: false,
+      message: error.message || 'Failed to create payout'
+    });
+  }
+});
+
+/**
+ * GET /api/staff-trainers/:id/payouts
+ */
+router.get('/:id/payouts', async (req, res) => {
+  try {
+    const trainerId = parseInt(req.params.id);
+    if (Number.isNaN(trainerId)) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const payouts = await req.prisma.trainerPayout.findMany({
+      where: { trainerId },
+      orderBy: { paidAt: 'desc' }
+    });
+
+    return res.json({ success: true, data: payouts || [] });
+  } catch (error) {
+    console.error('[STAFF TRAINERS] Payouts fetch error:', error);
+    return res.json({ success: true, data: [] });
   }
 });
 
