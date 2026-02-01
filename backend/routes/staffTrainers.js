@@ -253,7 +253,8 @@ router.get('/:id/earnings', async (req, res) => {
             price: true,
             start: true,
             end: true,
-            member: { select: { firstName: true, lastName: true } }
+            member: { select: { firstName: true, lastName: true, memberId: true } },
+            completedByEmployee: { select: { firstName: true, lastName: true } }
           }
         }
       },
@@ -262,6 +263,9 @@ router.get('/:id/earnings', async (req, res) => {
 
     const mapped = earnings.map(item => {
       const memberName = `${item.appointment?.member?.firstName || ''} ${item.appointment?.member?.lastName || ''}`.trim();
+      const employeeName = item.appointment?.completedByEmployee
+        ? `${item.appointment.completedByEmployee.firstName || ''} ${item.appointment.completedByEmployee.lastName || ''}`.trim()
+        : '';
       const basisAmount = item.baseAmount ?? item.appointment?.price ?? 0;
       const ruleText = item.commissionPercent !== null && item.commissionPercent !== undefined
         ? `${item.commissionPercent}% of ${basisAmount || 0}`
@@ -273,11 +277,13 @@ router.get('/:id/earnings', async (req, res) => {
         appointmentId: item.appointmentId,
         date,
         customerName: memberName,
+        customerCode: item.appointment?.member?.memberId || '',
         sourceRef: item.appointment?.title || 'Session',
         basisAmount,
         ruleText,
         earningAmount: Number(item.commissionAmount || 0),
-        status: item.status === 'PAID' ? 'paid' : 'pending'
+        status: item.status === 'PAID' ? 'paid' : 'pending',
+        employeeName
       };
     });
 
@@ -289,6 +295,15 @@ router.get('/:id/earnings', async (req, res) => {
       paidAmount: paid.reduce((sum, item) => sum + (item.commissionAmount || 0), 0),
       paidCount: paid.length
     };
+
+    if (process.env.DEBUG_REPORTS === '1') {
+      console.log('[REPORTS][STAFF TRAINERS] earnings', {
+        trainerId,
+        startDate,
+        endDate,
+        count: mapped.length
+      });
+    }
 
     return res.json({
       success: true,
@@ -398,8 +413,26 @@ router.get('/:id/payouts', async (req, res) => {
       return res.json({ success: true, data: [] });
     }
 
+    const where = { trainerId };
+    const startDate = req.query.startDate || req.query.from;
+    const endDate = req.query.endDate || req.query.to;
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        if (endDate.length <= 10) {
+          end.setHours(23, 59, 59, 999);
+        }
+        where.paidAt = { gte: start, lte: end };
+      }
+    }
+
     const payouts = await req.prisma.trainerPayout.findMany({
-      where: { trainerId },
+      where,
+      include: {
+        paidByEmployee: { select: { firstName: true, lastName: true } },
+        trainer: { select: { id: true, name: true } }
+      },
       orderBy: { paidAt: 'desc' }
     });
 

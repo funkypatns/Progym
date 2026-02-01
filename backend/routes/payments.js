@@ -167,6 +167,12 @@ router.get('/', async (req, res) => {
                             },
                             coach: {
                                 select: { id: true, firstName: true, lastName: true }
+                            },
+                            trainer: {
+                                select: { id: true, name: true }
+                            },
+                            completedByEmployee: {
+                                select: { id: true, firstName: true, lastName: true }
                             }
                         }
                     },
@@ -178,6 +184,13 @@ router.get('/', async (req, res) => {
 
         if (debugTypeFilter) {
             console.log(`[PAYMENTS] returning ${payments.length} rows for role=${userRole} type=${rawTypeFilter || 'ALL'}`);
+        }
+        if (process.env.DEBUG_REPORTS === '1' && rawTypeFilter === 'SESSION') {
+            console.log('[REPORTS][PAYMENTS] session payments', {
+                startDate,
+                endDate,
+                count: payments.length
+            });
         }
         res.json({
             success: true,

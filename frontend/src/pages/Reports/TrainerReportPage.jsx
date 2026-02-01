@@ -329,6 +329,9 @@ const TrainerReportPage = () => {
         return earnings.filter(item => item.status === 'UNPAID');
     }, [earnings]);
 
+    const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
+    const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
+
     useEffect(() => {
         const loadInitial = async () => {
             try {
@@ -359,31 +362,75 @@ const TrainerReportPage = () => {
         }
 
         const params = new URLSearchParams();
-        params.append('trainerId', selectedTrainerId);
-        params.append('from', dateRange.from);
-        params.append('to', dateRange.to);
+        const startDate = toStartOfDay(dateRange.from);
+        const endDate = toEndOfDay(dateRange.to);
+        params.append('startDate', startDate);
+        params.append('endDate', endDate);
         if (statusFilter && statusFilter !== 'ALL') params.append('status', statusFilter);
-        if (serviceFilter) params.append('serviceId', serviceFilter);
-        if (search) params.append('q', search);
 
         setLoading(true);
         try {
             const [earningsRes, payoutsRes] = await Promise.all([
-                apiClient.get(`/reports/trainer-earnings?${params.toString()}`),
-                apiClient.get(`/reports/trainer-payouts?trainerId=${selectedTrainerId}&from=${dateRange.from}&to=${dateRange.to}`)
+                apiClient.get(`/staff-trainers/${selectedTrainerId}/earnings?${params.toString()}`),
+                apiClient.get(`/staff-trainers/${selectedTrainerId}/payouts?startDate=${startDate}&endDate=${endDate}`)
             ]);
 
             const earningsData = earningsRes.data?.data;
-            const payoutData = payoutsRes.data?.data;
+            const payoutList = Array.isArray(payoutsRes.data?.data) ? payoutsRes.data.data : [];
 
-            setEarnings(Array.isArray(earningsData?.rows) ? earningsData.rows : []);
-            setPayouts(Array.isArray(payoutData?.rows) ? payoutData.rows : []);
+            const serviceName = serviceFilter
+                ? (services.find(item => String(item.id) === String(serviceFilter))?.name || '')
+                : '';
+            const normalizedSearch = search.trim().toLowerCase();
+
+            const normalizedEarnings = (Array.isArray(earningsData?.earnings) ? earningsData.earnings : [])
+                .map((item) => ({
+                    id: item.id,
+                    appointmentId: item.appointmentId,
+                    sessionDate: item.date,
+                    customerName: item.customerName || '',
+                    customerCode: item.customerCode || '',
+                    serviceName: item.sourceRef || '',
+                    baseAmount: item.basisAmount || 0,
+                    ruleText: item.ruleText || '',
+                    commissionAmount: item.earningAmount || 0,
+                    status: item.status === 'paid' ? 'PAID' : 'UNPAID',
+                    employeeName: item.employeeName || '',
+                    trainerName: selectedTrainer?.name || ''
+                }))
+                .filter((item) => {
+                    if (serviceName && !String(item.serviceName || '').toLowerCase().includes(serviceName.toLowerCase())) {
+                        return false;
+                    }
+                    if (normalizedSearch) {
+                        const haystack = `${item.customerName} ${item.customerCode} ${item.serviceName}`.toLowerCase();
+                        if (!haystack.includes(normalizedSearch)) return false;
+                    }
+                    return true;
+                });
+
+            const filteredPayouts = payoutList.filter((payout) => {
+                if (!payout?.paidAt) return false;
+                const paidAt = new Date(payout.paidAt);
+                if (Number.isNaN(paidAt.getTime())) return false;
+                return paidAt >= new Date(startDate) && paidAt <= new Date(endDate);
+            });
+
+            const unpaidTotal = normalizedEarnings
+                .filter(item => item.status === 'UNPAID')
+                .reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+            const paidTotal = normalizedEarnings
+                .filter(item => item.status === 'PAID')
+                .reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+
+            setEarnings(normalizedEarnings);
+            setPayouts(filteredPayouts);
 
             setSummary({
-                unpaidTotal: earningsData?.summary?.unpaidTotal || 0,
-                paidTotal: earningsData?.summary?.paidTotal || 0,
-                sessionsCount: earningsData?.summary?.sessionsCount || 0,
-                payoutsTotal: payoutData?.totals?.totalAmount || 0
+                unpaidTotal,
+                paidTotal,
+                sessionsCount: normalizedEarnings.length,
+                payoutsTotal: filteredPayouts.reduce((sum, item) => sum + (item.totalAmount || 0), 0)
             });
         } catch (error) {
             toast.error(language === 'ar' ? 'فشل تحميل تقرير المدربين' : 'Failed to load trainer report');
@@ -429,7 +476,7 @@ const TrainerReportPage = () => {
             Customer: row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName,
             Service: row.serviceName,
             BaseAmount: row.baseAmount,
-            CommissionPercent: row.commissionPercent ?? '',
+            Rule: row.ruleText || '',
             CommissionAmount: row.commissionAmount,
             Status: row.status,
             Employee: row.employeeName || ''
@@ -440,8 +487,10 @@ const TrainerReportPage = () => {
     const handleExportPayouts = () => {
         const rows = payouts.map((row) => ({
             Date: formatDateTime(row.paidAt, language),
-            Trainer: row.trainerName,
-            PaidBy: row.paidByName,
+            Trainer: row.trainer?.name || selectedTrainer?.name || '',
+            PaidBy: row.paidByEmployee
+                ? `${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()
+                : '',
             Amount: row.totalAmount,
             Method: row.method,
             Note: row.note || ''
@@ -458,7 +507,7 @@ const TrainerReportPage = () => {
         if (!selectedTrainerId) return;
         setPayoutLoading(true);
         try {
-            await apiClient.post(`/trainers/${selectedTrainerId}/payout`, {
+            await apiClient.post(`/staff-trainers/${selectedTrainerId}/payout`, {
                 earningIds,
                 amount,
                 method,
@@ -604,7 +653,7 @@ const TrainerReportPage = () => {
                                     <ReportsTableContainer.Header>{isRTL ? 'العميل' : 'Customer'}</ReportsTableContainer.Header>
                                     <ReportsTableContainer.Header>{isRTL ? 'الخدمة' : 'Service'}</ReportsTableContainer.Header>
                                     <ReportsTableContainer.Header>{isRTL ? 'الأساس' : 'Base Amount'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'نسبة العمولة' : 'Commission %'}</ReportsTableContainer.Header>
+                                    <ReportsTableContainer.Header>{isRTL ? 'قاعدة العمولة' : 'Commission Rule'}</ReportsTableContainer.Header>
                                     <ReportsTableContainer.Header>{isRTL ? 'قيمة العمولة' : 'Commission Amount'}</ReportsTableContainer.Header>
                                     <ReportsTableContainer.Header>{isRTL ? 'الحالة' : 'Status'}</ReportsTableContainer.Header>
                                     <ReportsTableContainer.Header>{isRTL ? 'الموظف' : 'Employee'}</ReportsTableContainer.Header>
@@ -629,7 +678,7 @@ const TrainerReportPage = () => {
                                         </ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{row.serviceName || '-'}</ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{formatMoney(row.baseAmount, language, { code: 'EGP', symbol: 'EGP' })}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.commissionPercent !== null ? `${row.commissionPercent}%` : '-'}</ReportsTableContainer.Cell>
+                                        <ReportsTableContainer.Cell>{row.ruleText || '-'}</ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{formatMoney(row.commissionAmount, language, { code: 'EGP', symbol: 'EGP' })}</ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{row.status}</ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{row.employeeName || '-'}</ReportsTableContainer.Cell>
@@ -675,8 +724,12 @@ const TrainerReportPage = () => {
                                     <ReportsTableContainer.Row key={row.id}>
                                         <ReportsTableContainer.Cell>{formatMoney(row.totalAmount, language, { code: 'EGP', symbol: 'EGP' })}</ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{formatDateTime(row.paidAt, language)}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.paidByName || '-'}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.trainerName || '-'}</ReportsTableContainer.Cell>
+                                        <ReportsTableContainer.Cell>
+                                            {row.paidByEmployee
+                                                ? `${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()
+                                                : '-'}
+                                        </ReportsTableContainer.Cell>
+                                        <ReportsTableContainer.Cell>{row.trainer?.name || selectedTrainer?.name || '-'}</ReportsTableContainer.Cell>
                                         <ReportsTableContainer.Cell>{row.note || '-'}</ReportsTableContainer.Cell>
                                     </ReportsTableContainer.Row>
                                 ))}

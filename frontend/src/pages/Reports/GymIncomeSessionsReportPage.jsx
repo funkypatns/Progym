@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Calendar,
@@ -56,6 +56,8 @@ const GymIncomeSessionsReportPage = () => {
     });
 
     const currency = { code: 'EGP', symbol: 'EGP' };
+    const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
+    const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
 
     useEffect(() => {
         const loadFilters = async () => {
@@ -86,24 +88,104 @@ const GymIncomeSessionsReportPage = () => {
     const fetchReport = async () => {
         setLoading(true);
         try {
-            const params = new URLSearchParams();
-            params.append('from', filters.from);
-            params.append('to', filters.to);
-            if (filters.trainerId) params.append('trainerId', filters.trainerId);
-            if (filters.serviceId) params.append('serviceId', filters.serviceId);
-            if (filters.employeeId) params.append('employeeId', filters.employeeId);
-            if (filters.method) params.append('method', filters.method);
+            const startDate = toStartOfDay(filters.from);
+            const endDate = toEndOfDay(filters.to);
+            const params = new URLSearchParams({
+                type: 'SESSION',
+                startDate,
+                endDate,
+                page: '1',
+                limit: '10000'
+            });
 
-            const response = await apiClient.get(`/reports/gym-income-sessions?${params.toString()}`);
-            const data = response.data?.data || {};
+            const response = await apiClient.get(`/payments?${params.toString()}`);
+            const rawData = response.data?.data;
+            const payments = Array.isArray(rawData)
+                ? rawData
+                : (rawData?.payments || rawData?.docs || []);
+
+            const normalizedMethod = filters.method ? filters.method.toLowerCase() : '';
+            const trainerId = filters.trainerId ? String(filters.trainerId) : '';
+            const employeeId = filters.employeeId ? String(filters.employeeId) : '';
+            const serviceName = filters.serviceId
+                ? (services.find(service => String(service.id) === String(filters.serviceId))?.name || '').toLowerCase()
+                : '';
+
+            const byMethod = { CASH: 0, CARD: 0, TRANSFER: 0 };
+            const rowsMap = new Map();
+
+            payments.forEach((payment) => {
+                if (!payment?.appointmentId) return;
+                if (normalizedMethod && String(payment.method || '').toLowerCase() !== normalizedMethod) return;
+
+                const appointment = payment.appointment || {};
+                const member = payment.member || {};
+                const appointmentTrainerId = appointment.trainer?.id ? String(appointment.trainer.id) : '';
+                if (trainerId && trainerId !== appointmentTrainerId) return;
+
+                const creatorId = payment.createdBy ? String(payment.createdBy) : '';
+                const completedById = appointment.completedByEmployee?.id ? String(appointment.completedByEmployee.id) : '';
+                if (employeeId && employeeId !== creatorId && employeeId !== completedById) return;
+
+                const appointmentTitle = String(appointment.title || '').toLowerCase();
+                if (serviceName && !appointmentTitle.includes(serviceName)) return;
+
+                const methodKey = String(payment.method || '').toUpperCase();
+                if (byMethod[methodKey] !== undefined) {
+                    byMethod[methodKey] += payment.amount || 0;
+                }
+
+                if (!rowsMap.has(payment.appointmentId)) {
+                    rowsMap.set(payment.appointmentId, {
+                        appointmentId: payment.appointmentId,
+                        paidAt: payment.paidAt,
+                        sessionDate: appointment.start || payment.paidAt,
+                        methods: new Set(),
+                        amount: 0,
+                        customerName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
+                        customerCode: member.memberId || '',
+                        serviceName: appointment.title || '',
+                        trainerName: appointment.trainer?.name || '',
+                        employeeName: payment.creator
+                            ? `${payment.creator.firstName || ''} ${payment.creator.lastName || ''}`.trim()
+                            : (appointment.completedByEmployee
+                                ? `${appointment.completedByEmployee.firstName || ''} ${appointment.completedByEmployee.lastName || ''}`.trim()
+                                : '')
+                    });
+                }
+
+                const row = rowsMap.get(payment.appointmentId);
+                row.amount += payment.amount || 0;
+                row.methods.add(methodKey || 'UNKNOWN');
+                if (payment.paidAt && payment.paidAt > row.paidAt) {
+                    row.paidAt = payment.paidAt;
+                }
+            });
+
+            const rows = Array.from(rowsMap.values()).map((row) => ({
+                appointmentId: row.appointmentId,
+                paidAt: row.paidAt,
+                sessionDate: row.sessionDate,
+                customerName: row.customerName,
+                customerCode: row.customerCode,
+                serviceName: row.serviceName,
+                trainerName: row.trainerName,
+                employeeName: row.employeeName,
+                paymentMethod: row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED',
+                amount: row.amount || 0
+            }));
+
+            const totalRevenue = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
+            const sessionsCount = rows.length;
+            const averagePrice = sessionsCount ? totalRevenue / sessionsCount : 0;
 
             setSummary({
-                totalRevenue: data.summary?.totalRevenue || 0,
-                sessionsCount: data.summary?.sessionsCount || 0,
-                averagePrice: data.summary?.averagePrice || 0,
-                byMethod: data.summary?.byMethod || { CASH: 0, CARD: 0, TRANSFER: 0 }
+                totalRevenue,
+                sessionsCount,
+                averagePrice,
+                byMethod
             });
-            setRows(Array.isArray(data.rows) ? data.rows : []);
+            setRows(rows);
         } catch (error) {
             toast.error(isRTL ? 'فشل تحميل تقرير دخل الجلسات' : 'Failed to load sessions income report');
             setSummary({ totalRevenue: 0, sessionsCount: 0, averagePrice: 0, byMethod: { CASH: 0, CARD: 0, TRANSFER: 0 } });
@@ -356,3 +438,4 @@ const GymIncomeSessionsReportPage = () => {
 };
 
 export default GymIncomeSessionsReportPage;
+
