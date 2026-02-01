@@ -28,12 +28,6 @@ const buildTimeRange = (startValue, durationMinutes) => {
         throw createInvalidTimeError();
     }
 
-    const hour = startDate.getHours();
-    const minute = startDate.getMinutes();
-    if (hour > 12 || (hour === 12 && minute > 0)) {
-        throw createInvalidTimeError();
-    }
-
     const endDate = new Date(startDate.getTime() + duration * 60000);
     if (endDate <= startDate) {
         throw createInvalidTimeError();

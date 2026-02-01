@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const AppointmentService = require('../services/appointmentService');
 const { authenticate } = require('../middleware/auth');
@@ -14,17 +14,18 @@ router.post('/', authenticate, async (req, res) => {
         if (isNaN(requestedStart.getTime())) {
             throw new Error('Invalid date format');
         }
-        const now = new Date();
-        if (requestedStart < now) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (requestedStart < today) {
             const headerLang = (req.headers['accept-language'] || req.user?.language || '').toLowerCase();
             const isArabic = headerLang.startsWith('ar');
-            const message = isArabic ? 'لا يمكن إضافة حجز في تاريخ سابق.' : 'You can’t create a booking in a past date.';
+            const message = isArabic ? 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø¶Ø§ÙØ© Ø­Ø¬Ø² ÙÙŠ ØªØ§Ø±ÙŠØ® Ø³Ø§Ø¨Ù‚.' : 'You canâ€™t create a booking in a past date.';
             return res.status(400).json({ success: false, message });
         }
 
         const payload = {
             ...req.body,
-            createdByEmployeeId: req.user?.id
+            createdByEmployeeId: req.body.createdByEmployeeId ?? req.user?.id
         };
         const appointment = await AppointmentService.createAppointment(payload);
         res.json({ success: true, data: appointment });
@@ -201,3 +202,4 @@ router.get('/availability', authenticate, async (req, res) => {
 });
 
 module.exports = router;
+

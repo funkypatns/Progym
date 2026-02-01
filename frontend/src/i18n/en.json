@@ -44,6 +44,8 @@
         "newAppointment": "New Appointment",
         "editAppointment": "Edit Appointment",
         "member": "Member",
+        "bookedByEmployee": "Booked By",
+        "selectEmployee": "Select Employee",
         "coach": "Coach",
         "selectCoach": "Select Coach",
         "showSchedule": "Show Coach Schedule",

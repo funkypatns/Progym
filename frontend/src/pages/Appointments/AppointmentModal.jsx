@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle, Lock } from 'lucide-react';
-import apiClient, { getStaffTrainers } from '../../utils/api';
+import apiClient from '../../utils/api';
 import toast from 'react-hot-toast';
-import { format, parseISO, startOfMonth, endOfMonth, addMonths, addMinutes, isBefore, isAfter } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, addMonths, addMinutes, isBefore, isAfter, startOfDay } from 'date-fns';
 import { formatTime } from '../../utils/dateFormatter';
-import CoachScheduleModal from './CoachScheduleModal';
 import CompletionPreviewModal from './CompletionPreviewModal';
 import ReceiptModal from '../../components/payments/ReceiptModal';
 
@@ -22,20 +21,19 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [selectedMember, setSelectedMember] = useState(null);
     const [coaches, setCoaches] = useState([]);
     const [selectedCoachId, setSelectedCoachId] = useState('');
-    const [trainers, setTrainers] = useState([]);
-    const [selectedTrainerId, setSelectedTrainerId] = useState('');
-    const [trainerLoading, setTrainerLoading] = useState(false);
 
     const [services, setServices] = useState([]);
 
     // Split Date/Time State
     const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [selectedTime, setSelectedTime] = useState('09:00');
+    const [selectedHour, setSelectedHour] = useState('9');
+    const [selectedMinute, setSelectedMinute] = useState('00');
+    const [selectedPeriod, setSelectedPeriod] = useState('AM');
     const [durationInput, setDurationInput] = useState('60'); // string minutes
 
     // Availability State
     const [bookedRanges, setBookedRanges] = useState([]);
-    const [showSchedule, setShowSchedule] = useState(false);
 
     // Completion Flow State
     const [showCompletionPreview, setShowCompletionPreview] = useState(false);
@@ -55,13 +53,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     useEffect(() => {
         if (open) {
             fetchCoaches();
-            fetchTrainerOptions();
             fetchServices();
             if (appointment) {
                 // Edit Mode
                 setSelectedMember(appointment.member);
-            setSelectedCoachId(appointment.coachId?.toString());
-            setSelectedTrainerId(appointment.trainerId?.toString() || '');
+            setSelectedCoachId((appointment.createdByEmployee?.id ?? appointment.coachId)?.toString());
 
                 const start = parseISO(appointment.start);
                 const end = parseISO(appointment.end);
@@ -83,7 +79,6 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setMemberSearch('');
                 setSelectedMember(null);
             setSelectedCoachId('');
-            setSelectedTrainerId('');
 
                 if (initialDate) {
                     setSelectedDate(format(initialDate, 'yyyy-MM-dd'));
@@ -145,28 +140,6 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         }
     };
 
-    const fetchTrainerOptions = async () => {
-        setTrainerLoading(true);
-        try {
-            const res = await getStaffTrainers();
-            if (res.data.success) {
-                const unique = new Map();
-                res.data.data.forEach(t => {
-                    if (!unique.has(t.id)) {
-                        unique.set(t.id, t);
-                    }
-                });
-                setTrainers(Array.from(unique.values()));
-            }
-        } catch (error) {
-            console.error('Failed to fetch trainers');
-        } finally {
-            setTrainerLoading(false);
-        }
-    };
-
-
-
     const fetchServices = async () => {
         try {
             const res = await apiClient.get('/services?type=SESSION&active=true');
@@ -200,16 +173,20 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     // Calculate Start/End Date objects
     const parseTimeInput = (value) => {
         if (!value) return null;
-        const match = value.match(/^\s*(\d{1,2}):(\d{2})\s*$/);
+        const match = value.match(/^\s*([01]\d|2[0-3]):([0-5]\d)\s*$/);
         if (!match) return null;
-        const hour = parseInt(match[1], 10);
-        const minute = parseInt(match[2], 10);
-        if (minute < 0 || minute > 59) return null;
-        if (hour < 0 || hour > 12) return null;
-        return { hour, minute };
+        return { hour: parseInt(match[1], 10), minute: parseInt(match[2], 10) };
     };
 
-    const normalizeTimeString = ({ hour, minute }) => `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const buildTimeFromParts = (hourValue, minuteValue, periodValue) => {
+        const hourNumber = parseInt(hourValue, 10);
+        const minuteNumber = parseInt(minuteValue, 10);
+        if (Number.isNaN(hourNumber) || Number.isNaN(minuteNumber)) return '';
+        if (hourNumber < 1 || hourNumber > 12) return '';
+        if (minuteNumber < 0 || minuteNumber > 59) return '';
+        const hour24 = (hourNumber % 12) + (periodValue === 'PM' ? 12 : 0);
+        return `${String(hour24).padStart(2, '0')}:${String(minuteNumber).padStart(2, '0')}`;
+    };
 
     const startTimeParsed = useMemo(() => parseTimeInput(selectedTime), [selectedTime]);
     const durationNumber = useMemo(() => {
@@ -224,23 +201,26 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         return date;
     }, [selectedDate, startTimeParsed]);
 
-    const isPastSelection = useMemo(() => currentStart ? currentStart < new Date() : false, [currentStart]);
+    const selectedDay = useMemo(() => (selectedDate ? parseISO(selectedDate) : null), [selectedDate]);
+    const isPastSelection = useMemo(() => {
+        if (!selectedDay) return false;
+        return isBefore(selectedDay, startOfDay(new Date()));
+    }, [selectedDay]);
 
     const durationValid = durationNumber !== null && durationNumber >= 1 && durationNumber <= 600;
     const isArabic = (i18n.language || '').startsWith('ar');
+    const hourOptions = useMemo(() => Array.from({ length: 12 }, (_, index) => String(index + 1)), []);
+    const minuteOptions = useMemo(() => [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], []);
 
     const timeError = useMemo(() => {
-        if (!selectedTime) return isArabic ? 'الوقت مطلوب.' : 'Time is required.';
-        if (!startTimeParsed) return isArabic ? 'وقت غير صالح.' : 'Invalid time format.';
-        if (startTimeParsed.hour === 12 && startTimeParsed.minute > 0) {
-            return isArabic ? 'الوقت يجب أن يكون بين 00:00 و 12:00.' : 'Time must be between 00:00 and 12:00.';
-        }
+        if (!selectedTime) return isArabic ? 'Ø§Ù„ÙˆÙ‚Øª Ù…Ø·Ù„ÙˆØ¨.' : 'Time is required.';
+        if (!startTimeParsed) return isArabic ? 'ÙˆÙ‚Øª ØºÙŠØ± ØµØ§Ù„Ø­.' : 'Invalid time format.';
         return '';
     }, [selectedTime, startTimeParsed, isArabic]);
 
     const durationError = useMemo(() => {
-        if (!durationInput) return isArabic ? 'المدة مطلوبة.' : 'Duration is required.';
-        if (!durationValid) return isArabic ? 'المدة يجب أن تكون بين 1 و 600 دقيقة.' : 'Duration must be between 1 and 600 minutes.';
+        if (!durationInput) return isArabic ? 'Ø§Ù„Ù…Ø¯Ø© Ù…Ø·Ù„ÙˆØ¨Ø©.' : 'Duration is required.';
+        if (!durationValid) return isArabic ? 'Ø§Ù„Ù…Ø¯Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø¨ÙŠÙ† 1 Ùˆ 600 Ø¯Ù‚ÙŠÙ‚Ø©.' : 'Duration must be between 1 and 600 minutes.';
         return '';
     }, [durationInput, durationValid, isArabic]);
 
@@ -267,6 +247,16 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         });
     }, [currentStart, currentEnd, bookedRanges, appointment]);
 
+    useEffect(() => {
+        const parsed = parseTimeInput(selectedTime);
+        if (!parsed) return;
+        const period = parsed.hour >= 12 ? 'PM' : 'AM';
+        const hour12 = parsed.hour % 12 === 0 ? 12 : parsed.hour % 12;
+        const minute = String(parsed.minute).padStart(2, '0');
+        if (selectedHour !== String(hour12)) setSelectedHour(String(hour12));
+        if (selectedMinute !== minute) setSelectedMinute(minute);
+        if (selectedPeriod !== period) setSelectedPeriod(period);
+    }, [selectedTime]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -281,7 +271,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 return;
             }
             if (!selectedCoachId) {
-                toast.error('Please select a coach');
+                toast.error(isArabic ? 'يرجى اختيار موظف' : 'Please select an employee');
                 return;
             }
             if (validationError) {
@@ -294,11 +284,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
                     memberId: selectedMember.id,
                     coachId: parseInt(selectedCoachId),
+                    createdByEmployeeId: parseInt(selectedCoachId),
                     price: parseFloat(form.price)
                 };
                 payload.durationMinutes = durationNumber;
                 payload.startTime = selectedTime;
-                payload.trainerId = selectedTrainerId ? parseInt(selectedTrainerId) : null;
 
             let res;
             if (appointment) {
@@ -342,7 +332,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
         if (!ended) {
             const confirmMessage = isRtl
-                ? 'الجلسة لم تنتهِ بعد، هل أنت متأكد من الإكمال؟'
+                ? 'Ø§Ù„Ø¬Ù„Ø³Ø© Ù„Ù… ØªÙ†ØªÙ‡Ù Ø¨Ø¹Ø¯ØŒ Ù‡Ù„ Ø£Ù†Øª Ù…ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø¥ÙƒÙ…Ø§Ù„ØŸ'
                 : 'Session has not ended yet. Are you sure you want to complete it?';
             if (!window.confirm(confirmMessage)) return;
         }
@@ -469,7 +459,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                 placeholder={t('appointments.searchMemberPlaceholder')}
                                                 className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
                                             />
-                                            {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">⌛</div>}
+                                            {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">âŒ›</div>}
                                         </div>
                                         {/* Results Dropdown */}
                                         {members.length > 0 && !selectedMember && (
@@ -487,32 +477,22 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                     </div>
                                 )}
 
-                                {/* 2. Coach Select + Show Schedule Button */}
+                                {/* 2. Booked By Employee */}
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.coach')}</label>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                            <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                            <select
-                                                required
-                                                value={selectedCoachId}
-                                                onChange={e => setSelectedCoachId(e.target.value)}
-                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                            >
-                                                <option value="">{t('appointments.selectCoach')}</option>
-                                                {coaches.map(c => (
-                                                    <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowSchedule(true)}
-                                            disabled={!selectedCoachId}
-                                            className="px-4 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-xl text-slate-300 disabled:opacity-50 transition text-xs font-bold whitespace-nowrap"
+                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.bookedByEmployee')}</label>
+                                    <div className="relative">
+                                        <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                        <select
+                                            required
+                                            value={selectedCoachId}
+                                            onChange={e => setSelectedCoachId(e.target.value)}
+                                            className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
                                         >
-                                            {t('appointments.showSchedule')}
-                                        </button>
+                                            <option value="">{t('appointments.selectEmployee')}</option>
+                                            {coaches.map(c => (
+                                                <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 
@@ -555,12 +535,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                     <div className="space-y-1">
                                         <div className="text-xs text-slate-400">
                                             {appointment?.createdByEmployee
-                                                ? `${isArabic ? 'تم الحجز بواسطة:' : 'Booked by:'} ${appointment.createdByEmployee.firstName} ${appointment.createdByEmployee.lastName}`
-                                                : `${isArabic ? 'تم الحجز بواسطة:' : 'Booked by:'} -`}
+                                                ? `${isArabic ? 'ØªÙ… Ø§Ù„Ø­Ø¬Ø² Ø¨ÙˆØ§Ø³Ø·Ø©:' : 'Booked by:'} ${appointment.createdByEmployee.firstName} ${appointment.createdByEmployee.lastName}`
+                                                : `${isArabic ? 'ØªÙ… Ø§Ù„Ø­Ø¬Ø² Ø¨ÙˆØ§Ø³Ø·Ø©:' : 'Booked by:'} -`}
                                         </div>
                                         {appointment?.completedByEmployee && (
                                             <div className="text-xs text-slate-400">
-                                                {`${isArabic ? 'تم الإكمال بواسطة:' : 'Completed by:'} ${appointment.completedByEmployee.firstName} ${appointment.completedByEmployee.lastName}`}
+                                                {`${isArabic ? 'ØªÙ… Ø§Ù„Ø¥ÙƒÙ…Ø§Ù„ Ø¨ÙˆØ§Ø³Ø·Ø©:' : 'Completed by:'} ${appointment.completedByEmployee.firstName} ${appointment.completedByEmployee.lastName}`}
                                             </div>
                                         )}
                                     </div>
@@ -570,31 +550,74 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.startTime')}</label>
-                                        <div className="relative">
-                                            <Clock className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                            <input
-                                                type="text"
-                                                placeholder={isRtl ? 'اكتب الوقت (مثال 10:15)' : 'Enter time (e.g., 10:15)'}
-                                                value={selectedTime}
-                                                onChange={e => setSelectedTime(e.target.value)}
-                                                onBlur={() => {
-                                                    const parsed = parseTimeInput(selectedTime);
-                                                    if (parsed) {
-                                                        setSelectedTime(normalizeTimeString(parsed));
-                                                    }
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="relative">
+                                                <Clock className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                                <select
+                                                    value={selectedHour}
+                                                    onChange={(e) => {
+                                                        const nextHour = e.target.value;
+                                                        setSelectedHour(nextHour);
+                                                        setSelectedTime(buildTimeFromParts(nextHour, selectedMinute, selectedPeriod));
+                                                    }}
+                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                                >
+                                                    {hourOptions.map(hour => (
+                                                        <option key={hour} value={hour}>{hour}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    list="minute-options"
+                                                    placeholder="00"
+                                                    value={selectedMinute}
+                                                    onChange={(e) => {
+                                                        const next = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                                        setSelectedMinute(next);
+                                                        setSelectedTime(buildTimeFromParts(selectedHour, next, selectedPeriod));
+                                                    }}
+                                                    onBlur={() => {
+                                                        const parsed = parseInt(selectedMinute, 10);
+                                                        if (Number.isNaN(parsed)) {
+                                                            setSelectedMinute('00');
+                                                            setSelectedTime(buildTimeFromParts(selectedHour, '00', selectedPeriod));
+                                                            return;
+                                                        }
+                                                        const clamped = Math.min(59, Math.max(0, parsed));
+                                                        const normalized = String(clamped).padStart(2, '0');
+                                                        setSelectedMinute(normalized);
+                                                        setSelectedTime(buildTimeFromParts(selectedHour, normalized, selectedPeriod));
+                                                    }}
+                                                    className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 text-center"
+                                                />
+                                                <datalist id="minute-options">
+                                                    {minuteOptions.map(minute => (
+                                                        <option key={minute} value={String(minute).padStart(2, '0')} />
+                                                    ))}
+                                                </datalist>
+                                            </div>
+                                            <select
+                                                value={selectedPeriod}
+                                                onChange={(e) => {
+                                                    const nextPeriod = e.target.value;
+                                                    setSelectedPeriod(nextPeriod);
+                                                    setSelectedTime(buildTimeFromParts(selectedHour, selectedMinute, nextPeriod));
                                                 }}
-                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                            />
+                                                className="w-full bg-slate-800 border border-white/5 rounded-xl px-3 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
+                                            >
+                                                <option value="AM">AM</option>
+                                                <option value="PM">PM</option>
+                                            </select>
                                         </div>
                                         {(() => {
                                             if (!selectedTime) {
-                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'الوقت مطلوب.' : 'Time is required.'}</div>;
+                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'Ø§Ù„ÙˆÙ‚Øª Ù…Ø·Ù„ÙˆØ¨.' : 'Time is required.'}</div>;
                                             }
                                             if (!startTimeParsed) {
-                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'وقت غير صالح.' : 'Invalid time format.'}</div>;
-                                            }
-                                            if (startTimeParsed.hour === 12 && startTimeParsed.minute > 0) {
-                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'الوقت يجب أن يكون بين 00:00 و 12:00.' : 'Time must be between 00:00 and 12:00.'}</div>;
+                                                return <div className="text-xs text-rose-400">{i18n.language === 'ar' ? 'ÙˆÙ‚Øª ØºÙŠØ± ØµØ§Ù„Ø­.' : 'Invalid time format.'}</div>;
                                             }
                                             return null;
                                         })()}
@@ -620,7 +643,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                         />
                                         {(durationInput && !durationValid) && (
                                             <div className="text-xs text-rose-400">
-                                                {i18n.language === 'ar' ? 'المدة يجب أن تكون بين 1 و 600 دقيقة.' : 'Duration must be between 1 and 600 minutes.'}
+                                                {i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø¯Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø¨ÙŠÙ† 1 Ùˆ 600 Ø¯Ù‚ÙŠÙ‚Ø©.' : 'Duration must be between 1 and 600 minutes.'}
                                             </div>
                                         )}
                                     </div>
@@ -636,7 +659,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
                                 {isPastSelection && (
                                     <div className="text-xs text-rose-400">
-                                        {i18n.language === 'ar' ? 'لا يمكن إضافة حجز في تاريخ سابق.' : 'You can’t create a booking in a past date.'}
+                                        {i18n.language === 'ar' ? 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø¶Ø§ÙØ© Ø­Ø¬Ø² ÙÙŠ ØªØ§Ø±ÙŠØ® Ø³Ø§Ø¨Ù‚.' : 'You canâ€™t create a booking in a past date.'}
                                     </div>
                                 )}
 
@@ -704,24 +727,6 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{i18n.language === 'ar' ? 'المدرب' : 'Trainer'}</label>
-                                    <div className="relative">
-                                        <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                        <select
-                                            value={selectedTrainerId}
-                                            onChange={e => setSelectedTrainerId(e.target.value)}
-                                            className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                        >
-                                            <option value="">{i18n.language === 'ar' ? 'اختر المدرب' : 'Select trainer'}</option>
-                                        {trainers.map(trainer => (
-                                                <option key={trainer.id} value={trainer.id}>{trainer.name}</option>
-                                            ))}
-                                        </select>
-                                        {trainerLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">âŒ›</div>}
-                                    </div>
-                                </div>
-
                                 {/* 8. Notes */}
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.notes')}</label>
@@ -782,14 +787,6 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                         </Dialog.Panel>
                     </div>
                 </div>
-
-                {/* Sub Modal: Schedule */}
-                <CoachScheduleModal
-                    open={showSchedule}
-                    onClose={() => setShowSchedule(false)}
-                    coachId={selectedCoachId}
-                    coachName={coaches.find(c => c.id == selectedCoachId)?.firstName || 'Coach'}
-                />
 
                 {/* Sub Modal: Completion Preview */}
                 <CompletionPreviewModal

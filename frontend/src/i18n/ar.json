@@ -43,6 +43,8 @@
         "newAppointment": "حجز موعد جديد",
         "editAppointment": "تعديل الموعد",
         "member": "العضو",
+        "bookedByEmployee": "الموظف",
+        "selectEmployee": "اختر الموظف",
         "coach": "المدرب",
         "selectCoach": "اختر المدرب",
         "showSchedule": "عرض جدول المدرب",
