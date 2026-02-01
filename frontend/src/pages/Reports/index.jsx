@@ -91,6 +91,13 @@ const ReportsDashboard = () => {
             to: "/reports/subscriptions"
         },
         {
+            title: t('reports.trainersReport') || "Trainer Report",
+            desc: "Trainer commissions, payouts, and session earnings",
+            icon: Users,
+            gradient: "bg-gradient-to-br from-indigo-500 to-blue-600",
+            to: "/reports/trainers"
+        },
+        {
             title: t('reports.memberReport') || "Members Analytics",
             desc: "Insights into member demographics and distribution",
             icon: Users,

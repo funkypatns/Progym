@@ -41,6 +41,7 @@ import PayInOutReportPage from './pages/Reports/PayInOutReportPage';
 import CashClosingReportPage from './pages/Reports/CashClosingReportPage';
 import RefundsReportPage from './pages/Reports/RefundsReportPage';
 import CancellationsReportPage from './pages/Reports/CancellationsReportPage';
+import TrainerReportPage from './pages/Reports/TrainerReportPage';
 
 import Settings from './pages/Settings';
 import Plans from './pages/Plans';
@@ -244,6 +245,7 @@ function App() {
                         <Route path="subscriptions" element={<StandardReportPage type="subscriptions" />} />
                         <Route path="attendance" element={<StandardReportPage type="attendance" />} />
                         <Route path="payments-summary" element={<StandardReportPage type="payments-summary" />} />
+                        <Route path="trainers" element={<TrainerReportPage />} />
 
                         {/* Complex Reports */}
                         <Route path="employee-collections" element={<EmployeeCollectionsPage />} />

@@ -2240,6 +2240,231 @@ router.get('/gym-income', async (req, res) => {
 });
 
 /**
+ * GET /api/reports/trainer-earnings
+ * Trainer earnings report sourced from TrainerEarning table
+ */
+router.get('/trainer-earnings', async (req, res) => {
+    try {
+        const { trainerId, from, to, startDate: startDateParam, endDate: endDateParam, status, serviceId, q } = req.query;
+        const parsedTrainerId = parseInt(trainerId, 10);
+        if (!trainerId || Number.isNaN(parsedTrainerId)) {
+            return res.json({
+                success: true,
+                data: {
+                    summary: { unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 },
+                    rows: []
+                }
+            });
+        }
+
+        const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
+        if (error) {
+            return res.status(400).json({ success: false, message: error });
+        }
+
+        const normalizedStatus = typeof status === 'string' ? status.toUpperCase() : '';
+        const where = { trainerId: parsedTrainerId };
+        if (normalizedStatus === 'PAID' || normalizedStatus === 'UNPAID') {
+            where.status = normalizedStatus;
+        }
+
+        const appointmentWhere = {};
+        if (startDate && endDate) {
+            appointmentWhere.end = { gte: startDate, lte: endDate };
+        }
+
+        const search = typeof q === 'string' ? q.trim() : '';
+        if (search) {
+            appointmentWhere.member = {
+                OR: [
+                    { firstName: { contains: search, mode: 'insensitive' } },
+                    { lastName: { contains: search, mode: 'insensitive' } },
+                    { phone: { contains: search } },
+                    { memberId: { contains: search, mode: 'insensitive' } }
+                ]
+            };
+        }
+
+        if (serviceId) {
+            const parsedServiceId = parseInt(serviceId, 10);
+            if (!Number.isNaN(parsedServiceId)) {
+                const service = await req.prisma.service.findUnique({ where: { id: parsedServiceId } });
+                if (!service) {
+                    return res.json({
+                        success: true,
+                        data: {
+                            summary: { unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 },
+                            rows: []
+                        }
+                    });
+                }
+                appointmentWhere.title = { contains: service.name, mode: 'insensitive' };
+            }
+        }
+
+        if (Object.keys(appointmentWhere).length) {
+            where.appointment = appointmentWhere;
+        }
+
+        const earnings = await req.prisma.trainerEarning.findMany({
+            where,
+            include: {
+                trainer: { select: { id: true, name: true } },
+                appointment: {
+                    select: {
+                        id: true,
+                        title: true,
+                        start: true,
+                        end: true,
+                        price: true,
+                        paidAmount: true,
+                        paymentStatus: true,
+                        status: true,
+                        member: { select: { id: true, firstName: true, lastName: true, memberId: true, phone: true } },
+                        createdByEmployee: { select: { id: true, firstName: true, lastName: true } },
+                        completedByEmployee: { select: { id: true, firstName: true, lastName: true } },
+                        payments: {
+                            select: {
+                                id: true,
+                                amount: true,
+                                method: true,
+                                status: true,
+                                paidAt: true,
+                                receiptNumber: true,
+                                createdBy: true,
+                                collectorName: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const rows = earnings.map((earning) => {
+            const member = earning.appointment?.member;
+            const memberName = [member?.firstName, member?.lastName].filter(Boolean).join(' ').trim();
+            const employee = earning.appointment?.completedByEmployee || earning.appointment?.createdByEmployee;
+            const employeeName = employee ? [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() : '';
+            return {
+                id: earning.id,
+                trainerId: earning.trainerId,
+                trainerName: earning.trainer?.name || '',
+                appointmentId: earning.appointmentId,
+                sessionDate: earning.appointment?.end || earning.appointment?.start || earning.createdAt,
+                customerName: memberName,
+                customerCode: member?.memberId || '',
+                customerPhone: member?.phone || '',
+                serviceName: earning.appointment?.title || '',
+                baseAmount: earning.baseAmount ?? earning.appointment?.price ?? 0,
+                commissionPercent: earning.commissionPercent ?? null,
+                commissionAmount: earning.commissionAmount ?? 0,
+                status: earning.status,
+                appointmentStatus: earning.appointment?.status || '',
+                paymentStatus: earning.appointment?.paymentStatus || '',
+                paidAmount: earning.appointment?.paidAmount ?? 0,
+                employeeName,
+                appointment: earning.appointment || null
+            };
+        });
+
+        const unpaidTotal = rows.reduce((sum, row) => sum + (row.status === 'UNPAID' ? row.commissionAmount : 0), 0);
+        const paidTotal = rows.reduce((sum, row) => sum + (row.status === 'PAID' ? row.commissionAmount : 0), 0);
+
+        const payoutWhere = { trainerId: parsedTrainerId };
+        if (startDate && endDate) {
+            payoutWhere.paidAt = { gte: startDate, lte: endDate };
+        }
+        const payoutAggregate = await req.prisma.trainerPayout.aggregate({
+            where: payoutWhere,
+            _sum: { totalAmount: true }
+        });
+
+        return res.json({
+            success: true,
+            data: {
+                summary: {
+                    unpaidTotal,
+                    paidTotal,
+                    sessionsCount: rows.length,
+                    payoutsTotal: payoutAggregate?._sum?.totalAmount || 0
+                },
+                rows
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Trainer earnings error:', error);
+        return res.json({
+            success: true,
+            data: {
+                summary: { unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 },
+                rows: []
+            }
+        });
+    }
+});
+
+/**
+ * GET /api/reports/trainer-payouts
+ * Trainer payout log sourced from TrainerPayout table
+ */
+router.get('/trainer-payouts', async (req, res) => {
+    try {
+        const { trainerId, from, to, startDate: startDateParam, endDate: endDateParam } = req.query;
+        const parsedTrainerId = parseInt(trainerId, 10);
+        if (!trainerId || Number.isNaN(parsedTrainerId)) {
+            return res.json({ success: true, data: { totals: { totalAmount: 0 }, rows: [] } });
+        }
+
+        const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
+        if (error) {
+            return res.status(400).json({ success: false, message: error });
+        }
+
+        const where = { trainerId: parsedTrainerId };
+        if (startDate && endDate) {
+            where.paidAt = { gte: startDate, lte: endDate };
+        }
+
+        const payouts = await req.prisma.trainerPayout.findMany({
+            where,
+            include: {
+                trainer: { select: { id: true, name: true } },
+                paidByEmployee: { select: { id: true, firstName: true, lastName: true } }
+            },
+            orderBy: { paidAt: 'desc' }
+        });
+
+        const rows = payouts.map((payout) => {
+            const paidBy = payout.paidByEmployee ? [payout.paidByEmployee.firstName, payout.paidByEmployee.lastName].filter(Boolean).join(' ').trim() : '';
+            return {
+                id: payout.id,
+                trainerId: payout.trainerId,
+                trainerName: payout.trainer?.name || '',
+                totalAmount: payout.totalAmount || 0,
+                method: payout.method || '',
+                note: payout.note || '',
+                paidAt: payout.paidAt,
+                paidByName: paidBy
+            };
+        });
+
+        const totalAmount = rows.reduce((sum, row) => sum + (row.totalAmount || 0), 0);
+
+        return res.json({
+            success: true,
+            data: {
+                totals: { totalAmount },
+                rows
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Trainer payouts error:', error);
+        return res.json({ success: true, data: { totals: { totalAmount: 0 }, rows: [] } });
+    }
+});
+
+/**
  * GET /api/reports/coach-earnings
  * Coach Earnings from AppointmentFinancialRecord
  * 

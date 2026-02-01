@@ -1,4 +1,4 @@
-{
+﻿{
     "app": {
         "name": "Gym Management System",
         "tagline": "Professional Gym Management"
@@ -313,6 +313,7 @@
         "revenueReport": "Revenue Report",
         "attendanceReport": "Attendance Report",
         "subscriptionReport": "Subscriptions Report",
+        "trainersReport": "Trainer Report",
         "export": "Export",
         "exportExcel": "Export to Excel",
         "exportPdf": "Export to PDF",
@@ -635,7 +636,7 @@
             "overage": "Overage",
             "balanced": "Balanced"
         },
-        "immutableWarning": "⚠️ Cannot edit closing after saving",
+        "immutableWarning": "âš ï¸ Cannot edit closing after saving",
         "confirmCreate": "Confirm Create",
         "closingCreated": "Closing created successfully",
         "closingFailed": "Failed to create closing",
@@ -687,7 +688,7 @@
         "breakdown": "Payment Breakdown",
         "showDetails": "Show Details",
         "hideDetails": "Hide Details",
-        "referenceOnly": "Reference only — does not affect reports",
+        "referenceOnly": "Reference only â€” does not affect reports",
         "noData": "No financial data available"
     },
     "payInOut": {
@@ -779,6 +780,7 @@
         "revenueReport": "Revenue Report",
         "memberReport": "Member Report",
         "subscriptionReport": "Subscription Report",
+        "trainersReport": "Trainer Report",
         "attendanceReport": "Attendance Report",
         "coachEarnings": "Coach Earnings",
         "outstanding": "Outstanding Balance",
@@ -844,7 +846,7 @@
         "remainingAmount": "Remaining Amount",
         "notes": "Notes",
         "transactionId": "Transaction ID",
-        "noValue": "—",
+        "noValue": "â€”",
         "totalRefunds": "Total Refunds",
         "totalAmount": "Total Amount",
         "thisMonth": "This Month",

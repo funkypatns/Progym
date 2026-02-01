@@ -13,7 +13,8 @@ import {
     AlertCircle,
     XOctagon,
     Banknote,
-    Clock
+    Clock,
+    Wallet
 } from 'lucide-react';
 
 const ReportsLayout = () => {
@@ -39,6 +40,7 @@ const ReportsLayout = () => {
         { path: '/reports/subscriptions', label: safeT('reports.subscriptionReport', isRTL ? 'ØªÙ‚Ø±ÙŠØ± Ø§Ù„Ø§Ø´ØªØ±Ø§ÙƒØ§Øª' : 'Subscription Report'), icon: CreditCard },
         { path: '/reports/attendance', label: safeT('reports.attendanceReport', isRTL ? 'ØªÙ‚Ø±ÙŠØ± Ø§Ù„Ø­Ø¶ÙˆØ±' : 'Attendance Report'), icon: Calendar },
         { path: '/reports/payments-summary', label: safeT('reports.paymentsSummary', isRTL ? 'Ù…Ù„Ø®Øµ Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Payments Summary'), icon: Receipt },
+        { path: '/reports/trainers', label: safeT('reports.trainersReport', isRTL ? 'تقرير المدربين' : 'Trainer Report'), icon: Wallet },
 
         // Complex Reports
         { path: '/reports/employee-collections', label: safeT('reports.employeeCollections', isRTL ? 'ØªØ­ØµÙŠÙ„Ø§Øª Ø§Ù„Ù…ÙˆØ¸ÙÙŠÙ†' : 'Employee Collections'), icon: Users },
