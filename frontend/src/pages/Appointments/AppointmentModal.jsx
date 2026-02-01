@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle, Lock } from 'lucide-react';
-import apiClient from '../../utils/api';
+import apiClient, { getStaffTrainers } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { format, parseISO, startOfMonth, endOfMonth, addMonths, addMinutes, isBefore, isAfter, startOfDay } from 'date-fns';
 import { formatTime } from '../../utils/dateFormatter';
+import CoachScheduleModal from './CoachScheduleModal';
 import CompletionPreviewModal from './CompletionPreviewModal';
 import ReceiptModal from '../../components/payments/ReceiptModal';
 
@@ -21,6 +22,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [selectedMember, setSelectedMember] = useState(null);
     const [coaches, setCoaches] = useState([]);
     const [selectedCoachId, setSelectedCoachId] = useState('');
+    const [trainers, setTrainers] = useState([]);
+    const [selectedTrainerId, setSelectedTrainerId] = useState('');
+    const [trainerLoading, setTrainerLoading] = useState(false);
 
     const [services, setServices] = useState([]);
 
@@ -34,6 +38,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
     // Availability State
     const [bookedRanges, setBookedRanges] = useState([]);
+    const [showSchedule, setShowSchedule] = useState(false);
 
     // Completion Flow State
     const [showCompletionPreview, setShowCompletionPreview] = useState(false);
@@ -53,11 +58,13 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     useEffect(() => {
         if (open) {
             fetchCoaches();
+            fetchTrainerOptions();
             fetchServices();
             if (appointment) {
                 // Edit Mode
                 setSelectedMember(appointment.member);
-            setSelectedCoachId((appointment.createdByEmployee?.id ?? appointment.coachId)?.toString());
+            setSelectedCoachId(appointment.coachId?.toString());
+            setSelectedTrainerId(appointment.trainerId?.toString() || '');
 
                 const start = parseISO(appointment.start);
                 const end = parseISO(appointment.end);
@@ -79,6 +86,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setMemberSearch('');
                 setSelectedMember(null);
             setSelectedCoachId('');
+            setSelectedTrainerId('');
 
                 if (initialDate) {
                     setSelectedDate(format(initialDate, 'yyyy-MM-dd'));
@@ -137,6 +145,26 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             }
         } catch (error) {
             console.error('Failed to fetch coaches');
+        }
+    };
+
+    const fetchTrainerOptions = async () => {
+        setTrainerLoading(true);
+        try {
+            const res = await getStaffTrainers();
+            if (res.data.success) {
+                const unique = new Map();
+                res.data.data.forEach(t => {
+                    if (!unique.has(t.id)) {
+                        unique.set(t.id, t);
+                    }
+                });
+                setTrainers(Array.from(unique.values()));
+            }
+        } catch (error) {
+            console.error('Failed to fetch trainers');
+        } finally {
+            setTrainerLoading(false);
         }
     };
 
@@ -210,7 +238,14 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const durationValid = durationNumber !== null && durationNumber >= 1 && durationNumber <= 600;
     const isArabic = (i18n.language || '').startsWith('ar');
     const hourOptions = useMemo(() => Array.from({ length: 12 }, (_, index) => String(index + 1)), []);
-    const minuteOptions = useMemo(() => [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], []);
+    const minuteOptions = useMemo(() => [0, 5, 10, 15, 20, 30, 45, 55], []);
+    const selectedTrainer = useMemo(() => trainers.find(trainer => String(trainer.id) === String(selectedTrainerId)), [trainers, selectedTrainerId]);
+    const commissionPercentValue = selectedTrainer
+        ? (selectedTrainer.commissionPercent ?? selectedTrainer.commissionValue ?? 0)
+        : null;
+    const commissionAmountValue = selectedTrainer
+        ? ((parseFloat(form.price || 0) * (commissionPercentValue || 0)) / 100)
+        : null;
 
     const timeError = useMemo(() => {
         if (!selectedTime) return isArabic ? 'Ø§Ù„ÙˆÙ‚Øª Ù…Ø·Ù„ÙˆØ¨.' : 'Time is required.';
@@ -271,7 +306,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 return;
             }
             if (!selectedCoachId) {
-                toast.error(isArabic ? 'يرجى اختيار موظف' : 'Please select an employee');
+                toast.error('Please select a coach');
                 return;
             }
             if (validationError) {
@@ -284,11 +319,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
                     memberId: selectedMember.id,
                     coachId: parseInt(selectedCoachId),
-                    createdByEmployeeId: parseInt(selectedCoachId),
                     price: parseFloat(form.price)
                 };
                 payload.durationMinutes = durationNumber;
                 payload.startTime = selectedTime;
+                payload.trainerId = selectedTrainerId ? parseInt(selectedTrainerId) : null;
 
             let res;
             if (appointment) {
@@ -476,23 +511,38 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                         )}
                                     </div>
                                 )}
+                                {selectedMember && (
+                                    <div className="text-xs text-slate-400">
+                                        {`${selectedMember.firstName || ''} ${selectedMember.lastName || ''}`.trim()} • {selectedMember.memberId || '-'} • {selectedMember.phone || '-'}
+                                    </div>
+                                )}
 
-                                {/* 2. Booked By Employee */}
+                                {/* 2. Coach Select + Show Schedule Button */}
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.bookedByEmployee')}</label>
-                                    <div className="relative">
-                                        <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                        <select
-                                            required
-                                            value={selectedCoachId}
-                                            onChange={e => setSelectedCoachId(e.target.value)}
-                                            className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.coach')}</label>
+                                    <div className="flex gap-2">
+                                        <div className="relative flex-1">
+                                            <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                            <select
+                                                required
+                                                value={selectedCoachId}
+                                                onChange={e => setSelectedCoachId(e.target.value)}
+                                                className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                            >
+                                                <option value="">{t('appointments.selectCoach')}</option>
+                                                {coaches.map(c => (
+                                                    <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSchedule(true)}
+                                            disabled={!selectedCoachId}
+                                            className="px-4 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-xl text-slate-300 disabled:opacity-50 transition text-xs font-bold whitespace-nowrap"
                                         >
-                                            <option value="">{t('appointments.selectEmployee')}</option>
-                                            {coaches.map(c => (
-                                                <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
-                                            ))}
-                                        </select>
+                                            {t('appointments.showSchedule')}
+                                        </button>
                                     </div>
                                 </div>
 
@@ -727,6 +777,38 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                     </div>
                                 </div>
 
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.trainer')}</label>
+                                    <div className="relative">
+                                        <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
+                                        <select
+                                            value={selectedTrainerId}
+                                            onChange={e => setSelectedTrainerId(e.target.value)}
+                                            className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 ${isRtl ? 'pr-11' : 'pl-11'}`}
+                                        >
+                                            <option value="">{t('appointments.selectTrainer')}</option>
+                                            {trainers.map(trainer => (
+                                                <option key={trainer.id} value={trainer.id}>{trainer.name}</option>
+                                            ))}
+                                        </select>
+                                        {trainerLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">âŒ›</div>}
+                                    </div>
+                                </div>
+
+                                {selectedTrainer && (
+                                    <div className="p-3 bg-slate-800/60 border border-white/5 rounded-xl text-xs text-slate-300">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-400">{t('appointments.commissionPreview')}</span>
+                                            <span className="font-bold">
+                                                {t('appointments.commissionPercent')}: {commissionPercentValue ?? 0}%
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-slate-200 font-bold">
+                                            {t('appointments.commissionAmount')}: {Number(commissionAmountValue || 0).toFixed(2)}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* 8. Notes */}
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.notes')}</label>
@@ -787,6 +869,14 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                         </Dialog.Panel>
                     </div>
                 </div>
+
+                {/* Sub Modal: Schedule */}
+                <CoachScheduleModal
+                    open={showSchedule}
+                    onClose={() => setShowSchedule(false)}
+                    coachId={selectedCoachId}
+                    coachName={coaches.find(c => c.id == selectedCoachId)?.firstName || 'Coach'}
+                />
 
                 {/* Sub Modal: Completion Preview */}
                 <CompletionPreviewModal
