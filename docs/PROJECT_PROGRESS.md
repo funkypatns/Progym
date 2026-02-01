@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-01-31
+Last updated: 2026-02-01
 
 Purpose:
 This file is the single source of truth for plans, tasks, and progress tracking. It is meant to help resume work after context compaction or a new chat session, and to prevent duplicate work.
@@ -100,6 +100,7 @@ Phase 4 - Receipts system
 | 2026-01-26 | 3d3313d | Enforce payment idempotency via transactionRef unique + backend dedupe. |
 | 2026-01-26 | 3a570a3 | Prevent Record Payment reinit when parent refreshes while open. |
 | 2026-01-31 | e84f6bc | Stabilize license endpoints and add license server root status. |
+| 2026-02-01 | 9d39fc5 | Trainer commissions, appointments completion/alerts, and check-in enhancements. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
