@@ -96,3 +96,7 @@
 [PROGRESS]
 - 2026-02-02T00:47:27.8367870+02:00 [CODE] Reports now reuse live staff-trainer earnings and payments endpoints; trainer and gym-income reports show real data with end-of-day date filters.
 
+
+[PROGRESS]
+- 2026-02-02T01:01:51.8750507+02:00 [CODE] ReportsTableContainer now exposes Table/Head/Body/Header helpers to prevent TrainerReportPage crash on /reports/trainers.
+
