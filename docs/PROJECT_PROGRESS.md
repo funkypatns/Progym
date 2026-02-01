@@ -103,6 +103,7 @@ Phase 4 - Receipts system
 | 2026-02-01 | 9d39fc5 | Trainer commissions, appointments completion/alerts, and check-in enhancements. |
 | 2026-02-01 | f1344b5 | Pending completion alerts/settings, trainer delete disabled, and i18n/check-in fixes. |
 | 2026-02-01 | e08562d | Add trainer delete UI with hard-delete guard against linked data. |
+| 2026-02-01 | d93e498 | Allow manual appointment completion at any time with early-complete confirmation. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
