@@ -108,6 +108,46 @@ ReportsTableContainer.Cell = ({
 };
 
 /**
+ * Table - Optional low-level table wrapper for custom headers/bodies.
+ */
+ReportsTableContainer.Table = ({ children, className = '' }) => {
+    return (
+        <div className={`overflow-x-auto ${className}`}>
+            <table className="w-full text-sm">
+                {children}
+            </table>
+        </div>
+    );
+};
+
+/**
+ * Head - Optional thead wrapper.
+ */
+ReportsTableContainer.Head = ({ children, className = '' }) => (
+    <thead className={`bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 ${className}`}>
+        {children}
+    </thead>
+);
+
+/**
+ * Body - Optional tbody wrapper.
+ */
+ReportsTableContainer.Body = ({ children, className = '' }) => (
+    <tbody className={`divide-y divide-gray-200 dark:divide-gray-700 ${className}`}>
+        {children}
+    </tbody>
+);
+
+/**
+ * Header - Optional th wrapper.
+ */
+ReportsTableContainer.Header = ({ children, className = '' }) => (
+    <th className={`px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider ${className}`}>
+        {children}
+    </th>
+);
+
+/**
  * AnimatedRow - Table row with staggered animation
  */
 ReportsTableContainer.AnimatedRow = ({
