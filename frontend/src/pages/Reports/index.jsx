@@ -13,7 +13,8 @@ import {
     Package,
     FileText,
     PieChart,
-    Target
+    Target,
+    Clock
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -96,6 +97,13 @@ const ReportsDashboard = () => {
             icon: Users,
             gradient: "bg-gradient-to-br from-indigo-500 to-blue-600",
             to: "/reports/trainers"
+        },
+        {
+            title: t('reports.pendingCompletion') || "Pending Completion",
+            desc: "Sessions ended but not completed yet",
+            icon: Clock,
+            gradient: "bg-gradient-to-br from-amber-500 to-orange-600",
+            to: "/reports/pending-completion"
         },
         {
             title: t('reports.gymIncomeSessions') || "Gym Income - Sessions",

@@ -81,7 +81,8 @@ router.get('/pending-completion', authenticate, async (req, res) => {
             include: {
                 member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
                 coach: { select: { firstName: true, lastName: true } },
-                trainer: { select: { id: true, name: true } }
+                trainer: { select: { id: true, name: true } },
+                createdByEmployee: { select: { id: true, firstName: true, lastName: true } }
             },
             orderBy: { end: 'asc' }
         });

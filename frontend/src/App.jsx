@@ -43,6 +43,7 @@ import RefundsReportPage from './pages/Reports/RefundsReportPage';
 import CancellationsReportPage from './pages/Reports/CancellationsReportPage';
 import TrainerReportPage from './pages/Reports/TrainerReportPage';
 import GymIncomeSessionsReportPage from './pages/Reports/GymIncomeSessionsReportPage';
+import PendingCompletionReportPage from './pages/Reports/PendingCompletionReportPage';
 
 import Settings from './pages/Settings';
 import Plans from './pages/Plans';
@@ -248,6 +249,7 @@ function App() {
                         <Route path="payments-summary" element={<StandardReportPage type="payments-summary" />} />
                         <Route path="trainers" element={<TrainerReportPage />} />
                         <Route path="gym-income-sessions" element={<GymIncomeSessionsReportPage />} />
+                        <Route path="pending-completion" element={<PendingCompletionReportPage />} />
 
                         {/* Complex Reports */}
                         <Route path="employee-collections" element={<EmployeeCollectionsPage />} />
