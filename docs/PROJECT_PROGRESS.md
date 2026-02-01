@@ -131,3 +131,4 @@ Phase 4 - Receipts system
 | 2026-02-01 | f5c16b9 | Add gym income sessions report with filters, summary cards, and CSV export. |
 | 2026-02-01 | 0f0d33f | Wire reports to live staff-trainer earnings and payments data; fix gym income Arabic labels. |
 | 2026-02-01 | 4b298b6 | Fix Trainer Report crash by adding missing table subcomponents. |
+| 2026-02-01 | 40320c5 | Add gym income sessions report filters/search using session payments; include member phone for search. |

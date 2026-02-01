@@ -100,3 +100,7 @@
 [PROGRESS]
 - 2026-02-02T01:01:51.8750507+02:00 [CODE] ReportsTableContainer now exposes Table/Head/Body/Header helpers to prevent TrainerReportPage crash on /reports/trainers.
 
+
+[PROGRESS]
+- 2026-02-02T01:06:42.2453699+02:00 [CODE] Gym Income Sessions report now filters completed session payments, supports search (name/code/phone), and includes member phone in payments payload for report search.
+
