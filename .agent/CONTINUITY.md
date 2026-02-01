@@ -37,3 +37,27 @@
 
 [PROGRESS]
 - 2026-02-01T05:21:45+02:00 [CODE] Added Sessions-mode Book Now helper button linking to /appointments with optional memberId.
+
+[OUTCOMES]
+- 2026-02-01T05:37:02+02:00 [CODE] Committed current changes: 9d39fc5 (main) and 26a7ecb (docs progress log).
+
+[PROGRESS]
+- 2026-02-01T05:37:46+02:00 [CODE] Added Memberships-mode Subscribe Now helper button linking to /plans with optional memberId.
+
+[PROGRESS]
+- 2026-02-01T06:02:20+02:00 [CODE] Check-in subscribe now opens AssignPlanModal and revalidates eligibility on success.
+
+[PROGRESS]
+- 2026-02-01T06:04:52+02:00 [CODE] AssignPlanModal guards selectedMember and plans to prevent undefined access crashes.
+
+[PROGRESS]
+- 2026-02-01T06:09:12+02:00 [CODE] Appointments pending completion tab keeps items visible and displays time/price/status details with banner hint.
+
+[PROGRESS]
+- 2026-02-01T06:39:44+02:00 [CODE] Added pending completion alert repeat logic, volume setting, and dev now override for appointments pending-completion.
+
+[PROGRESS]
+- 2026-02-01T06:50:18+02:00 [CODE] Fixed Arabic mojibake by re-encoding frontend i18n ar.json content to proper UTF-8.
+
+[PROGRESS]
+- 2026-02-01T07:05:52+02:00 [CODE] Disabled staff trainer delete endpoint (403) to enforce non-deletable trainers.

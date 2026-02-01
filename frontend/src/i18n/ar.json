@@ -465,7 +465,13 @@
         "primaryColor": "اللون الرئيسي",
         "logo": "الشعار",
         "uploadLogo": "رفع الشعار",
-        "saved": "تم حفظ الإعدادات بنجاح"
+        "saved": "تم حفظ الإعدادات بنجاح",
+        "appointmentAlerts": {
+            "repeatIntervalLabel": "فاصل التكرار (بالدقائق)",
+            "repeatIntervalHint": "0 = بدون تكرار. عدد الدقائق بين كل تنبيه لنفس الموعد",
+            "volumeLabel": "مستوى الصوت",
+            "volumeHint": "اضبط مستوى صوت تنبيهات المواعيد"
+        }
     },
     "plans": {
         "title": "إدارة الخطط",

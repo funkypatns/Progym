@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../utils/api';
+import AssignPlanModal from '../components/AssignPlanModal';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QrCode, ScanFace, Search, Activity, Users, Clock, ShieldCheck, Zap, LogOut } from 'lucide-react';
@@ -27,6 +28,8 @@ const CheckIn = () => {
     const [errorCode, setErrorCode] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [selectedMember, setSelectedMember] = useState(null);
+    const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+    const [subscribeMember, setSubscribeMember] = useState(null);
     const [eligibility, setEligibility] = useState(null);
     const [isSearching, setIsSearching] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
@@ -266,6 +269,28 @@ const CheckIn = () => {
             ? `/appointments?memberId=${encodeURIComponent(targetMemberId)}`
             : '/appointments';
         navigate(targetUrl);
+    };
+
+    const handleSubscribeNow = () => {
+        if (!selectedMember?.id) {
+            toast.error(tr('errors.invalidSelection', 'Select a member first'));
+            return;
+        }
+        setSubscribeMember(selectedMember);
+        setShowSubscribeModal(true);
+    };
+
+    const handleSubscribeClose = () => {
+        setShowSubscribeModal(false);
+        setSubscribeMember(null);
+    };
+
+    const handleSubscribeSuccess = async () => {
+        const targetMember = subscribeMember || selectedMember;
+        handleSubscribeClose();
+        if (targetMember?.id) {
+            await validateMember({ memberId: targetMember.id, mode: 'membership' });
+        }
     };
 
     // --- Sub-Components ---
@@ -575,6 +600,16 @@ const CheckIn = () => {
                                                     </button>
                                                 </div>
                                             )}
+                                            {checkInMode === 'membership' && errorCode === 'NOT_ELIGIBLE' && eligibility && eligibility.hasActiveSubscription === false && (
+                                                <div className="mt-4">
+                                                    <button
+                                                        onClick={handleSubscribeNow}
+                                                        className="inline-flex items-center gap-2 px-6 py-2 border border-blue-500/40 text-blue-600 dark:text-blue-400 rounded-xl font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition"
+                                                    >
+                                                        اشترك الآن
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </motion.div>
@@ -615,6 +650,13 @@ const CheckIn = () => {
                     </div>
                 </div>
             </div>
+
+            <AssignPlanModal
+                isOpen={showSubscribeModal}
+                onClose={handleSubscribeClose}
+                onSuccess={handleSubscribeSuccess}
+                initialMember={subscribeMember}
+            />
 
         </div>
     );

@@ -462,7 +462,13 @@
         "primaryColor": "Primary Color",
         "logo": "Logo",
         "uploadLogo": "Upload Logo",
-        "saved": "Settings saved successfully"
+        "saved": "Settings saved successfully",
+        "appointmentAlerts": {
+            "repeatIntervalLabel": "Repeat interval (minutes)",
+            "repeatIntervalHint": "0 = no repeat. Minutes between repeated alerts for the same appointment",
+            "volumeLabel": "Alert volume",
+            "volumeHint": "Adjust appointment alert volume"
+        }
     },
     "plans": {
         "title": "Plans Management",

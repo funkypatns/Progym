@@ -17,6 +17,10 @@ const AlertsRemindersSettings = () => {
     const { t, i18n } = useTranslation();
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const tr = (key, fallback) => {
+        const value = t(key);
+        return (!value || value === key) ? fallback : value;
+    };
 
     // Reminder settings (from DB)
     const [reminderSettings, setReminderSettings] = useState({
@@ -35,10 +39,11 @@ const AlertsRemindersSettings = () => {
     // Appointment end alerts (from DB)
     const [appointmentAlertSettings, setAppointmentAlertSettings] = useState({
         enabled: true,
-        intervalMinutes: 1,
-        maxRepeats: 3,
+        intervalMinutes: 0,
+        maxRepeats: 1,
         soundEnabled: true,
-        uiEnabled: true
+        uiEnabled: true,
+        volume: 100
     });
 
     useEffect(() => {
@@ -80,10 +85,11 @@ const AlertsRemindersSettings = () => {
 
                 setAppointmentAlertSettings({
                     enabled: parseBoolean(settings.general?.appointment_alerts_enabled, true),
-                    intervalMinutes: parseFloatNumber(settings.general?.appointment_alert_interval_minutes, 1),
-                    maxRepeats: parseNumber(settings.general?.appointment_alert_max_repeats, 3),
+                    intervalMinutes: parseFloatNumber(settings.general?.appointment_alert_interval_minutes, 0),
+                    maxRepeats: parseNumber(settings.general?.appointment_alert_max_repeats, 1),
                     soundEnabled: parseBoolean(settings.general?.appointment_alert_sound_enabled, true),
-                    uiEnabled: parseBoolean(settings.general?.appointment_alert_ui_enabled, true)
+                    uiEnabled: parseBoolean(settings.general?.appointment_alert_ui_enabled, true),
+                    volume: parseNumber(settings.general?.appointment_alert_volume, 100)
                 });
             }
 
@@ -115,7 +121,8 @@ const AlertsRemindersSettings = () => {
                     appointment_alert_interval_minutes: appointmentAlertSettings.intervalMinutes,
                     appointment_alert_max_repeats: appointmentAlertSettings.maxRepeats,
                     appointment_alert_sound_enabled: appointmentAlertSettings.soundEnabled,
-                    appointment_alert_ui_enabled: appointmentAlertSettings.uiEnabled
+                    appointment_alert_ui_enabled: appointmentAlertSettings.uiEnabled,
+                    appointment_alert_volume: appointmentAlertSettings.volume
                 }
             });
 
@@ -318,12 +325,12 @@ const AlertsRemindersSettings = () => {
                     <div className="flex items-center justify-between mb-3">
                         <div>
                             <p className="font-medium text-gray-900 dark:text-white">
-                                {i18n.language === 'ar' ? 'فاصل التنبيه (بالدقائق)' : 'Alert interval (minutes)'}
+                                {tr('settings.appointmentAlerts.repeatIntervalLabel', i18n.language === 'ar' ? 'فاصل التكرار (بالدقائق)' : 'Repeat interval (minutes)')}
                             </p>
                             <p className="text-sm text-gray-500">
-                                {i18n.language === 'ar'
-                                    ? 'عدد الدقائق بين تكرار التنبيه لنفس الموعد'
-                                    : 'Minutes between repeated alerts for the same appointment'}
+                                {tr('settings.appointmentAlerts.repeatIntervalHint', i18n.language === 'ar'
+                                    ? '0 = بدون تكرار. عدد الدقائق بين كل تنبيه لنفس الموعد'
+                                    : '0 = no repeat. Minutes between repeated alerts for the same appointment')}
                             </p>
                         </div>
                         <span className="text-2xl font-bold text-primary-500">
@@ -332,19 +339,19 @@ const AlertsRemindersSettings = () => {
                     </div>
                     <input
                         type="number"
-                        min="0.5"
-                        max="5"
+                        min="0"
+                        max="10"
                         step="0.5"
                         value={appointmentAlertSettings.intervalMinutes}
                         onChange={(e) => setAppointmentAlertSettings(prev => ({
                             ...prev,
-                            intervalMinutes: Math.max(0.5, Math.min(5, parseFloatNumber(e.target.value, 1)))
+                            intervalMinutes: Math.max(0, Math.min(10, parseFloatNumber(e.target.value, 0)))
                         }))}
                         className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 text-gray-900 dark:text-white"
                     />
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>{i18n.language === 'ar' ? '0.5 دقيقة' : '0.5 min'}</span>
-                        <span>{i18n.language === 'ar' ? '5 دقائق' : '5 min'}</span>
+                        <span>{i18n.language === 'ar' ? '0 دقيقة' : '0 min'}</span>
+                        <span>{i18n.language === 'ar' ? '10 دقائق' : '10 min'}</span>
                     </div>
                 </div>
 
@@ -372,7 +379,7 @@ const AlertsRemindersSettings = () => {
                         value={appointmentAlertSettings.maxRepeats}
                         onChange={(e) => setAppointmentAlertSettings(prev => ({
                             ...prev,
-                            maxRepeats: Math.max(0, Math.min(10, parseNumber(e.target.value, 3)))
+                            maxRepeats: Math.max(0, Math.min(10, parseNumber(e.target.value, 1)))
                         }))}
                         className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 text-gray-900 dark:text-white"
                     />
@@ -404,6 +411,36 @@ const AlertsRemindersSettings = () => {
                             />
                             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
                         </label>
+                    </div>
+                    <div className="p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <p className="font-medium text-gray-900 dark:text-white">
+                                    {tr('settings.appointmentAlerts.volumeLabel', i18n.language === 'ar' ? 'مستوى الصوت' : 'Alert volume')}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {tr('settings.appointmentAlerts.volumeHint', i18n.language === 'ar' ? 'اضبط مستوى صوت تنبيهات المواعيد' : 'Adjust appointment alert volume')}
+                                </p>
+                            </div>
+                            <span className="text-2xl font-bold text-primary-500">
+                                {appointmentAlertSettings.volume}
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={appointmentAlertSettings.volume}
+                            onChange={(e) => setAppointmentAlertSettings(prev => ({
+                                ...prev,
+                                volume: Math.max(0, Math.min(100, parseNumber(e.target.value, 100)))
+                            }))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-primary-600"
+                        />
+                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>0</span>
+                            <span>100</span>
+                        </div>
                     </div>
                     <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
                         <div className="flex items-center gap-3">

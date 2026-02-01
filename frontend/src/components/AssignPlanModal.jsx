@@ -527,68 +527,87 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         </div>
     );
 
-    const renderPlanSelection = () => (
-        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-            {/* Selected Member Summary */}
-            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold">
-                        {selectedMember.firstName[0]}
-                    </div>
-                    <div>
-                        <div className="font-bold text-gray-900 dark:text-white">{selectedMember.firstName} {selectedMember.lastName}</div>
-                        <div className="text-xs text-blue-600 dark:text-blue-300">{selectedMember.memberId}</div>
-                    </div>
+    const renderPlanSelection = () => {
+        const safePlans = Array.isArray(plans) ? plans : [];
+        if (!selectedMember) {
+            return (
+                <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
+                    {safeT('members.selectMember', 'Select a member first')}
                 </div>
-                {!isRenewMode && (
-                    <button onClick={handleResetMember} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                        {safeT('common.change', 'Change')}
-                    </button>
-                )}
-            </div>
+            );
+        }
+        const memberFirstName = (selectedMember.firstName || selectedMember.name || '').trim();
+        const memberLastName = (selectedMember.lastName || '').trim();
+        const memberLabel = `${memberFirstName} ${memberLastName}`.trim() || safeT('members.member', 'Member');
+        const memberInitial = memberFirstName ? memberFirstName[0] : '?';
+        const memberCode = selectedMember.memberId || selectedMember.code || '-';
+        const noPlansFallback = i18n.language === 'ar'
+            ? 'لا توجد خطط متاحة حاليًا'
+            : 'No active plans available.';
 
-            {/* Plans Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {isLoadingPlans ? (
-                    <div className="col-span-2 flex justify-center py-10">
-                        <Loader2 className="animate-spin text-blue-500" />
-                    </div>
-                ) : plans.length === 0 ? (
-                    <div className="col-span-2 text-center py-10 text-gray-500">
-                        {safeT('plans.noPlans', 'No active plans available.')}
-                    </div>
-                ) : (
-                    plans.map(plan => (
-                        <div
-                            key={plan.id}
-                            onClick={() => handleSelectPlan(plan)}
-                            className={`
-                                relative p-4 rounded-xl border-2 cursor-pointer transition-all duration-200
-                                ${selectedPlan?.id === plan.id
-                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md ring-1 ring-blue-500'
-                                    : 'border-gray-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-500 bg-white dark:bg-slate-800'}
-                            `}
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="font-bold text-gray-900 dark:text-white">{plan.name}</h3>
-                                {selectedPlan?.id === plan.id && (
-                                    <div className="bg-blue-500 text-white p-1 rounded-full">
-                                        <Check size={12} />
-                                    </div>
-                                )}
-                            </div>
-                            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-1">
-                                {plan.price} <span className="text-sm font-normal text-gray-500">{safeT('common.currency', 'EGP')}</span>
-                            </div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {plan.duration} {safeT('common.days', 'Days')}
-                            </div>
+        return (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                {/* Selected Member Summary */}
+                <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold">
+                            {memberInitial}
                         </div>
-                    ))
-                )}
+                        <div>
+                            <div className="font-bold text-gray-900 dark:text-white">{memberLabel}</div>
+                            <div className="text-xs text-blue-600 dark:text-blue-300">{memberCode}</div>
+                        </div>
+                    </div>
+                    {!isRenewMode && (
+                        <button onClick={handleResetMember} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                            {safeT('common.change', 'Change')}
+                        </button>
+                    )}
+                </div>
+
+                {/* Plans Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {isLoadingPlans ? (
+                        <div className="col-span-2 flex justify-center py-10">
+                            <Loader2 className="animate-spin text-blue-500" />
+                        </div>
+                    ) : safePlans.length === 0 ? (
+                        <div className="col-span-2 text-center py-10 text-gray-500">
+                            {safeT('plans.noPlans', noPlansFallback)}
+                        </div>
+                    ) : (
+                        safePlans.map(plan => (
+                            <div
+                                key={plan.id}
+                                onClick={() => handleSelectPlan(plan)}
+                                className={`
+                                    relative p-4 rounded-xl border-2 cursor-pointer transition-all duration-200
+                                    ${selectedPlan?.id === plan.id
+                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md ring-1 ring-blue-500'
+                                        : 'border-gray-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-500 bg-white dark:bg-slate-800'}
+                                `}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <h3 className="font-bold text-gray-900 dark:text-white">{plan.name}</h3>
+                                    {selectedPlan?.id === plan.id && (
+                                        <div className="bg-blue-500 text-white p-1 rounded-full">
+                                            <Check size={12} />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-1">
+                                    {plan.price} <span className="text-sm font-normal text-gray-500">{safeT('common.currency', 'EGP')}</span>
+                                </div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">
+                                    {plan.duration} {safeT('common.days', 'Days')}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const renderPayment = () => {
         if (!selectedPlan || !selectedMember) return null;

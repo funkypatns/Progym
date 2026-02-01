@@ -12,6 +12,7 @@ import AddPaymentDialog from '../../components/payments/AddPaymentDialog'; // Re
 import { useAuthStore, useSettingsStore } from '../../store';
 
 const PENDING_COMPLETION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleC8KEIQ+WFBQZG54d2uDkIpxTDIvKjo8Oz5BWF9pcXx+d2ttaVtIRxEULztBOzQzMj9KVFhdV09FREJBQkBCQ0ZJTVFVWFlaWldWVFJQT05NTk5PUVNVVldYWFlZWllYV1ZVVFRUVFRVVlZXWFhZWVhaWVlZWFhXV1ZWVVVVVVVVVVZWVldXWFhYWFhYWFhXV1dXVldXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXVw==';
+const PENDING_ALERT_STORAGE_KEY = 'gym:pendingCompletionAlertState';
 
 const Appointments = () => {
     const { t, i18n } = useTranslation();
@@ -41,7 +42,8 @@ const Appointments = () => {
     const todayStart = startOfDay(new Date());
     const isPastDate = (dateValue) => startOfDay(new Date(dateValue)) < todayStart;
     const pendingAudioRef = useRef(null);
-    const seenPendingIdsRef = useRef(new Set());
+    const pendingAlertStateRef = useRef(new Map());
+    const audioErrorNotifiedRef = useRef(false);
 
     const parseBoolean = (value, fallback = true) => {
         if (value === undefined || value === null) return fallback;
@@ -58,10 +60,14 @@ const Appointments = () => {
     };
 
     const appointmentAlertsEnabled = parseBoolean(getSetting('appointment_alerts_enabled', true), true);
-    const appointmentAlertIntervalMinutes = parseNumber(getSetting('appointment_alert_interval_minutes', 1), 1);
-    const appointmentAlertIntervalMs = Math.min(Math.max(appointmentAlertIntervalMinutes * 60 * 1000, 30000), 300000);
-    const maxRepeatsRaw = parseInt(getSetting('appointment_alert_max_repeats', 3), 10);
-    const appointmentAlertMaxRepeats = Number.isFinite(maxRepeatsRaw) ? Math.max(0, maxRepeatsRaw) : 3;
+    const appointmentAlertIntervalMinutes = parseNumber(getSetting('appointment_alert_interval_minutes', 0), 0);
+    const appointmentAlertRepeatIntervalMs = Math.max(0, appointmentAlertIntervalMinutes * 60 * 1000);
+    const maxRepeatsRaw = parseInt(getSetting('appointment_alert_max_repeats', 1), 10);
+    const appointmentAlertMaxRepeats = Number.isFinite(maxRepeatsRaw) ? Math.max(0, maxRepeatsRaw) : 1;
+    const appointmentAlertVolumeRaw = parseNumber(getSetting('appointment_alert_volume', 100), 100);
+    const appointmentAlertVolume = Math.min(Math.max(appointmentAlertVolumeRaw, 0), 100);
+    const appointmentAlertVolumeNormalized = appointmentAlertVolume / 100;
+    const pendingPollIntervalMs = 30000;
     const appointmentAlertSoundEnabled = parseBoolean(getSetting('appointment_alert_sound_enabled', true), true);
     const appointmentAlertUiEnabled = parseBoolean(getSetting('appointment_alert_ui_enabled', true), true);
 
@@ -124,17 +130,56 @@ const Appointments = () => {
 
     useEffect(() => {
         try {
-            pendingAudioRef.current = new Audio(PENDING_COMPLETION_SOUND_URL);
-            pendingAudioRef.current.volume = 1;
+            if (!pendingAudioRef.current) {
+                pendingAudioRef.current = new Audio(PENDING_COMPLETION_SOUND_URL);
+            }
+            pendingAudioRef.current.volume = appointmentAlertVolumeNormalized;
         } catch (error) {
             console.error('[APPOINTMENTS] Failed to init pending completion sound:', error);
         }
+    }, [appointmentAlertVolumeNormalized]);
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(PENDING_ALERT_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            const nextMap = new Map();
+            Object.entries(parsed || {}).forEach(([id, value]) => {
+                if (!value || typeof value !== 'object') return;
+                const count = Number.isFinite(Number(value.count)) ? Number(value.count) : 0;
+                const lastAlertAt = Number.isFinite(Number(value.lastAlertAt)) ? Number(value.lastAlertAt) : 0;
+                nextMap.set(id, { count, lastAlertAt });
+            });
+            pendingAlertStateRef.current = nextMap;
+        } catch (error) {
+            pendingAlertStateRef.current = new Map();
+        }
     }, []);
+
+    const persistPendingAlertState = () => {
+        try {
+            const payload = {};
+            pendingAlertStateRef.current.forEach((value, key) => {
+                payload[key] = value;
+            });
+            localStorage.setItem(PENDING_ALERT_STORAGE_KEY, JSON.stringify(payload));
+        } catch (error) {
+            // noop
+        }
+    };
 
     const playPendingCompletionSound = () => {
         if (!pendingAudioRef.current) return;
         pendingAudioRef.current.currentTime = 0;
-        pendingAudioRef.current.play().catch(() => {});
+        const playPromise = pendingAudioRef.current.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => {
+                if (audioErrorNotifiedRef.current) return;
+                audioErrorNotifiedRef.current = true;
+                toast.error('تعذّر تشغيل الصوت  فعّل الصوت من المتصفح');
+            });
+        }
     };
 
     const fetchPendingCompletion = async ({ allowAlerts = true } = {}) => {
@@ -143,28 +188,44 @@ const Appointments = () => {
             const res = await apiClient.get('/appointments/pending-completion');
             if (res.data.success) {
                 const items = Array.isArray(res.data.data) ? res.data.data : [];
-                const currentIds = new Set(items.map(item => item?.id).filter(Boolean));
-                for (const trackedId of seenPendingIdsRef.current) {
+                const currentIds = new Set(items.map(item => String(item?.id || '')).filter(Boolean));
+                for (const trackedId of pendingAlertStateRef.current.keys()) {
                     if (!currentIds.has(trackedId)) {
-                        seenPendingIdsRef.current.delete(trackedId);
+                        pendingAlertStateRef.current.delete(trackedId);
                     }
                 }
 
-                const newItems = items.filter(item => item?.id && !seenPendingIdsRef.current.has(item.id));
-                if (newItems.length > 0) {
-                    if (allowAlerts && appointmentAlertSoundEnabled && appointmentAlertsEnabled) {
-                        playPendingCompletionSound();
-                    }
-                    if (allowAlerts && appointmentAlertUiEnabled && appointmentAlertsEnabled) {
-                        newItems.forEach((item) => {
+                const totalAllowed = appointmentAlertMaxRepeats <= 0 ? 1 : appointmentAlertMaxRepeats;
+                const shouldAlert = allowAlerts && appointmentAlertsEnabled && (appointmentAlertSoundEnabled || appointmentAlertUiEnabled);
+                const nowMs = Date.now();
+
+                if (shouldAlert) {
+                    items.forEach((item) => {
+                        if (!item?.id) return;
+                        const id = String(item.id);
+                        const state = pendingAlertStateRef.current.get(id) || { count: 0, lastAlertAt: 0 };
+                        const isFirstAlert = state.count === 0;
+                        const canRepeat = appointmentAlertRepeatIntervalMs > 0
+                            && state.count < totalAllowed
+                            && (nowMs - state.lastAlertAt) >= appointmentAlertRepeatIntervalMs;
+                        if (!isFirstAlert && !canRepeat) return;
+
+                        if (appointmentAlertSoundEnabled) {
+                            playPendingCompletionSound();
+                        }
+                        if (appointmentAlertUiEnabled) {
                             const name = [item.member?.firstName, item.member?.lastName].filter(Boolean).join(' ').trim();
                             const timeLabel = item.end ? `${formatDate(item.end, i18n.language)} ${formatTime(item.end, i18n.language)}` : '';
-                            const trainerLabel = item.trainer?.name ? `${isRtl ? 'المدرب:' : 'Trainer:'} ${item.trainer.name}` : '';
-                            toast.success([name, timeLabel, trainerLabel].filter(Boolean).join(' • '));
-                        });
-                    }
-                    newItems.forEach(item => seenPendingIdsRef.current.add(item.id));
+                            const needsLabel = i18n.language === 'ar' ? 'جلسة انتهت وتحتاج إكمال' : 'Needs completion';
+                            toast.success([name, timeLabel, needsLabel].filter(Boolean).join(' • '));
+                        }
+
+                        const nextCount = Math.min(state.count + 1, totalAllowed);
+                        pendingAlertStateRef.current.set(id, { count: nextCount, lastAlertAt: nowMs });
+                    });
                 }
+
+                persistPendingAlertState();
                 setPendingCompletion(items);
             }
         } catch (error) {
@@ -175,21 +236,11 @@ const Appointments = () => {
     };
 
     useEffect(() => {
-        if (view !== 'calendar' && view !== 'pending') {
-            setPendingCompletion([]);
-            seenPendingIdsRef.current.clear();
-            return;
-        }
-        if (view === 'calendar' && !appointmentAlertsEnabled) {
-            setPendingCompletion([]);
-            seenPendingIdsRef.current.clear();
-            return;
-        }
         const allowAlerts = appointmentAlertsEnabled;
         fetchPendingCompletion({ allowAlerts });
-        const interval = setInterval(() => fetchPendingCompletion({ allowAlerts }), appointmentAlertIntervalMs);
+        const interval = setInterval(() => fetchPendingCompletion({ allowAlerts }), pendingPollIntervalMs);
         return () => clearInterval(interval);
-    }, [view, appointmentAlertsEnabled, appointmentAlertIntervalMs, appointmentAlertSoundEnabled, appointmentAlertUiEnabled, settings]);
+    }, [view, appointmentAlertsEnabled, appointmentAlertRepeatIntervalMs, appointmentAlertMaxRepeats, appointmentAlertSoundEnabled, appointmentAlertUiEnabled, pendingPollIntervalMs, settings]);
 
     const fetchNotifications = async () => {
         setLoading(true);
@@ -299,8 +350,9 @@ const Appointments = () => {
         try {
             await apiClient.post(`/appointments/${appointmentId}/complete`, {});
             toast.success('Session completed');
-            setPendingCompletion((prev) => prev.filter(item => item.id !== appointmentId));
-            seenPendingIdsRef.current.delete(appointmentId);
+            pendingAlertStateRef.current.delete(String(appointmentId));
+            persistPendingAlertState();
+            await fetchPendingCompletion({ allowAlerts: false });
             fetchAppointments();
         } catch (error) {
             toast.error('Failed to complete session');
@@ -321,6 +373,13 @@ const Appointments = () => {
                 const memberName = [apt.member?.firstName, apt.member?.lastName].filter(Boolean).join(' ').trim();
                 const trainerName = apt.trainer?.name || '';
                 const serviceName = apt.title || '';
+                const startLabel = apt.start ? `${formatDate(apt.start, i18n.language)} ${formatTime(apt.start, i18n.language)}` : '';
+                const endLabel = apt.end ? `${formatDate(apt.end, i18n.language)} ${formatTime(apt.end, i18n.language)}` : '';
+                const rangeLabel = startLabel && endLabel
+                    ? `${startLabel} - ${formatTime(apt.end, i18n.language)}`
+                    : (endLabel || startLabel);
+                const priceValue = Number.isFinite(apt.price) ? apt.price : null;
+                const paymentStatus = apt.paymentStatus ? String(apt.paymentStatus).toUpperCase() : '';
                 return (
                     <div key={apt.id} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-slate-800/50 border border-white/5 rounded-2xl">
                         <div>
@@ -328,9 +387,11 @@ const Appointments = () => {
                                 {memberName || t('appointments.member', 'Member')}
                             </div>
                             <div className="text-xs text-slate-400 mt-1">
-                                {apt.end ? `${formatDate(apt.end, i18n.language)} ${formatTime(apt.end, i18n.language)}` : ''}
+                                {rangeLabel}
                                 {trainerName ? ` • ${isRtl ? 'المدرب:' : 'Trainer:'} ${trainerName}` : ''}
                                 {serviceName ? ` • ${serviceName}` : ''}
+                                {priceValue !== null ? ` • ${isRtl ? 'السعر:' : 'Price:'} ${priceValue}` : ''}
+                                {paymentStatus ? ` • ${isRtl ? 'الحالة:' : 'Status:'} ${paymentStatus}` : ''}
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -667,8 +728,8 @@ const Appointments = () => {
                         </button>
                         <button onClick={() => setView('pending')} className={`p-2.5 rounded-lg transition-all flex items-center gap-2 ${view === 'pending' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
                             <AlertCircle size={20} />
-                            <span className="text-[10px] font-black uppercase tracking-wider hidden md:inline">
-                                {isRtl ? 'جلسات تحتاج إكمال' : 'PENDING COMPLETION'}
+                            <span className="text-[10px] font-black uppercase tracking-wider">
+                                {isRtl ? 'جلسات تحتاج إكمال' : 'Pending Completion'}
                             </span>
                             {pendingCompletion.length > 0 && (
                                 <span className="text-[10px] font-black bg-white/10 px-1.5 py-0.5 rounded-full">

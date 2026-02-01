@@ -55,7 +55,13 @@ router.get('/', authenticate, async (req, res) => {
 // Pending Completion
 router.get('/pending-completion', authenticate, async (req, res) => {
     try {
-        const now = new Date();
+        let now = new Date();
+        if (req.query.now && process.env.NODE_ENV !== 'production') {
+            const override = new Date(req.query.now);
+            if (!isNaN(override.getTime())) {
+                now = override;
+            }
+        }
         const { startDate, endDate } = req.query;
         const where = {
             end: { lt: now },

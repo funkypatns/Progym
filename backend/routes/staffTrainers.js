@@ -113,18 +113,10 @@ router.patch('/:id/toggle', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  try {
-    const trainer = await req.prisma.$transaction(async (tx) => {
-      return tx.staffTrainer.update({
-        where: { id: parseInt(req.params.id) },
-        data: { active: false }
-      });
-    });
-    return res.json({ success: true, data: trainer });
-  } catch (error) {
-    console.error('[STAFF TRAINERS] Delete error:', error);
-    res.status(400).json({ success: false, message: 'Failed to deactivate trainer' });
-  }
+  return res.status(403).json({
+    success: false,
+    message: 'Trainer deletion is disabled. Use Active/Inactive instead.'
+  });
 });
 
 /**
