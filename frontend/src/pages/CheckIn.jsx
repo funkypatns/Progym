@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../utils/api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QrCode, ScanFace, Search, Activity, Users, Clock, ShieldCheck, Zap, LogOut } from 'lucide-react';
 
 const CheckIn = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
+    const navigate = useNavigate();
 
     // --- Translation Helper ---
     const tr = (key, fallback) => {
@@ -16,11 +18,18 @@ const CheckIn = () => {
 
     // --- State ---
     const [mode, setMode] = useState('manual'); // manual, scan
+    const [checkInMode, setCheckInMode] = useState('membership'); // membership, session
     const [memberId, setMemberId] = useState('');
     const [checkIns, setCheckIns] = useState([]);
     const [stats, setStats] = useState({ active: 0, today: 0 });
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [errorCode, setErrorCode] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [selectedMember, setSelectedMember] = useState(null);
+    const [eligibility, setEligibility] = useState(null);
+    const [isSearching, setIsSearching] = useState(false);
+    const [isValidating, setIsValidating] = useState(false);
     const [checkOutId, setCheckOutId] = useState(null);
     const inputRef = useRef(null);
 
@@ -31,6 +40,18 @@ const CheckIn = () => {
         if (inputRef.current) inputRef.current.focus();
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        if (mode !== 'manual') return;
+        if (!memberId.trim() || selectedMember) {
+            setSearchResults([]);
+            return;
+        }
+        const timeout = setTimeout(() => {
+            fetchSearchResults(memberId.trim());
+        }, 300);
+        return () => clearTimeout(timeout);
+    }, [memberId, mode, selectedMember]);
 
     const fetchActivity = async () => {
         try {
@@ -50,6 +71,73 @@ const CheckIn = () => {
         }
     };
 
+    const getEligibilityMessage = (reason, modeValue) => {
+        if (reason === 'NOT_FOUND') {
+            return 'العميل غير موجود';
+        }
+        if (reason === 'NOT_ELIGIBLE') {
+            if (modeValue === 'session') {
+                return 'العميل غير مسجّل له حجز اليوم. احجز له جلسة أولًا.';
+            }
+            return 'العميل غير مشترك حاليًا. اشترك له أولًا.';
+        }
+        return '';
+    };
+
+    const fetchSearchResults = async (query) => {
+        if (!query) return;
+        setIsSearching(true);
+        try {
+            const res = await apiClient.get(`/checkin/search?q=${encodeURIComponent(query)}`);
+            if (res.data.success) {
+                const results = res.data.data || [];
+                setSearchResults(results);
+            }
+        } catch (error) {
+            console.error('Search failed', error);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const validateMember = async (payload) => {
+        setIsValidating(true);
+        try {
+            const res = await apiClient.post('/checkin/validate', payload);
+            const data = res.data?.data;
+            if (res.data?.success && data) {
+                setEligibility(data);
+                if (!data.eligible) {
+                    const message = getEligibilityMessage(data.reason, payload.mode) || res.data?.message || '';
+                    setErrorMessage(message);
+                } else {
+                    setErrorMessage('');
+                }
+                setErrorCode(data.reason || '');
+                return data;
+            }
+            setEligibility(null);
+            return null;
+        } catch (error) {
+            setEligibility(null);
+            const msg = error.response?.data?.message || 'Validation failed';
+            setErrorMessage(msg);
+            return null;
+        } finally {
+            setIsValidating(false);
+        }
+    };
+
+    const handleSelectMember = async (member) => {
+        setSelectedMember(member);
+        setSearchResults([]);
+        setEligibility(null);
+        setErrorMessage('');
+        setErrorCode('');
+        await validateMember({ memberId: member.id, mode: checkInMode });
+    };
+
     // --- Handlers ---
     const handleCheckIn = async (e) => {
         if (e && e.preventDefault) e.preventDefault();
@@ -57,20 +145,49 @@ const CheckIn = () => {
 
         setLoading(true);
         setErrorMessage('');
+        setErrorCode('');
         setCheckOutId(null);
         try {
-            await apiClient.post('/checkin', { memberId, method: mode });
+            let validation = eligibility;
+            if (!validation || !validation.eligible) {
+                const payload = selectedMember
+                    ? { memberId: selectedMember.id, mode: checkInMode }
+                    : { query: memberId, mode: checkInMode };
+                validation = await validateMember(payload);
+            }
+
+            if (!validation || !validation.eligible) {
+                setLoading(false);
+                return;
+            }
+
+            const checkInPayload = selectedMember
+                ? { memberId: selectedMember.id, method: mode, mode: checkInMode }
+                : { query: memberId, method: mode, mode: checkInMode };
+
+            await apiClient.post('/checkin', checkInPayload);
             toast.success(tr('checkin.success', 'SUCCESS: Access Granted'));
             setMemberId('');
+            setSelectedMember(null);
+            setEligibility(null);
+            setSearchResults([]);
+            setErrorCode('');
             fetchActivity();
             if (inputRef.current) inputRef.current.focus();
         } catch (error) {
             const msg = error.response?.data?.message || 'Check-in Failed';
             const code = error.response?.data?.code;
+            const reason = error.response?.data?.reason;
 
-            setErrorMessage(msg);
             if (code === 'ALREADY_CHECKED_IN') {
-                setCheckOutId(memberId);
+                setErrorMessage('العضو مسجل حضور بالفعل. لو عايز تسجل حضور مرة تانية، اعمل تسجيل خروج الأول.');
+                setErrorCode('ALREADY_CHECKED_IN');
+            } else {
+                setErrorMessage(getEligibilityMessage(reason, checkInMode) || msg);
+                setErrorCode(reason || '');
+            }
+            if (code === 'ALREADY_CHECKED_IN') {
+                setCheckOutId(selectedMember?.id || memberId);
             }
             toast.error(msg);
         } finally {
@@ -100,7 +217,21 @@ const CheckIn = () => {
     const handleModeChange = (newMode) => {
         setMode(newMode);
         setErrorMessage('');
+        setErrorCode('');
+        setSearchResults([]);
+        setSelectedMember(null);
+        setEligibility(null);
         setTimeout(() => inputRef.current?.focus(), 100);
+    };
+
+    const handleCheckInModeChange = (nextMode) => {
+        setCheckInMode(nextMode);
+        setErrorMessage('');
+        setErrorCode('');
+        setEligibility(null);
+        if (selectedMember) {
+            validateMember({ memberId: selectedMember.id, mode: nextMode });
+        }
     };
 
     const handleBiometric = async () => {
@@ -127,6 +258,14 @@ const CheckIn = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleBookSessionNow = () => {
+        const targetMemberId = selectedMember?.id;
+        const targetUrl = targetMemberId
+            ? `/appointments?memberId=${encodeURIComponent(targetMemberId)}`
+            : '/appointments';
+        navigate(targetUrl);
     };
 
     // --- Sub-Components ---
@@ -273,10 +412,25 @@ const CheckIn = () => {
                             </button>
                         </div>
 
+                        <div className="flex p-1.5 bg-gray-100 dark:bg-slate-950/50 rounded-2xl border border-gray-200 dark:border-white/5 mb-6 w-fit mx-auto backdrop-blur-sm">
+                            <button
+                                onClick={() => handleCheckInModeChange('membership')}
+                                className={`px-6 py-2 rounded-xl font-bold transition-all ${checkInMode === 'membership' ? 'bg-white dark:bg-slate-800 shadow-md text-blue-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                            >
+                                اشتراكات
+                            </button>
+                            <button
+                                onClick={() => handleCheckInModeChange('session')}
+                                className={`px-6 py-2 rounded-xl font-bold transition-all ${checkInMode === 'session' ? 'bg-white dark:bg-slate-800 shadow-md text-blue-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                            >
+                                جلسات
+                            </button>
+                        </div>
+
                         {/* Input / Scanner */}
-                        <div className="min-h-[200px] flex flex-col justify-end">
-                            <AnimatePresence mode="wait">
-                                {mode === 'manual' ? (
+        <div className="min-h-[200px] flex flex-col justify-end">
+            <AnimatePresence mode="wait">
+                {mode === 'manual' ? (
                                     <motion.div
                                         key="manual"
                                         initial={{ opacity: 0, y: 10 }}
@@ -289,19 +443,62 @@ const CheckIn = () => {
                                                 ref={inputRef}
                                                 type="text"
                                                 value={memberId}
-                                                onChange={(e) => setMemberId(e.target.value)}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (/^\d*$/.test(value)) {
+                                                        setMemberId(value.slice(0, 11));
+                                                    } else {
+                                                        setMemberId(value);
+                                                    }
+                                                    setSelectedMember(null);
+                                                    setEligibility(null);
+                                                    setErrorMessage('');
+                                                    setErrorCode('');
+                                                }}
                                                 onKeyDown={(e) => e.key === 'Enter' && handleCheckIn(e)}
-                                                className="w-full text-center text-3xl font-bold py-6 px-6 bg-transparent border-b-2 border-gray-200 dark:border-white/20 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-700 text-gray-900 dark:text-white tracking-widest"
-                                                placeholder="•••• ••••"
+                                                className="w-full text-center text-2xl font-semibold py-6 px-6 bg-transparent border-b border-gray-300 dark:border-white/30 focus:border-blue-400 dark:focus:border-blue-300 outline-none transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600 text-gray-900 dark:text-white tracking-widest"
+                                                placeholder={i18n.language === 'ar' ? 'اكتب كود العضو أو رقم الموبايل أو الاسم' : 'Enter member code, phone, or name'}
                                                 dir="ltr"
                                             />
                                             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 dark:text-gray-600 group-focus-within:text-blue-500 transition-colors" size={24} />
                                         </div>
 
+                                        {isSearching && (
+                                            <div className="text-xs text-gray-400 text-center">
+                                                {tr('common.loading', 'Loading...')}
+                                            </div>
+                                        )}
+
+                                        {mode === 'manual' && searchResults.length > 0 && !selectedMember && (
+                                            <div className="max-h-48 overflow-y-auto rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-sm text-left">
+                                                {searchResults.map((member) => (
+                                                    <button
+                                                        key={member.id}
+                                                        type="button"
+                                                        onClick={() => handleSelectMember(member)}
+                                                        className="w-full px-4 py-3 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors flex flex-col gap-1 text-left"
+                                                    >
+                                                        <span className="font-bold text-gray-900 dark:text-white">
+                                                            {member.name}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                            {[member.phone, member.code].filter(Boolean).join(' • ')}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {selectedMember && eligibility?.eligible && (
+                                            <div className="text-xs text-emerald-500 font-bold text-center">
+                                                {tr('checkin.eligible', 'Eligible for check-in')}
+                                            </div>
+                                        )}
+
                                         <div className="grid grid-cols-2 gap-3">
                                             <button
                                                 onClick={handleCheckIn}
-                                                disabled={loading || !memberId}
+                                                disabled={loading || !memberId || isValidating || (eligibility && !eligibility.eligible)}
                                                 className="col-span-2 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-blue-500/30 transition-transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {loading ? <span className="animate-pulse">Processing...</span> : tr('checkin.action', 'Check In Now')}
@@ -324,7 +521,13 @@ const CheckIn = () => {
                                         <input
                                             autoFocus
                                             value={memberId}
-                                            onChange={(e) => setMemberId(e.target.value)}
+                                            onChange={(e) => {
+                                                setMemberId(e.target.value);
+                                                setSelectedMember(null);
+                                                setEligibility(null);
+                                                setErrorMessage('');
+                                                setErrorCode('');
+                                            }}
                                             onKeyDown={(e) => e.key === 'Enter' && handleCheckIn(e)}
                                             className="opacity-0 absolute inset-0 cursor-pointer"
                                         />
@@ -340,21 +543,39 @@ const CheckIn = () => {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 10 }}
-                                    className="absolute -bottom-24 left-0 right-0 flex flex-col gap-3 items-center"
+                                    className="mt-4 flex flex-col gap-3 items-center"
                                 >
-                                    <div className="w-full p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-bold text-center">
-                                        {errorMessage}
-                                    </div>
-
-                                    {checkOutId && (
-                                        <button
-                                            onClick={handleCheckOut}
-                                            disabled={loading}
-                                            className="flex items-center gap-2 px-8 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-lg shadow-orange-500/30 transition-all active:scale-95 whitespace-nowrap"
-                                        >
-                                            <LogOut size={18} />
-                                            {tr('checkin.checkoutAction', 'Check Out Member Now')}
-                                        </button>
+                                    {errorCode === 'ALREADY_CHECKED_IN' ? (
+                                        <div className="w-full p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-700 dark:text-amber-300 text-sm font-bold text-center">
+                                            <div className="flex items-center justify-center gap-2 mb-3">
+                                                <ShieldCheck size={16} />
+                                                <span>{errorMessage}</span>
+                                            </div>
+                                            {checkOutId && (
+                                                <button
+                                                    onClick={handleCheckOut}
+                                                    disabled={loading}
+                                                    className="inline-flex items-center gap-2 px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-lg shadow-orange-500/30 transition-all active:scale-95 whitespace-nowrap"
+                                                >
+                                                    <LogOut size={18} />
+                                                    تسجيل خروج الآن
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="w-full p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-bold text-center">
+                                            {errorMessage}
+                                            {checkInMode === 'session' && errorCode === 'NOT_ELIGIBLE' && eligibility && eligibility.hasBookingToday === false && (
+                                                <div className="mt-4">
+                                                    <button
+                                                        onClick={handleBookSessionNow}
+                                                        className="inline-flex items-center gap-2 px-6 py-2 border border-blue-500/40 text-blue-600 dark:text-blue-400 rounded-xl font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition"
+                                                    >
+                                                        احجز جلسة الآن
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
                                 </motion.div>
                             )}

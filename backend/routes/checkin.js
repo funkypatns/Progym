@@ -25,8 +25,200 @@ router.use(['/'], (req, res, next) => {
     if (req.path === '/checkout' && req.method === 'POST') {
         return next();
     }
+    if (req.path === '/validate' && req.method === 'POST') {
+        return next();
+    }
 
     return requireActiveShift(req, res, next);
+});
+
+const buildNameFilters = (term) => {
+    const fragments = term.split(' ').filter(Boolean);
+    const filters = [
+        { firstName: { contains: term, mode: 'insensitive' } },
+        { lastName: { contains: term, mode: 'insensitive' } }
+    ];
+    if (fragments.length > 1) {
+        filters.push(
+            { firstName: { contains: fragments[0], mode: 'insensitive' } },
+            { lastName: { contains: fragments[1], mode: 'insensitive' } }
+        );
+    }
+    return filters;
+};
+
+const normalizePhoneCandidates = (digits) => {
+    const withoutZero = digits.replace(/^0/, '');
+    return [
+        digits,
+        '+' + '20' + withoutZero,
+        withoutZero
+    ];
+};
+
+const getTodayRange = () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+};
+
+const resolveMemberForValidation = async (prisma, identifier) => {
+    const cleaned = (identifier ?? '').toString().trim();
+    if (!cleaned) return null;
+
+    if (/^\d+$/.test(cleaned)) {
+        const numericId = Number.parseInt(cleaned, 10);
+        return prisma.member.findFirst({
+            where: {
+                OR: [
+                    { id: Number.isNaN(numericId) ? -1 : numericId },
+                    { memberId: cleaned },
+                    { phone: { contains: cleaned } }
+                ]
+            }
+        });
+    }
+
+    const matches = await prisma.member.findMany({
+        where: {
+            OR: [
+                { memberId: { contains: cleaned, mode: 'insensitive' } },
+                ...buildNameFilters(cleaned)
+            ]
+        },
+        take: 2
+    });
+    if (matches.length === 1) {
+        return matches[0];
+    }
+    return null;
+};
+
+const computeEligibility = async (prisma, member, mode) => {
+    const now = new Date();
+    const activeSubscription = await prisma.subscription.findFirst({
+        where: {
+            memberId: member.id,
+            status: 'active',
+            startDate: { lte: now },
+            endDate: { gte: now },
+            isPaused: false
+        },
+        orderBy: { endDate: 'desc' },
+        include: { plan: true }
+    });
+
+    const hasActiveSubscription = Boolean(activeSubscription);
+    const { start, end } = getTodayRange();
+    const booking = await prisma.appointment.findFirst({
+        where: {
+            memberId: member.id,
+            start: { gte: start, lt: end },
+            status: { notIn: ['cancelled', 'no_show'] }
+        }
+    });
+    const hasBookingToday = Boolean(booking);
+
+    let eligible = false;
+    let reason = 'NOT_ELIGIBLE';
+    if (mode === 'session') {
+        eligible = hasBookingToday;
+    } else {
+        eligible = hasActiveSubscription;
+    }
+    if (eligible) {
+        reason = 'ELIGIBLE';
+    }
+
+    return { eligible, reason, hasActiveSubscription, hasBookingToday, activeSubscription };
+};
+
+/**
+ * GET /api/checkin/search
+ * Search members by name, phone, or member code
+ */
+router.get('/search', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (req, res) => {
+    try {
+        const q = (req.query.q ?? req.query.query ?? req.query.searchq ?? '').toString().trim();
+        if (!q) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const isNumeric = /^\d+$/.test(q);
+        const where = isNumeric
+            ? {
+                OR: [
+                    { phone: { contains: q } },
+                    { memberId: { contains: q } }
+                ]
+            }
+            : {
+                OR: [
+                    { memberId: { contains: q, mode: 'insensitive' } },
+                    ...buildNameFilters(q)
+                ]
+            };
+
+        const members = await req.prisma.member.findMany({
+            where,
+            take: 10,
+            orderBy: { firstName: 'asc' }
+        });
+
+        const data = members.map(m => ({
+            id: m.id,
+            name: `${m.firstName} ${m.lastName}`.trim(),
+            phone: m.phone,
+            code: m.memberId
+        }));
+
+        return res.json({ success: true, data });
+    } catch (error) {
+        console.error('Check-in search error:', error);
+        return res.json({ success: true, data: [] });
+    }
+});
+
+/**
+ * POST /api/checkin/validate
+ * Validate eligibility for check-in
+ */
+router.post('/validate', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (req, res) => {
+    try {
+        const { memberId, query, mode } = req.body || {};
+        const identifier = memberId ?? query ?? '';
+        const member = await resolveMemberForValidation(req.prisma, identifier);
+
+        if (!member) {
+            return res.json({
+                success: true,
+                data: {
+                    eligible: false,
+                    reason: 'NOT_FOUND',
+                    hasActiveSubscription: false,
+                    hasBookingToday: false
+                }
+            });
+        }
+
+        const modeToUse = mode === 'session' ? 'session' : 'membership';
+        const { eligible, reason, hasActiveSubscription, hasBookingToday } = await computeEligibility(req.prisma, member, modeToUse);
+
+        return res.json({
+            success: true,
+            data: {
+                eligible,
+                reason,
+                hasActiveSubscription,
+                hasBookingToday
+            }
+        });
+    } catch (error) {
+        console.error('Check-in validate error:', error);
+        return res.json({ success: true, data: null });
+    }
 });
 
 /**
@@ -35,16 +227,18 @@ router.use(['/'], (req, res, next) => {
  */
 router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res) => {
     try {
-        const { memberId, method = 'manual' } = req.body;
+        const { memberId, query, method, source, mode } = req.body;
+        const methodToUse = method || source || 'manual';
 
-        // Find member by memberId string or ID
-        const member = await req.prisma.member.findFirst({
-            where: {
-                OR: [
-                    { id: parseInt(memberId) || 0 },
-                    { memberId: memberId }
-                ]
-            },
+        const identifier = (memberId ?? query ?? '').toString().trim();
+        if (!identifier) {
+            return res.status(400).json({
+                success: false,
+                message: 'Member identifier is required'
+            });
+        }
+
+        const searchOptions = {
             include: {
                 subscriptions: {
                     where: { status: 'active' },
@@ -53,73 +247,137 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
                     include: { plan: true }
                 }
             }
-        });
+        };
+
+        const findMemberByCode = async (code) => {
+            return req.prisma.member.findFirst({
+                where: {
+                    memberId: code.trim()
+                },
+                ...searchOptions
+            });
+        };
+
+        let member = null;
+
+        if (memberId) {
+            const parsedId = Number.parseInt(memberId, 10);
+            if (!Number.isNaN(parsedId)) {
+                member = await req.prisma.member.findUnique({
+                    where: { id: parsedId },
+                    ...searchOptions
+                });
+            }
+            if (!member) {
+                member = await findMemberByCode(memberId);
+            }
+        }
+
+        if (!member && query) {
+            const cleanedQuery = query.trim();
+            if (/^\d{11}$/.test(cleanedQuery)) {
+                member = await req.prisma.member.findFirst({
+                    where: {
+                        phone: {
+                            in: normalizePhoneCandidates(cleanedQuery)
+                        }
+                    },
+                    ...searchOptions
+                });
+            }
+
+            if (!member && /^\d+$/.test(cleanedQuery)) {
+                const numericId = Number.parseInt(cleanedQuery, 10);
+                member = await req.prisma.member.findFirst({
+                    where: {
+                        OR: [
+                            { id: numericId || 0 },
+                            { memberId: cleanedQuery }
+                        ]
+                    },
+                    ...searchOptions
+                });
+            }
+
+            const codePattern = /^GYM[-_ ]?\d+$/i;
+            if (!member && codePattern.test(cleanedQuery)) {
+                member = await findMemberByCode(cleanedQuery);
+            }
+
+            if (!member && !/^\d+$/.test(cleanedQuery)) {
+                const matches = await req.prisma.member.findMany({
+                    where: { OR: buildNameFilters(cleanedQuery) },
+                    take: 5,
+                    ...searchOptions
+                });
+
+                if (matches.length === 1) {
+                    member = matches[0];
+                } else if (matches.length > 1) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'Multiple members match this name. Use phone or member code.',
+                        arabicMessage: 'يوجد أكثر من عضو بهذا الاسم. استخدم رقم الهاتف أو كود العضو.',
+                        code: 'MULTIPLE_NAME_MATCHES',
+                        candidates: matches.map(m => ({
+                            id: m.id,
+                            memberId: m.memberId,
+                            name: m.firstName + ' ' + m.lastName,
+                            phone: m.phone
+                        }))
+                    });
+                }
+            }
+        }
 
         if (!member) {
-            return res.status(404).json({
+            return res.status(400).json({
                 success: false,
-                message: 'Member not found',
+                message: 'العميل غير موجود',
+                arabicMessage: 'العميل غير موجود',
+                reason: 'NOT_FOUND',
                 code: 'MEMBER_NOT_FOUND'
             });
         }
-
         if (!member.isActive) {
             return res.status(400).json({
                 success: false,
                 message: 'Member account is inactive',
+                reason: 'NOT_ELIGIBLE',
                 code: 'MEMBER_INACTIVE'
             });
         }
 
         // Check subscription status
-        const activeSubscription = member.subscriptions[0];
+        const modeToUse = mode === 'session' ? 'session' : 'membership';
+        const { eligible, reason, activeSubscription } = await computeEligibility(req.prisma, member, modeToUse);
+        let visitType = null;
+        let appointmentUsed = null;
+        let subscriptionResponse = null;
 
-        if (!activeSubscription) {
+        if (!eligible) {
             return res.status(400).json({
                 success: false,
-                message: 'No active subscription',
-                code: 'NO_SUBSCRIPTION',
-                member: {
-                    id: member.id,
-                    memberId: member.memberId,
-                    name: `${member.firstName} ${member.lastName}`,
-                    photo: member.photo
-                }
+                reason: 'NOT_ELIGIBLE',
+                message: 'Not eligible for check-in',
+                arabicMessage: 'غير مؤهل لتسجيل الدخول.'
             });
         }
 
-        // Check if subscription is expired
-        const now = new Date();
-        if (new Date(activeSubscription.endDate) < now) {
-            return res.status(400).json({
-                success: false,
-                message: 'Subscription has expired',
-                code: 'SUBSCRIPTION_EXPIRED',
-                member: {
-                    id: member.id,
-                    memberId: member.memberId,
-                    name: `${member.firstName} ${member.lastName}`,
-                    photo: member.photo
+        if (modeToUse === 'membership') {
+            visitType = 'SUBSCRIPTION';
+            subscriptionResponse = activeSubscription;
+        } else {
+            const { start, end } = getTodayRange();
+            appointmentUsed = await req.prisma.appointment.findFirst({
+                where: {
+                    memberId: member.id,
+                    start: { gte: start, lt: end },
+                    status: { notIn: ['cancelled', 'no_show'] }
                 },
-                subscription: {
-                    endDate: activeSubscription.endDate,
-                    plan: activeSubscription.plan.name
-                }
+                orderBy: { start: 'asc' }
             });
-        }
-
-        // Check if subscription is frozen
-        if (activeSubscription.status === 'frozen') {
-            return res.status(400).json({
-                success: false,
-                message: 'Subscription is frozen',
-                code: 'SUBSCRIPTION_FROZEN',
-                member: {
-                    id: member.id,
-                    memberId: member.memberId,
-                    name: `${member.firstName} ${member.lastName}`
-                }
-            });
+            visitType = 'SESSION';
         }
 
         // Check if already checked in today
@@ -144,39 +402,59 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
         }
 
         // Create check-in
+        const metadata = { visitType };
+        if (appointmentUsed) {
+            metadata.appointmentId = appointmentUsed.id;
+        }
+
         const checkIn = await req.prisma.checkIn.create({
             data: {
                 memberId: member.id,
-                method
+                method: methodToUse,
+                notes: JSON.stringify(metadata)
             }
         });
 
-        // Calculate days remaining
-        const daysRemaining = Math.ceil((new Date(activeSubscription.endDate) - now) / (1000 * 60 * 60 * 24));
+        const now = new Date();
+        const responsePayload = {
+            checkIn,
+            member: {
+                id: member.id,
+                memberId: member.memberId,
+                firstName: member.firstName,
+                lastName: member.lastName,
+                photo: member.photo
+            },
+            visitType
+        };
+
+        if (visitType === 'SUBSCRIPTION' && subscriptionResponse) {
+            const daysRemaining = Math.ceil((new Date(subscriptionResponse.endDate) - now) / (1000 * 60 * 60 * 24));
+            responsePayload.subscription = {
+                plan: subscriptionResponse.plan.name,
+                endDate: subscriptionResponse.endDate,
+                daysRemaining
+            };
+        }
+
+        if (visitType === 'SESSION' && appointmentUsed) {
+            responsePayload.appointment = {
+                id: appointmentUsed.id,
+                start: appointmentUsed.start,
+                end: appointmentUsed.end,
+                status: appointmentUsed.status
+            };
+        }
 
         res.json({
             success: true,
             message: 'Check-in successful',
-            data: {
-                checkIn,
-                member: {
-                    id: member.id,
-                    memberId: member.memberId,
-                    firstName: member.firstName,
-                    lastName: member.lastName,
-                    photo: member.photo
-                },
-                subscription: {
-                    plan: activeSubscription.plan.name,
-                    endDate: activeSubscription.endDate,
-                    daysRemaining
-                }
-            }
+            data: responsePayload
         });
 
     } catch (error) {
         console.error('Check-in error:', error);
-        res.status(500).json({
+        res.status(400).json({
             success: false,
             message: 'Check-in failed'
         });

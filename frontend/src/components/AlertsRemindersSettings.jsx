@@ -32,6 +32,15 @@ const AlertsRemindersSettings = () => {
         maxSpokenPerBatch: 3
     });
 
+    // Appointment end alerts (from DB)
+    const [appointmentAlertSettings, setAppointmentAlertSettings] = useState({
+        enabled: true,
+        intervalMinutes: 1,
+        maxRepeats: 3,
+        soundEnabled: true,
+        uiEnabled: true
+    });
+
     useEffect(() => {
         loadSettings();
     }, []);
@@ -50,6 +59,12 @@ const AlertsRemindersSettings = () => {
         return Number.isFinite(parsed) ? parsed : fallback;
     };
 
+    const parseFloatNumber = (value, fallback) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
     const loadSettings = async () => {
         setIsLoading(true);
         try {
@@ -61,6 +76,14 @@ const AlertsRemindersSettings = () => {
                     enableAutoReminders: parseBoolean(settings.general?.enable_auto_reminders, true),
                     reminderDaysBeforeDue: parseNumber(settings.general?.reminder_days_before_due, 3),
                     dueSoonDays: parseNumber(settings.general?.due_soon_days, 3)
+                });
+
+                setAppointmentAlertSettings({
+                    enabled: parseBoolean(settings.general?.appointment_alerts_enabled, true),
+                    intervalMinutes: parseFloatNumber(settings.general?.appointment_alert_interval_minutes, 1),
+                    maxRepeats: parseNumber(settings.general?.appointment_alert_max_repeats, 3),
+                    soundEnabled: parseBoolean(settings.general?.appointment_alert_sound_enabled, true),
+                    uiEnabled: parseBoolean(settings.general?.appointment_alert_ui_enabled, true)
                 });
             }
 
@@ -87,7 +110,12 @@ const AlertsRemindersSettings = () => {
                 settings: {
                     enable_auto_reminders: reminderSettings.enableAutoReminders,
                     reminder_days_before_due: reminderSettings.reminderDaysBeforeDue,
-                    due_soon_days: reminderSettings.dueSoonDays
+                    due_soon_days: reminderSettings.dueSoonDays,
+                    appointment_alerts_enabled: appointmentAlertSettings.enabled,
+                    appointment_alert_interval_minutes: appointmentAlertSettings.intervalMinutes,
+                    appointment_alert_max_repeats: appointmentAlertSettings.maxRepeats,
+                    appointment_alert_sound_enabled: appointmentAlertSettings.soundEnabled,
+                    appointment_alert_ui_enabled: appointmentAlertSettings.uiEnabled
                 }
             });
 
@@ -239,6 +267,168 @@ const AlertsRemindersSettings = () => {
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
                         <span>{i18n.language === 'ar' ? '1 يوم' : '1 day'}</span>
                         <span>{i18n.language === 'ar' ? '60 يوم' : '60 days'}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Appointment Alerts Section */}
+            <div className="card border border-gray-200 dark:border-dark-700 p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                        <Bell className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                        <h4 className="font-medium text-slate-900 dark:text-white">
+                            {i18n.language === 'ar' ? 'تنبيهات المواعيد' : 'Appointment Alerts'}
+                        </h4>
+                        <p className="text-sm text-slate-500">
+                            {i18n.language === 'ar' ? 'هذه الإعدادات خاصة بالمواعيد' : 'These settings are specific to appointments'}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Enable Appointment Alerts */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
+                    <div>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                            {i18n.language === 'ar' ? 'تفعيل تنبيهات انتهاء الموعد' : 'Enable appointment end alerts'}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                            {i18n.language === 'ar'
+                                ? 'تشغيل التنبيه عند انتهاء الموعد ولم يتم الإنهاء يدوياً'
+                                : 'Alert when an appointment ends and is not completed'}
+                        </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={appointmentAlertSettings.enabled}
+                            onChange={(e) => setAppointmentAlertSettings(prev => ({
+                                ...prev,
+                                enabled: e.target.checked
+                            }))}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+                    </label>
+                </div>
+
+                {/* Alert Interval */}
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                                {i18n.language === 'ar' ? 'فاصل التنبيه (بالدقائق)' : 'Alert interval (minutes)'}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                {i18n.language === 'ar'
+                                    ? 'عدد الدقائق بين تكرار التنبيه لنفس الموعد'
+                                    : 'Minutes between repeated alerts for the same appointment'}
+                            </p>
+                        </div>
+                        <span className="text-2xl font-bold text-primary-500">
+                            {appointmentAlertSettings.intervalMinutes}
+                        </span>
+                    </div>
+                    <input
+                        type="number"
+                        min="0.5"
+                        max="5"
+                        step="0.5"
+                        value={appointmentAlertSettings.intervalMinutes}
+                        onChange={(e) => setAppointmentAlertSettings(prev => ({
+                            ...prev,
+                            intervalMinutes: Math.max(0.5, Math.min(5, parseFloatNumber(e.target.value, 1)))
+                        }))}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 text-gray-900 dark:text-white"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>{i18n.language === 'ar' ? '0.5 دقيقة' : '0.5 min'}</span>
+                        <span>{i18n.language === 'ar' ? '5 دقائق' : '5 min'}</span>
+                    </div>
+                </div>
+
+                {/* Max Repeats */}
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                                {i18n.language === 'ar' ? 'أقصى عدد للتكرار لكل موعد' : 'Max repeats per appointment'}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                {i18n.language === 'ar'
+                                    ? '0 = تنبيه مرة واحدة فقط'
+                                    : '0 = alert only once'}
+                            </p>
+                        </div>
+                        <span className="text-2xl font-bold text-primary-500">
+                            {appointmentAlertSettings.maxRepeats}
+                        </span>
+                    </div>
+                    <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={appointmentAlertSettings.maxRepeats}
+                        onChange={(e) => setAppointmentAlertSettings(prev => ({
+                            ...prev,
+                            maxRepeats: Math.max(0, Math.min(10, parseNumber(e.target.value, 3)))
+                        }))}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 text-gray-900 dark:text-white"
+                    />
+                </div>
+
+                {/* Alert Method Toggles */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
+                        <div className="flex items-center gap-3">
+                            <Volume2 className="w-5 h-5 text-gray-500" />
+                            <div>
+                                <p className="font-medium text-gray-900 dark:text-white">
+                                    {i18n.language === 'ar' ? 'تنبيه صوتي' : 'Sound alert'}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {i18n.language === 'ar' ? 'تشغيل صوت عند التنبيه' : 'Play sound on alert'}
+                                </p>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={appointmentAlertSettings.soundEnabled}
+                                onChange={(e) => setAppointmentAlertSettings(prev => ({
+                                    ...prev,
+                                    soundEnabled: e.target.checked
+                                }))}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+                        </label>
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-dark-700/50">
+                        <div className="flex items-center gap-3">
+                            <Sliders className="w-5 h-5 text-gray-500" />
+                            <div>
+                                <p className="font-medium text-gray-900 dark:text-white">
+                                    {i18n.language === 'ar' ? 'تنبيه واجهة' : 'UI toast/banner'}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {i18n.language === 'ar' ? 'عرض تنبيه في الواجهة' : 'Show UI alert banner/toast'}
+                                </p>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={appointmentAlertSettings.uiEnabled}
+                                onChange={(e) => setAppointmentAlertSettings(prev => ({
+                                    ...prev,
+                                    uiEnabled: e.target.checked
+                                }))}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+                        </label>
                     </div>
                 </div>
             </div>

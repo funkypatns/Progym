@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-    Loader2, RefreshCcw, FileSpreadsheet, DollarSign, Eye, Calendar, Search, Users, AlertCircle, Banknote
+    Loader2, RefreshCw, FileSpreadsheet, DollarSign, Eye, Calendar, Search, Users, AlertCircle, Banknote, Download
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import apiClient from '../utils/api';
-import { formatCurrency } from '../utils/numberFormatter'; // Removed formatNumber since it was not used or can use formatCurrency
+import { formatCurrency } from '../utils/numberFormatter';
 import { formatDateTime } from '../utils/dateFormatter';
 import { useAuthStore, useSettingsStore } from '../store';
 import MemberLedgerModal from './MemberLedgerModal';
 import MemberDetailsModal from './MemberDetailsModal';
-import { motion, AnimatePresence } from 'framer-motion';
-import ReportSummaryCards from './ReportSummaryCards';
+import ReportLayout from './Reports/ReportLayout';
 
-// Helper to normalize backend response to safe defaults
 const normalizeReportResponse = (data) => {
     if (!data) return null;
     return {
@@ -38,10 +36,6 @@ const PaymentRemainingReport = ({ isActive }) => {
     const { user } = useAuthStore();
     const { getSetting } = useSettingsStore();
     const isRTL = i18n.language === 'ar';
-    const alignStart = isRTL ? 'text-right' : 'text-left';
-    const alignEnd = isRTL ? 'text-left' : 'text-right';
-    const searchIconPosition = isRTL ? 'right-3' : 'left-3';
-    const searchPadding = isRTL ? 'pr-10' : 'pl-10';
 
     const [isLoading, setIsLoading] = useState(false);
     const [data, setData] = useState(null);
@@ -56,7 +50,7 @@ const PaymentRemainingReport = ({ isActive }) => {
     });
     const [plans, setPlans] = useState([]);
     const [employees, setEmployees] = useState([]);
-    const [ledgerTarget, setLedgerTarget] = useState(null); // { memberId, subscriptionId, memberName }
+    const [ledgerTarget, setLedgerTarget] = useState(null);
     const [viewMemberId, setViewMemberId] = useState(null);
 
     const currencyConf = {
@@ -75,14 +69,14 @@ const PaymentRemainingReport = ({ isActive }) => {
         try {
             const res = await apiClient.get('/plans');
             setPlans(res.data.data || []);
-        } catch (e) {}
+        } catch (e) { }
     };
 
     const fetchEmployees = async () => {
         try {
             const res = await apiClient.get('/users/list');
             setEmployees(res.data.data || []);
-        } catch (e) {}
+        } catch (e) { }
     };
 
     const fetchReport = useCallback(async () => {
@@ -103,7 +97,7 @@ const PaymentRemainingReport = ({ isActive }) => {
             setData(normalizeReportResponse(res.data.success ? res.data.data : null));
         } catch (error) {
             toast.error(t('reports.errors.serverError', 'Failed to load report'));
-            setData(normalizeReportResponse(null)); // Safe default
+            setData(normalizeReportResponse(null));
         } finally {
             setIsLoading(false);
         }
@@ -111,7 +105,7 @@ const PaymentRemainingReport = ({ isActive }) => {
 
     useEffect(() => {
         if (isActive) fetchReport();
-    }, [isActive, fetchReport]);
+    }, [isActive]);
 
     useEffect(() => {
         if (!isActive) return;
@@ -151,13 +145,13 @@ const PaymentRemainingReport = ({ isActive }) => {
 
     const getStatusBadge = (status) => {
         const configs = {
-            unpaid: { label: t('reports.status.unpaid', 'Unpaid'), class: 'bg-red-500/20 text-red-400' },
-            partial: { label: t('reports.status.partial', 'Partial'), class: 'bg-amber-500/20 text-amber-400' },
-            settled: { label: t('reports.status.settled', 'Settled'), class: 'bg-emerald-500/20 text-emerald-400' },
-            overpaid: { label: t('reports.status.overpaid', 'Overpaid'), class: 'bg-blue-500/20 text-blue-400' }
+            unpaid: { label: t('reports.status.unpaid', 'Unpaid'), class: 'bg-red-500/10 text-red-400 border-red-500/20' },
+            partial: { label: t('reports.status.partial', 'Partial'), class: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+            settled: { label: t('reports.status.settled', 'Settled'), class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+            overpaid: { label: t('reports.status.overpaid', 'Overpaid'), class: 'bg-blue-500/10 text-blue-400 border-blue-500/20' }
         };
         const cfg = configs[status] || configs.unpaid;
-        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${cfg.class}`}>{cfg.label}</span>;
+        return <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase border ${cfg.class}`}>{cfg.label}</span>;
     };
 
     const toggleStatus = (s) => {
@@ -179,302 +173,271 @@ const PaymentRemainingReport = ({ isActive }) => {
     if (!isActive) return null;
 
     return (
-        <div className="space-y-4">
-            {ledgerTarget && (
-                <MemberLedgerModal
-                    isOpen={!!ledgerTarget}
-                    onClose={() => setLedgerTarget(null)}
-                    memberId={ledgerTarget.memberId}
-                    subscriptionId={ledgerTarget.subscriptionId}
-                    memberName={ledgerTarget.memberName}
-                />
-            )}
+        <ReportLayout>
+            <div className="p-6 max-w-7xl mx-auto">
+                {ledgerTarget && (
+                    <MemberLedgerModal
+                        isOpen={!!ledgerTarget}
+                        onClose={() => setLedgerTarget(null)}
+                        memberId={ledgerTarget.memberId}
+                        subscriptionId={ledgerTarget.subscriptionId}
+                        memberName={ledgerTarget.memberName}
+                    />
+                )}
 
-            {viewMemberId && (
-                <MemberDetailsModal
-                    isOpen={!!viewMemberId}
-                    onClose={() => setViewMemberId(null)}
-                    memberId={viewMemberId}
-                />
-            )}
+                {viewMemberId && (
+                    <MemberDetailsModal
+                        isOpen={!!viewMemberId}
+                        onClose={() => setViewMemberId(null)}
+                        memberId={viewMemberId}
+                    />
+                )}
 
-            {/* Summary Cards */}
-            {data && (
-                <ReportSummaryCards
-                    gridClassName="md:grid-cols-2 xl:grid-cols-4"
-                    items={[
-                        {
-                            label: t('reports.totalDue', 'Total due'),
-                            value: formatCurrency(data.summary.totalDue, i18n.language, currencyConf),
-                            icon: Banknote,
-                            iconClassName: 'bg-indigo-500'
-                        },
-                        {
-                            label: t('common.paid', 'Paid'),
-                            value: formatCurrency(data.summary.totalPaid, i18n.language, currencyConf),
-                            icon: DollarSign,
-                            iconClassName: 'bg-emerald-500'
-                        },
-                        {
-                            label: t('reports.remaining', 'Remaining'),
-                            value: formatCurrency(data.summary.totalRemaining, i18n.language, currencyConf),
-                            icon: AlertCircle,
-                            iconClassName: 'bg-red-500'
-                        },
-                        {
-                            label: t('reports.cases', 'Cases'),
-                            value: (
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-400">{data.summary.countUnpaid}</span>
-                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-amber-500/20 text-amber-400">{data.summary.countPartial}</span>
-                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400">{data.summary.countSettled}</span>
-                                </div>
-                            ),
-                            valueClassName: 'mt-1',
-                            icon: Users,
-                            iconClassName: 'bg-indigo-500'
-                        }
-                    ]}
+                <ReportLayout.Header
+                    icon={AlertCircle}
+                    title={t('reports.outstanding.title', 'Outstanding payments')}
+                    subtitle={t('reports.outstanding.subtitle', 'Track unpaid and partial subscriptions')}
                 />
-            )}
 
-            {/* Filters */}
-            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 p-4">
-                <div className="flex flex-wrap items-end gap-3 mb-4">
-                    <div className="flex-1 min-w-[150px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-                            <Calendar size={14} />
-                            {t('reports.from', 'From')}
-                        </label>
-                        <input
-                            type="date"
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
+                {/* Filter Bar */}
+                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-white/5 p-5 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        <ReportLayout.DateInput
+                            label={t('reports.from', 'From')}
                             value={filters.from}
                             onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+                            icon={Calendar}
                         />
-                    </div>
-                    <div className="flex-1 min-w-[150px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-                            <Calendar size={14} />
-                            {t('reports.to', 'To')}
-                        </label>
-                        <input
-                            type="date"
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
+
+                        <ReportLayout.DateInput
+                            label={t('reports.to', 'To')}
                             value={filters.to}
                             onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+                            icon={Calendar}
                         />
-                    </div>
-                    <div className="flex-1 min-w-[200px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-                            <Search size={14} />
-                            {t('common.search', 'Search')}
-                        </label>
-                        <div className="relative">
-                            <Search className={`absolute ${searchIconPosition} top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400`} />
-                            <input
-                                type="text"
-                                className={`w-full h-11 ${searchPadding} bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500`}
-                                placeholder={t('reports.searchPlaceholder', 'Search name, code, or phone...')}
-                                value={filters.search}
-                                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                            />
+
+                        <ReportLayout.SearchInput
+                            label={t('common.search', 'Search')}
+                            value={filters.search}
+                            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                            placeholder={t('reports.searchPlaceholder', 'Search name, code, or phone...')}
+                            icon={Search}
+                        />
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <FileSpreadsheet size={14} />
+                                {t('reports.fields.planName', 'Plan')}
+                            </label>
+                            <select
+                                value={filters.planId}
+                                onChange={(e) => setFilters({ ...filters, planId: e.target.value })}
+                                className="w-full bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+                            >
+                                <option value="">{t('reports.allPlans', 'All plans')}</option>
+                                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
                         </div>
                     </div>
-                    <div className="flex-1 min-w-[150px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400">{t('reports.fields.planName', 'Plan')}</label>
+
+                    <div className="flex flex-wrap items-center gap-4">
+                        {/* Status Multi-Select */}
+                        <div className="flex gap-2">
+                            {['unpaid', 'partial', 'settled', 'overpaid'].map(s => (
+                                <button
+                                    key={s}
+                                    onClick={() => toggleStatus(s)}
+                                    className={`px-3 py-2 text-xs rounded-lg font-bold transition-all ${filters.status.includes(s)
+                                        ? 'bg-teal-500 text-white'
+                                        : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                                        }`}
+                                >
+                                    {statusLabels[s]}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Employee Filter */}
                         <select
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
-                            value={filters.planId}
-                            onChange={(e) => setFilters({ ...filters, planId: e.target.value })}
+                            value={filters.employeeId}
+                            onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}
+                            className="h-[42px] px-4 bg-slate-900/70 border border-slate-700 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-colors text-sm text-white"
                         >
-                            <option value="">{t('reports.allPlans', 'All plans')}</option>
-                            {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            <option value="">{t('reports.allEmployees', 'All employees')}</option>
+                            {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
                         </select>
-                    </div>
-                </div>
 
-                <div className="flex flex-wrap items-center gap-4">
-                    {/* Status Multi-Select */}
-                    <div className="flex gap-2">
-                        {['unpaid', 'partial', 'settled', 'overpaid'].map(s => (
-                            <button
-                                key={s}
-                                onClick={() => toggleStatus(s)}
-                                className={`px-3 py-2 text-xs rounded-lg font-bold transition-all ${filters.status.includes(s)
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
-                                    }`}
+                        {/* Remaining Only Toggle */}
+                        <label className="flex items-center gap-2 text-sm text-gray-300 font-medium cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={filters.remainingOnly}
+                                onChange={(e) => setFilters({ ...filters, remainingOnly: e.target.checked })}
+                                className="rounded w-4 h-4 accent-teal-500 bg-slate-700 border-slate-600"
+                            />
+                            {t('reports.remainingOnly', 'Remaining only')}
+                        </label>
+
+                        <div className="flex-1" />
+
+                        <div className="flex gap-2">
+                            <ReportLayout.RefreshButton
+                                onClick={fetchReport}
+                                loading={isLoading}
+                                icon={RefreshCw}
                             >
-                                {statusLabels[s]}
+                                {t('common.refresh', 'Refresh')}
+                            </ReportLayout.RefreshButton>
+
+                            <button
+                                onClick={exportExcel}
+                                className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition-all flex items-center gap-2 h-[42px]"
+                            >
+                                <Download size={18} />
+                                {t('reports.export', 'Export')}
                             </button>
-                        ))}
+                        </div>
                     </div>
-
-                    {/* Employee Filter */}
-                    <select
-                        className="h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
-                        value={filters.employeeId}
-                        onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}
-                    >
-                        <option value="">{t('reports.allEmployees', 'All employees')}</option>
-                        {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
-                    </select>
-
-                    {/* Remaining Only Toggle */}
-                    <label className="flex items-center gap-2 text-sm text-gray-300 font-medium cursor-pointer select-none">
-                        <input
-                            type="checkbox"
-                            checked={filters.remainingOnly}
-                            onChange={(e) => setFilters({ ...filters, remainingOnly: e.target.checked })}
-                            className="rounded w-4 h-4 accent-indigo-600 bg-slate-700 border-slate-600"
-                        />
-                        {t('reports.remainingOnly', 'Remaining only')}
-                    </label>
-
-                    <div className="flex-1" />
-
-                    <button
-                        onClick={fetchReport}
-                        disabled={isLoading}
-                        className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
-                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
-                        {t('common.refresh', 'Refresh')}
-                    </button>
-                    <button
-                        onClick={exportExcel}
-                        className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
-                    >
-                        <FileSpreadsheet className="w-5 h-5" />
-                        {t('reports.export', 'Export')}
-                    </button>
                 </div>
-            </div>
 
-            {/* Table */}
-            <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
-                {isLoading ? (
-                    <div className="py-16 flex flex-col items-center justify-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">{t('common.loading', 'Loading...')}</p>
-                    </div>
-                ) : data && data.rows && data.rows.length > 0 ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-900/70 border-b border-slate-700/50 sticky top-0">
-                                <tr>
-                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.memberName', 'Member')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.memberId', 'Member ID')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>{t('reports.fields.planName', 'Plan')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.total', 'Total')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-emerald-500 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.paidAmount', 'Paid')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-red-500 uppercase tracking-wider ${alignEnd}`}>{t('reports.remaining', 'Remaining')}</th>
-                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">{t('reports.fields.status', 'Status')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.lastPayment', 'Last payment')}</th>
-                                    <th className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>{t('reports.fields.paidBy', 'Processed by')}</th>
-                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">{t('common.actions', 'Actions')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700/50">
-                                <AnimatePresence>
-                                    {data.rows.map((row, idx) => (
-                                        <motion.tr
-                                            key={row.subscriptionId || row.subscription?.id || idx}
-                                            initial={{ opacity: 0, x: -10 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: idx * 0.02 }}
-                                            className="hover:bg-slate-700/30 transition-colors"
-                                        >
-                                            {(() => {
-                                                const memberName = row.memberName
-                                                    || row.member?.name
-                                                    || [row.member?.firstName, row.member?.lastName].filter(Boolean).join(' ')
-                                                    || '-';
-                                                const memberPhone = row.memberPhone || row.member?.phone || '';
-                                                const memberCode = row.memberCode || row.member?.memberId || '-';
-                                                const planName = row.planName || row.plan?.name || '-';
-                                                const priceValue = Number(row.price);
-                                                const paidValue = Number(row.paidAmount);
-                                                const remainingValue = Number(row.remainingAmount);
-                                                const price = Number.isFinite(priceValue) ? priceValue : (row.financial?.total ?? row.plan?.price ?? 0);
-                                                const paidAmount = Number.isFinite(paidValue) ? paidValue : (row.financial?.totalPaid ?? row.financial?.netPaid ?? 0);
-                                                const remainingAmount = Number.isFinite(remainingValue) ? remainingValue : (row.financial?.remaining ?? 0);
-                                                const rawStatus = row.status || row.financial?.status || 'unpaid';
-                                                const status = rawStatus === 'paid' ? 'settled' : rawStatus;
-                                                const lastPaymentDate = row.lastPaymentDate || row.timeline?.lastPaymentDate || row.lastPayment?.paidAt || null;
-                                                const employeeName = row.employeeName || row.lastPayment?.employeeName || row.audit?.collectorName || '-';
-                                                const memberId = row.memberId || row.member?.id;
-                                                const subscriptionId = row.subscriptionId || row.subscription?.id;
-                                                return (
-                                                    <>
-                                                        <td className={`px-4 py-3 ${alignStart} font-medium text-white`}>
-                                                            <div className="leading-tight">
-                                                                <div>{memberName}</div>
-                                                                {memberPhone && memberPhone !== memberName && (
-                                                                    <div className="text-[10px] text-gray-500 font-mono">{memberPhone}</div>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className={`px-4 py-3 ${alignStart} text-gray-400 text-xs font-mono`}>{memberCode}</td>
-                                                        <td className={`px-4 py-3 ${alignStart} text-white`}>{planName}</td>
-                                                        <td className={`px-4 py-3 ${alignEnd} font-mono text-white`}>
-                                                            {formatCurrency(price, i18n.language, currencyConf)}
-                                                        </td>
-                                                        <td className={`px-4 py-3 ${alignEnd} font-mono text-emerald-500`}>
-                                                            {formatCurrency(paidAmount, i18n.language, currencyConf)}
-                                                        </td>
-                                                        <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-red-500`}>
-                                                            {formatCurrency(remainingAmount, i18n.language, currencyConf)}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            {getStatusBadge(status)}
-                                                        </td>
-                                                        <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400 font-mono`}>
-                                                            {lastPaymentDate ? formatDateTime(lastPaymentDate, i18n.language) : '-'}
-                                                        </td>
-                                                        <td className={`px-4 py-3 ${alignEnd} text-xs text-gray-400`}>
-                                                            {employeeName}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                <button
-                                                                    onClick={() => setLedgerTarget({
-                                                                        memberId,
-                                                                        subscriptionId,
-                                                                        memberName
-                                                                    })}
-                                                                    className="p-1.5 hover:bg-slate-600 rounded text-indigo-400 transition-all text-xs border border-transparent hover:border-indigo-500/20"
-                                                                    title={t('reports.paymentHistory', 'Payment history')}
-                                                                >
-                                                                    {t('reports.ledger', 'Ledger')}
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => setViewMemberId(memberId)}
-                                                                    className="p-1.5 hover:bg-slate-600 rounded text-gray-400 hover:text-white transition-all"
-                                                                    title={t('reports.viewMember', 'View member')}
-                                                                >
-                                                                    <Eye size={16} />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </>
-                                                );
-                                            })()}
-                                        </motion.tr>
-                                    ))}
-                                </AnimatePresence>
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <div className="py-16 flex flex-col items-center justify-center">
-                        <AlertCircle className="w-12 h-12 text-gray-600 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">{t('common.noResults', 'No data available')}</p>
-                    </div>
+                {/* Summary Cards */}
+                {data && (
+                    <ReportLayout.MetricsGrid>
+                        <ReportLayout.MetricCard
+                            icon={Banknote}
+                            label={t('reports.totalDue', 'TOTAL DUE')}
+                            value={formatCurrency(data.summary.totalDue, i18n.language, currencyConf)}
+                            color="blue"
+                            loading={isLoading}
+                        />
+                        <ReportLayout.MetricCard
+                            icon={DollarSign}
+                            label={t('common.paid', 'PAID')}
+                            value={formatCurrency(data.summary.totalPaid, i18n.language, currencyConf)}
+                            color="emerald"
+                            loading={isLoading}
+                        />
+                        <ReportLayout.MetricCard
+                            icon={AlertCircle}
+                            label={t('reports.remaining', 'REMAINING')}
+                            value={formatCurrency(data.summary.totalRemaining, i18n.language, currencyConf)}
+                            color="red"
+                            loading={isLoading}
+                        />
+                        <div className="bg-slate-700/30 border-slate-600/20 border rounded-2xl p-6 relative overflow-hidden backdrop-blur-sm transition-all hover:scale-[1.02]">
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1 text-left">
+                                    <div className="text-xs font-bold uppercase tracking-wider opacity-80 mb-3 text-slate-400">
+                                        {t('reports.cases', 'DATES')}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/20">{data.summary.countUnpaid}</span>
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/20">{data.summary.countPartial}</span>
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/20">{data.summary.countSettled}</span>
+                                    </div>
+                                </div>
+                                <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center text-slate-400">
+                                    <Users size={20} strokeWidth={2} />
+                                </div>
+                            </div>
+                        </div>
+                    </ReportLayout.MetricsGrid>
                 )}
+
+                {/* Table */}
+                <ReportLayout.Content>
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
+                        </div>
+                    ) : !data || data.rows.length === 0 ? (
+                        <ReportLayout.EmptyState
+                            icon={AlertCircle}
+                            title={t('reports.noData', 'No data found')}
+                            subtitle={t('reports.adjustFilters', 'Adjust filters or select a different date range')}
+                        />
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-900/50 border-b border-white/5">
+                                    <tr className={isRTL ? 'text-right' : 'text-left'}>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('reports.fields.member', 'Member')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('reports.fields.planName', 'Plan')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('reports.fields.lastPayment', 'Last Payment')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                                            {t('reports.fields.totalDue', 'Total')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                                            {t('reports.fields.paid', 'Paid')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                                            {t('reports.fields.remaining', 'Remaining')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('reports.fields.status', 'Status')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('common.actions', 'Actions')}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {data.rows.map((row) => (
+                                        <tr key={row.id} className="hover:bg-white/5 transition">
+                                            <td className="p-4 text-white font-medium">{row.memberName}</td>
+                                            <td className="p-4 text-slate-300">{row.planName}</td>
+                                            <td className="p-4 text-slate-400 font-mono text-xs">
+                                                {row.lastPaymentDate ? formatDateTime(row.lastPaymentDate) : '-'}
+                                            </td>
+                                            <td className="p-4 text-right text-white font-medium">
+                                                {formatCurrency(row.totalDue || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="p-4 text-right text-emerald-400 font-bold">
+                                                {formatCurrency(row.paid || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="p-4 text-right text-red-400 font-bold">
+                                                {formatCurrency(row.remaining || 0, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                {getStatusBadge(row.status)}
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => setLedgerTarget({
+                                                            memberId: row.memberId,
+                                                            subscriptionId: row.subscriptionId,
+                                                            memberName: row.memberName
+                                                        })}
+                                                        className="px-3 py-1.5 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 rounded-lg transition flex items-center gap-1.5 text-xs font-semibold"
+                                                    >
+                                                        <FileSpreadsheet size={14} />
+                                                        Ledger
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setViewMemberId(row.memberId)}
+                                                        className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition flex items-center gap-1.5 text-xs font-semibold"
+                                                    >
+                                                        <Eye size={14} />
+                                                        View
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </ReportLayout.Content>
             </div>
-        </div>
+        </ReportLayout>
     );
 };
 

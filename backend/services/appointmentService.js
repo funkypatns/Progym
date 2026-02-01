@@ -5,6 +5,43 @@ const CommissionService = require('./commissionService');
 const { recordPaymentTransaction } = require('./paymentService');
 const { roundMoney } = require('../utils/money');
 
+const createInvalidTimeError = () => {
+    const err = new Error('Invalid time or duration.');
+    err.arabicMessage = 'وقت أو مدة غير صالحة.';
+    return err;
+};
+
+const createOverlapError = () => {
+    const err = new Error('This time is already booked. Choose another time.');
+    err.arabicMessage = 'هذا الوقت محجوز بالفعل. اختر وقتا آخر.';
+    return err;
+};
+
+const buildTimeRange = (startValue, durationMinutes) => {
+    const startDate = new Date(startValue);
+    if (Number.isNaN(startDate.getTime())) {
+        throw createInvalidTimeError();
+    }
+
+    const duration = Number(durationMinutes);
+    if (Number.isNaN(duration) || duration < 1 || duration > 600) {
+        throw createInvalidTimeError();
+    }
+
+    const hour = startDate.getHours();
+    const minute = startDate.getMinutes();
+    if (hour > 12 || (hour === 12 && minute > 0)) {
+        throw createInvalidTimeError();
+    }
+
+    const endDate = new Date(startDate.getTime() + duration * 60000);
+    if (endDate <= startDate) {
+        throw createInvalidTimeError();
+    }
+
+    return { start: startDate, end: endDate };
+};
+
 const AppointmentService = {
     // ... (createAppointment remains same) ...
 
@@ -12,22 +49,24 @@ const AppointmentService = {
      * Create a new appointment
      */
     async createAppointment(data) {
-        // Validate overlap
-        const hasOverlap = await this.checkOverlap(data.coachId, data.start, data.end);
-        if (hasOverlap) {
-            throw new Error('This time slot is already booked for the selected coach.');
+        const durationMinutes = data.durationMinutes ?? ((new Date(data.end) - new Date(data.start)) / 60000);
+        const timeRange = buildTimeRange(data.start, durationMinutes);
+        const coachId = parseInt(data.coachId);
+        if (await this.checkOverlap(coachId, timeRange.start, timeRange.end)) {
+            throw createOverlapError();
         }
 
         return await prisma.appointment.create({
             data: {
                 memberId: parseInt(data.memberId),
-                coachId: parseInt(data.coachId),
+                coachId,
                 title: data.title || null,
-                start: new Date(data.start),
-                end: new Date(data.end),
+                start: timeRange.start,
+                end: timeRange.end,
                 price: parseFloat(data.price) || 0,
                 status: 'scheduled',
-                notes: data.notes
+                notes: data.notes,
+                createdByEmployeeId: data.createdByEmployeeId ? parseInt(data.createdByEmployeeId) : null
             },
             include: {
                 member: {
@@ -91,6 +130,7 @@ const AppointmentService = {
                 coach: {
                     select: { id: true, firstName: true, lastName: true }
                 },
+
                 financialRecord: { select: { status: true } },
                 payments: true
             },
@@ -102,26 +142,49 @@ const AppointmentService = {
      * Update appointment
      */
     async updateAppointment(id, data) {
-        // If time changed, check overlap
-        if (data.start && data.end) {
-            const hasOverlap = await this.checkOverlap(
-                data.coachId,
-                data.start,
-                data.end,
-                id
-            );
-            if (hasOverlap) {
-                throw new Error('Time slot overlap.');
+        const existing = await prisma.appointment.findUnique({
+            where: { id: parseInt(id) },
+            select: { coachId: true }
+        });
+        if (!existing) {
+            throw new Error('Appointment not found');
+        }
+
+        const coachIdToUse = data.coachId ? parseInt(data.coachId) : existing.coachId;
+
+        let overlapStart = null;
+        let overlapEnd = null;
+
+        if (data.start && (data.durationMinutes !== undefined || data.end)) {
+            const durationMinutes = data.durationMinutes ?? ((new Date(data.end) - new Date(data.start)) / 60000);
+            const range = buildTimeRange(data.start, durationMinutes);
+            overlapStart = range.start;
+            overlapEnd = range.end;
+            data.start = range.start;
+            data.end = range.end;
+        } else if (data.start && data.end) {
+            overlapStart = new Date(data.start);
+            overlapEnd = new Date(data.end);
+        }
+
+        if (overlapStart && overlapEnd) {
+            if (await this.checkOverlap(coachIdToUse, overlapStart, overlapEnd, id)) {
+                throw createOverlapError();
             }
         }
+
+        const updatePayload = { ...data };
+        delete updatePayload.durationMinutes;
+        delete updatePayload.startTime;
 
         const updated = await prisma.appointment.update({
             where: { id: parseInt(id) },
             data: {
-                ...data,
-                start: data.start ? new Date(data.start) : undefined,
-                end: data.end ? new Date(data.end) : undefined,
-                price: data.price ? parseFloat(data.price) : undefined
+                ...updatePayload,
+                coachId: updatePayload.coachId ? parseInt(updatePayload.coachId) : undefined,
+                start: updatePayload.start ? new Date(updatePayload.start) : undefined,
+                end: updatePayload.end ? new Date(updatePayload.end) : undefined,
+                price: updatePayload.price ? parseFloat(updatePayload.price) : undefined
             },
             include: { member: true, coach: true }
         });
@@ -151,8 +214,7 @@ const AppointmentService = {
                     memberId: true,
                     status: true,
                     price: true,
-                    paidAmount: true,
-                    subscriptionId: true
+                    paidAmount: true
                 }
             });
 
@@ -161,7 +223,7 @@ const AppointmentService = {
             const sessionPrice = existing.price || 0;
             const paidSoFar = existing.paidAmount || 0;
             const remainingDue = Math.max(0, sessionPrice - paidSoFar);
-            const isSession = !existing.subscriptionId;
+            const isSession = true;
 
             // 2. process Payment if provided
             let addedPaymentAmount = 0;
@@ -231,7 +293,10 @@ const AppointmentService = {
                 data: {
                     status: 'completed',
                     paidAmount: totalPaid,
-                    paymentStatus
+                    paymentStatus,
+                    isCompleted: true,
+                    completedByEmployeeId: userContext?.id ?? undefined,
+                    completedAt: new Date()
                 },
                 include: { member: true, coach: true, payments: true }
             });

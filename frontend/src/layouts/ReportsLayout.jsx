@@ -17,30 +17,42 @@ import {
 } from 'lucide-react';
 
 const ReportsLayout = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const location = useLocation();
+    const isRTL = i18n.dir() === 'rtl';
+
+    // Robust Safe Translation Helper
+    const safeT = (key, fallback) => {
+        const val = t(key);
+        if (!val || val === key || val.startsWith('reports.') || val.startsWith('nav.') || val.startsWith('cashClosing.') || val.startsWith('payments.')) {
+            return fallback;
+        }
+        return val;
+    };
 
     // Full list of reports matching App.jsx routes
     const reportLinks = [
-        { path: '/reports', label: t('reports.summary') || 'Dashboard', icon: PieChart, end: true },
-        { path: '/reports/product-sales', label: t('nav.products') || 'Product Sales', icon: BarChart2 },
-        { path: '/reports/revenue', label: t('reports.revenueReport'), icon: Banknote },
-        { path: '/reports/members', label: t('reports.memberReport'), icon: Users },
-        { path: '/reports/subscriptions', label: t('reports.subscriptionReport'), icon: CreditCard },
-        { path: '/reports/attendance', label: t('reports.attendanceReport'), icon: Calendar },
-        { path: '/reports/payments-summary', label: t('reports.fields.paymentCount') || 'Payments', icon: Receipt },
+        { path: '/reports', label: safeT('reports.summary', isRTL ? 'ملخص' : 'Summary'), icon: PieChart, end: true },
+        { path: '/reports/product-sales', label: safeT('nav.products', isRTL ? 'مبيعات المنتجات' : 'Product Sales'), icon: BarChart2 },
+        { path: '/reports/revenue', label: safeT('reports.revenueReport', isRTL ? 'تقرير الإيرادات' : 'Revenue Report'), icon: Banknote },
+        { path: '/reports/members', label: safeT('reports.memberReport', isRTL ? 'تقرير الأعضاء' : 'Member Report'), icon: Users },
+        { path: '/reports/subscriptions', label: safeT('reports.subscriptionReport', isRTL ? 'تقرير الاشتراكات' : 'Subscription Report'), icon: CreditCard },
+        { path: '/reports/attendance', label: safeT('reports.attendanceReport', isRTL ? 'تقرير الحضور' : 'Attendance Report'), icon: Calendar },
+        { path: '/reports/payments-summary', label: safeT('reports.paymentsSummary', isRTL ? 'ملخص المدفوعات' : 'Payments Summary'), icon: Receipt },
 
         // Complex Reports
-        { path: '/reports/employee-collections', label: t('cashClosing.allEmployees') || 'Employee Collections', icon: Users },
-        { path: '/reports/shifts', label: t('cashClosing.periodType.shift') || 'Shifts', icon: Clock },
-        { path: '/reports/receipts', label: t('payments.receipt') || 'Receipt Lookup', icon: FileText },
-        { path: '/reports/pay-in-out', label: t('payInOut.title'), icon: ArrowRightLeft },
-        { path: '/reports/refunds', label: t('reports.fields.refunds.title'), icon: ArrowRightLeft },
-        { path: '/reports/cancellations', label: 'Cancellations', icon: XOctagon },
+        { path: '/reports/employee-collections', label: safeT('reports.employeeCollections', isRTL ? 'تحصيلات الموظفين' : 'Employee Collections'), icon: Users },
+        { path: '/reports/shifts', label: safeT('reports.shifts', isRTL ? 'الورديات' : 'Shifts'), icon: Clock },
+        { path: '/reports/receipts', label: safeT('reports.receiptsLookup', isRTL ? 'البحث عن الإيصالات' : 'Receipt Lookup'), icon: FileText },
+        { path: '/reports/pay-in-out', label: safeT('payInOut.title', isRTL ? 'صادر / وارد' : 'Pay In/Out'), icon: ArrowRightLeft },
+        { path: '/reports/refunds', label: safeT('reports.fields.refunds.title', isRTL ? 'الاسترجاع' : 'Refunds'), icon: ArrowRightLeft },
+        { path: '/reports/cancellations', label: safeT('reports.cancellations.title', isRTL ? 'الإلغاءات' : 'Cancellations'), icon: XOctagon },
+        { path: '/reports/coach-earnings', label: safeT('reports.coachEarnings.title', isRTL ? 'أرباح المدربين' : 'Coach Earnings'), icon: Users },
+        { path: '/reports/gym-income', label: safeT('reports.gymIncome.title', isRTL ? 'دخل الجيم' : 'Gym Income'), icon: Banknote },
 
         // Admin Features
-        { path: '/reports/outstanding', label: 'Outstanding Balance', icon: AlertCircle },
-        { path: '/reports/cash-closing', label: t('cashClosing.title'), icon: Banknote },
+        { path: '/reports/outstanding', label: safeT('reports.outstanding', isRTL ? 'الأرصدة المستحقة' : 'Outstanding Balance'), icon: AlertCircle },
+        { path: '/reports/cash-closing', label: safeT('cashClosing.title', isRTL ? 'إغلاق الوردية' : 'Cash Closing'), icon: Banknote },
     ];
 
     return (

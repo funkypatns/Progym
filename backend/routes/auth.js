@@ -149,6 +149,7 @@ router.get('/me', authenticate, async (req, res) => {
                 firstName: true,
                 lastName: true,
                 role: true,
+                permissions: true, // Required for staff permissions to persist on refresh
                 avatar: true,
                 isActive: true,
                 lastLogin: true,

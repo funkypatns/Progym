@@ -33,6 +33,31 @@ router.get('/list', authenticate, async (req, res) => {
     }
 });
 
+/**
+ * GET /api/users/coaches
+ * List all coaches (for dropdowns)
+ */
+router.get('/coaches', authenticate, async (req, res) => {
+    try {
+        const coaches = await req.prisma.user.findMany({
+            where: {
+                isActive: true,
+                role: { in: ['coach', 'staff', 'admin'] } // flexible for now, or just 'coach'
+            },
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                role: true
+            },
+            orderBy: { firstName: 'asc' }
+        });
+        res.json({ success: true, data: coaches });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 const { normalizePermissions } = require('../utils/permissionsStore');
 
 /**
@@ -248,6 +273,37 @@ router.put('/:id', [
         res.json({ success: true, message: 'User updated', data: userWithoutPassword });
 
     } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * DELETE /api/users/:id
+ * Delete user
+ */
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Prevent deleting self
+        if (parseInt(id) === req.user.id) {
+            return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
+        }
+
+        await req.prisma.user.delete({
+            where: { id: parseInt(id) }
+        });
+
+        res.json({ success: true, message: 'User deleted successfully' });
+
+    } catch (error) {
+        console.error('Delete user error:', error);
+        if (error.code === 'P2003') {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot delete user: This user has associated records (Sales, Shifts, etc.). Please disable the account instead.'
+            });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });

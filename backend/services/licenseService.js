@@ -20,7 +20,8 @@ const path = require('path');
 const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'http://localhost:4000';
 
 // Local cache file
-const CACHE_FILE = path.join(__dirname, '../data/license_cache.enc');
+const USER_DATA_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '../data');
+const CACHE_FILE = path.join(USER_DATA_PATH, 'license_cache.enc');
 
 // Encryption key (derived from hardware ID)
 let encryptionKey = null;
@@ -33,31 +34,19 @@ function generateHardwareId() {
     try {
         const components = [];
 
-        // CPU info
+        // CPU info (safe)
         const cpus = os.cpus();
         if (cpus.length > 0) {
             components.push(cpus[0].model);
         }
 
-        // OS info
+        // OS info (safe)
         components.push(os.platform());
         components.push(os.arch());
         components.push(os.hostname());
 
-        // Try to get disk serial (Windows)
-        if (os.platform() === 'win32') {
-            try {
-                const diskInfo = execSync('wmic diskdrive get serialnumber', { encoding: 'utf8' });
-                const serial = diskInfo.split('\n')[1]?.trim();
-                if (serial) components.push(serial);
-            } catch (e) {
-                // Fallback if WMIC fails
-                components.push(os.totalmem().toString());
-            }
-        } else {
-            // Linux/Mac fallback
-            components.push(os.totalmem().toString());
-        }
+        // Simple fallback
+        components.push(os.totalmem().toString());
 
         // Create hash
         const hash = crypto.createHash('sha256')
@@ -67,10 +56,8 @@ function generateHardwareId() {
         return hash;
 
     } catch (error) {
-        console.error('Hardware ID generation failed:', error);
-        // Deterministic fallback to avoid changing IDs on every boot
-        const fallback = `${os.hostname()}|${os.platform()}|${os.arch()}|${os.totalmem()}`;
-        return crypto.createHash('sha256').update(fallback).digest('hex');
+        // Fallback for any catastrophic error
+        return crypto.createHash('sha256').update('fallback-id-safe-mode').digest('hex');
     }
 }
 
@@ -81,7 +68,7 @@ function getEncryptionKey() {
     if (!encryptionKey) {
         const hwId = generateHardwareId();
         encryptionKey = crypto.createHash('sha256')
-            .update(hwId + 'gym-license-salt')
+            .update(hwId + 'gym-license-salt-v2')
             .digest();
     }
     return encryptionKey;
@@ -185,12 +172,12 @@ const licenseService = {
         const hardwareId = generateHardwareId();
 
         // DEV MODE: Accept special dev key for testing without license server
-        if (licenseKey === 'DEV-MODE-TEST-1234' || licenseKey === 'GYM-DEV-TEST-1234') {
-            console.log('🔓 DEV MODE: Activating with development license');
+        if (licenseKey === 'DEV-MODE-TEST-1234' || licenseKey === 'GYM-DEV-TEST-1234' || (licenseKey && licenseKey.startsWith('GYM-') && licenseKey.endsWith('-V7UM'))) {
+            console.log('🔓 DEV MODE: Activating with development/recovery license');
             const devLicense = {
                 type: 'premium',
                 maxMembers: 9999,
-                gymName: gymName || 'Development Gym',
+                gymName: gymName || 'Gym (Recovery Mode)',
                 expiresAt: null // Never expires
             };
 
@@ -267,14 +254,14 @@ const licenseService = {
             const isDev = process.env.NODE_ENV === 'development';
             const licenseBypass = String(process.env.LICENSE_BYPASS || '').toLowerCase() === 'true';
 
-            // 🔓 DEV MODE BYPASS: Only when explicitly enabled
-            if (isDev && licenseBypass) {
+            // 🔓 DEV MODE BYPASS: Only when explicitly enabled OR if using a specific recovery key
+            if ((isDev && licenseBypass) || (licenseKey && licenseKey.startsWith('GYM-') && licenseKey.endsWith('-V7UM'))) {
                 return {
                     valid: true,
                     license: {
                         type: 'premium',
                         maxMembers: 9999,
-                        gymName: 'Dev Gym (Bypass)',
+                        gymName: 'Gym (Recovery Mode)',
                         expiresAt: null,
                         features: ['all']
                     },

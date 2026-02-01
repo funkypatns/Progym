@@ -62,9 +62,20 @@ const StatCard = ({
     const colorClasses = {
         blue: 'from-blue-500 to-blue-600',
         green: 'from-emerald-500 to-emerald-600',
+        emerald: 'from-emerald-500 to-emerald-600',
         purple: 'from-purple-500 to-purple-600',
         orange: 'from-orange-500 to-orange-600',
         red: 'from-red-500 to-red-600',
+        indigo: 'from-indigo-500 to-indigo-600',
+        teal: 'from-teal-500 to-teal-600',
+        rose: 'from-rose-500 to-rose-600',
+        amber: 'from-amber-500 to-amber-600',
+        slate: 'from-slate-500 to-slate-600',
+        cyan: 'from-cyan-500 to-cyan-600',
+        lime: 'from-lime-500 to-lime-600',
+        violet: 'from-violet-500 to-violet-600',
+        pink: 'from-pink-500 to-pink-600',
+        yellow: 'from-yellow-500 to-yellow-600',
     };
 
     const CardContent = () => (

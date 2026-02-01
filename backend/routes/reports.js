@@ -169,137 +169,137 @@ const handlePaymentRemaining = async (req, res) => {
         }
 
         // Fetch subscriptions with all related data
-          const subscriptions = await req.prisma.subscription.findMany({
-              where,
-              include: {
-                  member: {
-                      select: {
-                          id: true,
-                          memberId: true,
-                          firstName: true,
-                          lastName: true,
-                          phone: true,
-                          gender: true
-                      }
-                  },
-                  plan: {
-                      select: {
-                          id: true,
-                          name: true,
-                          price: true,
-                          duration: true
-                      }
-                  },
-                  payments: {
-                      where: {
-                          status: { in: ['completed', 'refunded', 'Partial Refund'] }
-                      },
-                      select: {
-                          id: true,
-                          amount: true,
-                          refundedTotal: true,
-                          paidAt: true,
-                          method: true,
-                          collectorName: true,
-                          status: true,
-                          creator: {
-                              select: {
-                                  firstName: true,
-                                  lastName: true
-                              }
-                          }
-                      },
-                      orderBy: {
-                          paidAt: 'desc'
+        const subscriptions = await req.prisma.subscription.findMany({
+            where,
+            include: {
+                member: {
+                    select: {
+                        id: true,
+                        memberId: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        gender: true
+                    }
+                },
+                plan: {
+                    select: {
+                        id: true,
+                        name: true,
+                        price: true,
+                        duration: true
+                    }
+                },
+                payments: {
+                    where: {
+                        status: { in: ['completed', 'refunded', 'Partial Refund'] }
+                    },
+                    select: {
+                        id: true,
+                        amount: true,
+                        refundedTotal: true,
+                        paidAt: true,
+                        method: true,
+                        collectorName: true,
+                        status: true,
+                        creator: {
+                            select: {
+                                firstName: true,
+                                lastName: true
+                            }
+                        }
+                    },
+                    orderBy: {
+                        paidAt: 'desc'
                     }
                 }
             }
         });
 
         // Calculate financials for each subscription
-          let rows = subscriptions.map(sub => {
-              const subscriptionPrice = sub.price != null
-                  ? sub.price
-                  : (sub.plan?.price || 0);
-              const financials = calculateSubscriptionFinancials({ ...sub, price: subscriptionPrice }, sub.payments);
-              const totalDue = financials.subscriptionPrice;
-              const netPaid = financials.netPaid;
-              const epsilon = 0.01;
-              let paymentStatus = 'unpaid';
-              if (netPaid > epsilon && netPaid + epsilon < totalDue) {
-                  paymentStatus = 'partial';
-              } else if (netPaid + epsilon >= totalDue) {
-                  paymentStatus = netPaid > totalDue + epsilon ? 'overpaid' : 'settled';
-              }
+        let rows = subscriptions.map(sub => {
+            const subscriptionPrice = sub.price != null
+                ? sub.price
+                : (sub.plan?.price || 0);
+            const financials = calculateSubscriptionFinancials({ ...sub, price: subscriptionPrice }, sub.payments);
+            const totalDue = financials.subscriptionPrice;
+            const netPaid = financials.netPaid;
+            const epsilon = 0.01;
+            let paymentStatus = 'unpaid';
+            if (netPaid > epsilon && netPaid + epsilon < totalDue) {
+                paymentStatus = 'partial';
+            } else if (netPaid + epsilon >= totalDue) {
+                paymentStatus = netPaid > totalDue + epsilon ? 'overpaid' : 'settled';
+            }
 
-              const lastPayment = sub.payments.length > 0 ? sub.payments[0] : null;
-              const lastPaymentEmployee = lastPayment?.creator
-                  ? `${lastPayment.creator.firstName} ${lastPayment.creator.lastName}`
-                  : (lastPayment?.collectorName || null);
-              const memberName = `${sub.member.firstName} ${sub.member.lastName}`;
+            const lastPayment = sub.payments.length > 0 ? sub.payments[0] : null;
+            const lastPaymentEmployee = lastPayment?.creator
+                ? `${lastPayment.creator.firstName} ${lastPayment.creator.lastName}`
+                : (lastPayment?.collectorName || null);
+            const memberName = `${sub.member.firstName} ${sub.member.lastName}`;
 
-              return {
-                  subscriptionId: sub.id,
-                  memberId: sub.member.id,
-                  memberName,
-                  memberCode: sub.member.memberId,
-                  planId: sub.plan.id,
-                  planName: sub.plan.name,
-                  planDuration: sub.plan.duration,
-                  status: paymentStatus,
-                  subscriptionStatus: sub.status,
-                  startDate: sub.startDate,
-                  endDate: sub.endDate,
-                  cancelledAt: sub.canceledAt || null,
-                  price: financials.subscriptionPrice,
-                  paidAmount: financials.totalPaid,
-                  refundedAmount: financials.totalRefunded,
-                  netPaid: financials.netPaid,
-                  remainingAmount: financials.remaining,
-                  lastPaymentDate: lastPayment?.paidAt || null,
-                  lastPayment: lastPayment ? {
-                      amount: lastPayment.amount,
-                      method: lastPayment.method,
-                      paidAt: lastPayment.paidAt,
-                      employeeName: lastPaymentEmployee
-                  } : null,
-                  employeeName: lastPaymentEmployee,
-                  subscription: {
-                      id: sub.id,
-                      startDate: sub.startDate,
-                      endDate: sub.endDate,
-                      status: sub.status,
-                      cancelledAt: sub.canceledAt || null
-                  },
-                  member: {
-                      id: sub.member.id,
-                      memberId: sub.member.memberId,
-                      name: memberName,
-                      phone: sub.member.phone,
-                      gender: sub.member.gender || 'unknown'
-                  },
-                  plan: {
-                      id: sub.plan.id,
-                      name: sub.plan.name,
-                      price: sub.plan.price,
-                      duration: sub.plan.duration
-                  },
-                  financial: {
-                      total: financials.subscriptionPrice,
-                      totalPaid: financials.totalPaid,
-                      totalRefunded: financials.totalRefunded,
-                      netPaid: financials.netPaid,
-                      remaining: financials.remaining,
-                      status: paymentStatus
-                  },
-                  timeline: {
-                      lastPaymentDate: lastPayment?.paidAt || null
-                  },
-                  audit: {
-                      collectorName: lastPaymentEmployee
-                  }
-              };
-          });
+            return {
+                subscriptionId: sub.id,
+                memberId: sub.member.id,
+                memberName,
+                memberCode: sub.member.memberId,
+                planId: sub.plan.id,
+                planName: sub.plan.name,
+                planDuration: sub.plan.duration,
+                status: paymentStatus,
+                subscriptionStatus: sub.status,
+                startDate: sub.startDate,
+                endDate: sub.endDate,
+                cancelledAt: sub.canceledAt || null,
+                price: financials.subscriptionPrice,
+                paidAmount: financials.totalPaid,
+                refundedAmount: financials.totalRefunded,
+                netPaid: financials.netPaid,
+                remainingAmount: financials.remaining,
+                lastPaymentDate: lastPayment?.paidAt || null,
+                lastPayment: lastPayment ? {
+                    amount: lastPayment.amount,
+                    method: lastPayment.method,
+                    paidAt: lastPayment.paidAt,
+                    employeeName: lastPaymentEmployee
+                } : null,
+                employeeName: lastPaymentEmployee,
+                subscription: {
+                    id: sub.id,
+                    startDate: sub.startDate,
+                    endDate: sub.endDate,
+                    status: sub.status,
+                    cancelledAt: sub.canceledAt || null
+                },
+                member: {
+                    id: sub.member.id,
+                    memberId: sub.member.memberId,
+                    name: memberName,
+                    phone: sub.member.phone,
+                    gender: sub.member.gender || 'unknown'
+                },
+                plan: {
+                    id: sub.plan.id,
+                    name: sub.plan.name,
+                    price: sub.plan.price,
+                    duration: sub.plan.duration
+                },
+                financial: {
+                    total: financials.subscriptionPrice,
+                    totalPaid: financials.totalPaid,
+                    totalRefunded: financials.totalRefunded,
+                    netPaid: financials.netPaid,
+                    remaining: financials.remaining,
+                    status: paymentStatus
+                },
+                timeline: {
+                    lastPaymentDate: lastPayment?.paidAt || null
+                },
+                audit: {
+                    collectorName: lastPaymentEmployee
+                }
+            };
+        });
 
         // Apply filters
         if (search) {
@@ -674,6 +674,7 @@ router.get('/settled-payments', async (req, res) => {
 /**
  * GET /api/reports/refunds
  * Refunds report with filters
+ * Updated: Member name display fixed
  */
 router.get('/refunds', async (req, res) => {
     try {
@@ -829,63 +830,88 @@ router.get('/refunds', async (req, res) => {
             });
         }
 
-        // Calculate summary
-        const refundRows = refunds.map(refund => ({
-            id: `refund-${refund.id}`,
-            amount: refund.amount,
-            reason: refund.reason,
-            refundedAt: refund.createdAt, // Frontend expects this key
-            member: refund.payment?.member ? {
-                id: refund.payment.member.id,
-                memberId: refund.payment.member.memberId,
-                name: `${refund.payment.member.firstName} ${refund.payment.member.lastName}`,
-                gender: refund.payment.member.gender || 'unknown',
-                code: refund.payment.member.memberId
-            } : { name: 'Unknown', code: '---' },
-            subscription: refund.payment?.subscription ? {
-                name: refund.payment.subscription.plan?.name || 'Unknown Plan'
-            } : { name: 'N/A' },
-            processedBy: refund.user ? {
-                name: `${refund.user.firstName} ${refund.user.lastName}`
-            } : { name: 'System' },
-            method: (refund.payment?.method || 'cash').toLowerCase(),
-            originalPaid: refund.payment?.amount || 0,
-            totalRefundedSoFar: refund.payment?.refundedTotal || 0,
-            netRemaining: (refund.payment?.amount || 0) - (refund.payment?.refundedTotal || 0),
-            receiptId: refund.payment?.receiptNumber
-        }));
+        // Calculate summary - filter out refunds without valid member data
+        const refundRows = refunds
+            .filter(refund => refund.payment?.member) // Only include refunds with valid member
+            .map(refund => {
+                const member = refund.payment.member;
+                const firstName = member.firstName?.trim() || '';
+                const lastName = member.lastName?.trim() || '';
+                const memberName = firstName && lastName
+                    ? `${firstName} ${lastName}`
+                    : firstName || lastName || 'Unknown Member';
 
-        const negativePaymentRows = negativePayments.map(payment => {
-            const totals = payment.subscriptionId ? subscriptionTotals.get(payment.subscriptionId) : null;
-            const totalPaid = totals?.paid || 0;
-            const totalRefunded = totals?.refunded || Math.abs(payment.amount || 0);
-            const netRemaining = Math.max(0, totalPaid - totalRefunded);
+                return {
+                    id: `refund-${refund.id}`,
+                    amount: refund.amount,
+                    reason: refund.reason,
+                    refundedAt: refund.createdAt, // Frontend expects this key
+                    member: {
+                        id: member.id,
+                        memberId: member.memberId,
+                        name: memberName,
+                        firstName: firstName,
+                        lastName: lastName,
+                        gender: member.gender || 'unknown',
+                        code: member.memberId
+                    },
+                    subscription: refund.payment?.subscription ? {
+                        name: refund.payment.subscription.plan?.name || 'Unknown Plan'
+                    } : { name: 'N/A' },
+                    processedBy: refund.user ? {
+                        name: `${refund.user.firstName || ''} ${refund.user.lastName || ''}`.trim() || 'System'
+                    } : { name: 'System' },
+                    method: (refund.payment?.method || 'cash').toLowerCase(),
+                    originalPaid: refund.payment?.amount || 0,
+                    totalRefundedSoFar: refund.payment?.refundedTotal || 0,
+                    netRemaining: (refund.payment?.amount || 0) - (refund.payment?.refundedTotal || 0),
+                    receiptId: refund.payment?.receiptNumber
+                };
+            });
 
-            return {
-                id: `payment-${payment.id}`,
-                amount: Math.abs(payment.amount || 0),
-                reason: extractReason(payment.notes),
-                refundedAt: payment.paidAt || payment.createdAt,
-                member: payment.member ? {
-                    id: payment.member.id,
-                    memberId: payment.member.memberId,
-                    name: `${payment.member.firstName} ${payment.member.lastName}`,
-                    gender: payment.member.gender || 'unknown',
-                    code: payment.member.memberId
-                } : { name: 'Unknown', code: '---' },
-                subscription: payment.subscription ? {
-                    name: payment.subscription.plan?.name || 'Unknown Plan'
-                } : { name: 'N/A' },
-                processedBy: payment.creator ? {
-                    name: `${payment.creator.firstName} ${payment.creator.lastName}`
-                } : { name: payment.collectorName || 'System' },
-                method: (payment.method || 'cash').toLowerCase(),
-                originalPaid: totalPaid,
-                totalRefundedSoFar: totalRefunded,
-                netRemaining,
-                receiptId: payment.receiptNumber
-            };
-        });
+
+        const negativePaymentRows = negativePayments
+            .filter(payment => payment.member) // Only include payments with valid member
+            .map(payment => {
+                const totals = payment.subscriptionId ? subscriptionTotals.get(payment.subscriptionId) : null;
+                const totalPaid = totals?.paid || 0;
+                const totalRefunded = totals?.refunded || Math.abs(payment.amount || 0);
+                const netRemaining = Math.max(0, totalPaid - totalRefunded);
+
+                const member = payment.member;
+                const firstName = member.firstName?.trim() || '';
+                const lastName = member.lastName?.trim() || '';
+                const memberName = firstName && lastName
+                    ? `${firstName} ${lastName}`
+                    : firstName || lastName || 'Unknown Member';
+
+                return {
+                    id: `payment-${payment.id}`,
+                    amount: Math.abs(payment.amount || 0),
+                    reason: extractReason(payment.notes),
+                    refundedAt: payment.paidAt || payment.createdAt,
+                    member: {
+                        id: member.id,
+                        memberId: member.memberId,
+                        name: memberName,
+                        firstName: firstName,
+                        lastName: lastName,
+                        gender: member.gender || 'unknown',
+                        code: member.memberId
+                    },
+                    subscription: payment.subscription ? {
+                        name: payment.subscription.plan?.name || 'Unknown Plan'
+                    } : { name: 'N/A' },
+                    processedBy: payment.creator ? {
+                        name: `${payment.creator.firstName || ''} ${payment.creator.lastName || ''}`.trim() || 'System'
+                    } : { name: payment.collectorName || 'System' },
+                    method: (payment.method || 'cash').toLowerCase(),
+                    originalPaid: totalPaid,
+                    totalRefundedSoFar: totalRefunded,
+                    netRemaining,
+                    receiptId: payment.receiptNumber
+                };
+            });
 
         let rows = [...refundRows, ...negativePaymentRows];
 
@@ -1184,7 +1210,7 @@ router.get('/payments/transactions', async (req, res) => {
  */
 router.get('/members', async (req, res) => {
     try {
-        const { startDate, endDate, from, to, search } = req.query;
+        const { startDate, endDate, from, to, search, visitType } = req.query;
         // Default to last 30 days if no date provided
         const { startDate: start, endDate: end, error } = parseDateRange(startDate || from, endDate || to);
 
@@ -1277,6 +1303,18 @@ router.get('/attendance', async (req, res) => {
                 lte: end
             }
         };
+        const normalizedType = (visitType || '').trim().toUpperCase();
+        if (normalizedType) {
+            if (normalizedType === 'SESSION') {
+                where.notes = { contains: '"visitType":"SESSION"' };
+            } else if (normalizedType === 'SUBSCRIPTION') {
+                where.OR = [
+                    { notes: null },
+                    { notes: '' },
+                    { notes: { contains: '"visitType":"SUBSCRIPTION"' } }
+                ];
+            }
+        }
 
         if (search) {
             where.member = {
@@ -2069,6 +2107,185 @@ router.get('/sales/detailed', async (req, res) => {
     } catch (error) {
         console.error('[REPORTS] Sales detailed error:', error);
         res.status(500).json({ success: false, message: 'Failed to generate product sales report' });
+    }
+});
+
+/**
+ * GET /api/reports/gym-income
+ * Advanced Gym Income Report from AppointmentFinancialRecord
+ * 
+ * Rules:
+ * - Read-only derived data
+ * - Filters: Date Range, Coach, Service
+ * - Aggregates on demand (handled by frontend, backend sends raw relevant rows)
+ */
+router.get('/gym-income', async (req, res) => {
+    try {
+        const { from, to, coachId, serviceType, format } = req.query;
+
+        const where = {
+            // Only completed records exist in this table
+        };
+
+        // Date Filter
+        if (from && to) {
+            // Validate dates
+            if (!isNaN(Date.parse(from)) && !isNaN(Date.parse(to))) {
+                const startDate = new Date(from);
+                const endDate = new Date(to);
+                // Set End Date to End of Day
+                endDate.setHours(23, 59, 59, 999);
+
+                where.completedAt = {
+                    gte: startDate,
+                    lte: endDate
+                };
+            }
+        }
+
+        // Coach Filter
+        if (coachId && coachId !== 'all') {
+            where.coachId = parseInt(coachId);
+        }
+
+        // Service Filter
+        if (serviceType && serviceType !== 'all') {
+            where.appointment = {
+                title: { contains: serviceType }
+            };
+        }
+
+        console.log('[REPORTS] Gym Income Query Config:', JSON.stringify(where, null, 2));
+
+        // Fetch Data
+        const records = await req.prisma.appointmentFinancialRecord.findMany({
+            where,
+            include: {
+                member: { select: { firstName: true, lastName: true } },
+                coach: { select: { firstName: true, lastName: true } },
+                appointment: { select: { title: true, start: true } }
+            },
+            orderBy: { completedAt: 'desc' }
+        });
+
+        console.log(`[REPORTS] Gym Income: Found ${records.length} records.`);
+
+        // Calculate Summary
+        const summary = {
+            totalGrossRevenue: records.reduce((sum, r) => sum + r.sessionPrice, 0),
+            totalCommissions: records.reduce((sum, r) => sum + r.coachCommission, 0),
+            totalNetIncome: records.reduce((sum, r) => sum + r.gymNetIncome, 0),
+            totalSessions: records.length
+        };
+
+        // Format Rows
+        const rows = records.map(r => ({
+            id: r.id,
+            coachId: r.coachId,
+            date: r.completedAt,
+            memberName: r.member ? `${r.member.firstName} ${r.member.lastName}` : 'Unknown',
+            coachName: r.coach ? `${r.coach.firstName} ${r.coach.lastName}` : 'Unknown',
+            service: r.appointment?.title || 'Session',
+            sessionPrice: r.sessionPrice,
+            commission: r.coachCommission,
+            netIncome: r.gymNetIncome,
+            status: r.status === 'PAID' ? 'paid' : 'pending'
+        }));
+
+        if (format === 'excel') {
+            // Excel logic remains basic but safe
+            try {
+                const excelRows = rows.map(r => ({
+                    Date: r.date,
+                    Member: r.memberName,
+                    Coach: r.coachName,
+                    Service: r.service,
+                    'Session Price': r.sessionPrice,
+                    'Coach Commission': r.commission,
+                    'Gym Net Income': r.netIncome,
+                    'Commission Status': r.status
+                }));
+                const xlsx = require('xlsx');
+                const wb = xlsx.utils.book_new();
+                const ws = xlsx.utils.json_to_sheet(excelRows);
+                xlsx.utils.book_append_sheet(wb, ws, 'Gym Income');
+                const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+                res.setHeader('Content-Disposition', `attachment; filename="gym-income-report.xlsx"`);
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                return res.send(buf);
+            } catch (excelError) {
+                console.error('[REPORTS] Excel generation failed:', excelError);
+                return res.status(500).json({ success: false, message: 'Excel generation failed' });
+            }
+        }
+
+        res.json({
+            success: true,
+            data: { summary, rows }
+        });
+
+    } catch (error) {
+        console.error('[REPORTS] Gym Income Error:', error);
+        // Fail safe to prevent UI Red Screen
+        res.json({
+            success: true,
+            data: {
+                summary: { totalGrossRevenue: 0, totalCommissions: 0, totalNetIncome: 0, totalSessions: 0 },
+                rows: []
+            },
+            _warning: 'Failed to fetch report data'
+        });
+    }
+});
+
+/**
+ * GET /api/reports/coach-earnings
+ * Coach Earnings from AppointmentFinancialRecord
+ * 
+ * Replaces legacy logic to ensure consistency.
+ */
+router.get('/coach-earnings', async (req, res) => {
+    try {
+        const { coachId, status, from, to } = req.query;
+        const CommissionService = require('../services/commissionService');
+
+        // Robust Date Validation
+        let filters = {};
+        if (from && to) {
+            // Check if dates are valid
+            if (!isNaN(Date.parse(from)) && !isNaN(Date.parse(to))) {
+                filters.startDate = from;
+                filters.endDate = to;
+            }
+        }
+
+        if (status && status !== 'all') {
+            filters.status = status;
+        }
+
+        const targetCoachId = (coachId && coachId !== 'all') ? coachId : null;
+
+        const { summary, rows } = await CommissionService.getEarnings(targetCoachId, filters);
+
+        res.json({
+            success: true,
+            data: {
+                summary: summary || { totalEarnings: 0, paidEarnings: 0, pendingEarnings: 0 },
+                rows: rows || []
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Coach Earnings Error:', error);
+        // Return 200 with empty data to prevent UI crash, but log error
+        res.json({
+            success: true,
+            data: {
+                summary: { totalEarnings: 0, paidEarnings: 0, pendingEarnings: 0 },
+                rows: []
+            },
+            _warning: 'Failed to fetch some data'
+        });
     }
 });
 

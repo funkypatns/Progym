@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, User, Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Bell } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns';
+import { Plus, Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, User, Clock, CheckCircle, XCircle, AlertCircle, PlayCircle, Bell, Lock } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, startOfDay, isBefore } from 'date-fns';
 import { formatDateTime, formatDate, formatTime } from '../../utils/dateFormatter';
 import { arEG, enUS } from 'date-fns/locale';
 import apiClient from '../../utils/api';
@@ -9,12 +9,15 @@ import toast from 'react-hot-toast';
 import AppointmentModal from './AppointmentModal';
 import DayDetailsModal from './DayDetailsModal';
 import AddPaymentDialog from '../../components/payments/AddPaymentDialog'; // Reusing payment dialog
-import { useAuthStore } from '../../store';
+import { useAuthStore, useSettingsStore } from '../../store';
+
+const PENDING_COMPLETION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleC8KEIQ+WFBQZG54d2uDkIpxTDIvKjo8Oz5BWF9pcXx+d2ttaVtIRxEULztBOzQzMj9KVFhdV09FREJBQkBCQ0ZJTVFVWFlaWldWVFJQT05NTk5PUVNVVldYWFlZWllYV1ZVVFRUVFRVVlZXWFhZWVhaWVlZWFhXV1ZWVVVVVVVVVVZWVldXWFhYWFhYWFhXV1dXVldXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXVw==';
 
 const Appointments = () => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
     const { user } = useAuthStore();
+    const { settings, getSetting, fetchSettings } = useSettingsStore();
 
     const [view, setView] = useState('calendar'); // calendar | list | notifications
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -26,12 +29,52 @@ const Appointments = () => {
     const [showModal, setShowModal] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [preSelectedDate, setPreSelectedDate] = useState(null);
+    const [appointmentReadOnly, setAppointmentReadOnly] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentAppointment, setPaymentAppointment] = useState(null);
 
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedDayDate, setSelectedDayDate] = useState(null);
+    const [pendingCompletion, setPendingCompletion] = useState([]);
+    const [pendingCompletionLoading, setPendingCompletionLoading] = useState(false);
     const PREVIEW_LIMIT = 3;
+    const todayStart = startOfDay(new Date());
+    const isPastDate = (dateValue) => startOfDay(new Date(dateValue)) < todayStart;
+    const pendingAudioRef = useRef(null);
+    const seenPendingIdsRef = useRef(new Set());
+
+    const parseBoolean = (value, fallback = true) => {
+        if (value === undefined || value === null) return fallback;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') return value.toLowerCase() === 'true';
+        return fallback;
+    };
+
+    const parseNumber = (value, fallback) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
+    const appointmentAlertsEnabled = parseBoolean(getSetting('appointment_alerts_enabled', true), true);
+    const appointmentAlertIntervalMinutes = parseNumber(getSetting('appointment_alert_interval_minutes', 1), 1);
+    const appointmentAlertIntervalMs = Math.min(Math.max(appointmentAlertIntervalMinutes * 60 * 1000, 30000), 300000);
+    const maxRepeatsRaw = parseInt(getSetting('appointment_alert_max_repeats', 3), 10);
+    const appointmentAlertMaxRepeats = Number.isFinite(maxRepeatsRaw) ? Math.max(0, maxRepeatsRaw) : 3;
+    const appointmentAlertSoundEnabled = parseBoolean(getSetting('appointment_alert_sound_enabled', true), true);
+    const appointmentAlertUiEnabled = parseBoolean(getSetting('appointment_alert_ui_enabled', true), true);
+
+    const appointmentsByDate = useMemo(() => {
+        const map = {};
+        appointments.forEach(apt => {
+            if (!apt?.start) return;
+            const key = format(parseISO(apt.start), 'yyyy-MM-dd');
+            if (!map[key]) map[key] = [];
+            map[key].push(apt);
+        });
+        return map;
+    }, [appointments]);
 
     // Fetch data
     const fetchAppointments = async () => {
@@ -75,6 +118,79 @@ const Appointments = () => {
         }
     }, [currentDate, view, statusFilter]);
 
+    useEffect(() => {
+        fetchSettings().catch(() => {});
+    }, [fetchSettings]);
+
+    useEffect(() => {
+        try {
+            pendingAudioRef.current = new Audio(PENDING_COMPLETION_SOUND_URL);
+            pendingAudioRef.current.volume = 1;
+        } catch (error) {
+            console.error('[APPOINTMENTS] Failed to init pending completion sound:', error);
+        }
+    }, []);
+
+    const playPendingCompletionSound = () => {
+        if (!pendingAudioRef.current) return;
+        pendingAudioRef.current.currentTime = 0;
+        pendingAudioRef.current.play().catch(() => {});
+    };
+
+    const fetchPendingCompletion = async ({ allowAlerts = true } = {}) => {
+        setPendingCompletionLoading(true);
+        try {
+            const res = await apiClient.get('/appointments/pending-completion');
+            if (res.data.success) {
+                const items = Array.isArray(res.data.data) ? res.data.data : [];
+                const currentIds = new Set(items.map(item => item?.id).filter(Boolean));
+                for (const trackedId of seenPendingIdsRef.current) {
+                    if (!currentIds.has(trackedId)) {
+                        seenPendingIdsRef.current.delete(trackedId);
+                    }
+                }
+
+                const newItems = items.filter(item => item?.id && !seenPendingIdsRef.current.has(item.id));
+                if (newItems.length > 0) {
+                    if (allowAlerts && appointmentAlertSoundEnabled && appointmentAlertsEnabled) {
+                        playPendingCompletionSound();
+                    }
+                    if (allowAlerts && appointmentAlertUiEnabled && appointmentAlertsEnabled) {
+                        newItems.forEach((item) => {
+                            const name = [item.member?.firstName, item.member?.lastName].filter(Boolean).join(' ').trim();
+                            const timeLabel = item.end ? `${formatDate(item.end, i18n.language)} ${formatTime(item.end, i18n.language)}` : '';
+                            const trainerLabel = item.trainer?.name ? `${isRtl ? 'المدرب:' : 'Trainer:'} ${item.trainer.name}` : '';
+                            toast.success([name, timeLabel, trainerLabel].filter(Boolean).join(' • '));
+                        });
+                    }
+                    newItems.forEach(item => seenPendingIdsRef.current.add(item.id));
+                }
+                setPendingCompletion(items);
+            }
+        } catch (error) {
+            console.error('[APPOINTMENTS] Failed to fetch pending completion:', error);
+        } finally {
+            setPendingCompletionLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (view !== 'calendar' && view !== 'pending') {
+            setPendingCompletion([]);
+            seenPendingIdsRef.current.clear();
+            return;
+        }
+        if (view === 'calendar' && !appointmentAlertsEnabled) {
+            setPendingCompletion([]);
+            seenPendingIdsRef.current.clear();
+            return;
+        }
+        const allowAlerts = appointmentAlertsEnabled;
+        fetchPendingCompletion({ allowAlerts });
+        const interval = setInterval(() => fetchPendingCompletion({ allowAlerts }), appointmentAlertIntervalMs);
+        return () => clearInterval(interval);
+    }, [view, appointmentAlertsEnabled, appointmentAlertIntervalMs, appointmentAlertSoundEnabled, appointmentAlertUiEnabled, settings]);
+
     const fetchNotifications = async () => {
         setLoading(true);
         try {
@@ -96,6 +212,8 @@ const Appointments = () => {
     const handleToday = () => setCurrentDate(new Date());
 
     const handleEdit = (apt) => {
+        const isPast = apt?.start ? isPastDate(parseISO(apt.start)) : false;
+        setAppointmentReadOnly(isPast);
         setSelectedAppointment(apt);
         setShowModal(true);
         setPendingCompletionId(null);
@@ -104,6 +222,7 @@ const Appointments = () => {
     const [pendingCompletionId, setPendingCompletionId] = useState(null);
 
     const handleCreate = () => {
+        setAppointmentReadOnly(false);
         setSelectedAppointment(null);
         setPreSelectedDate(null);
         setShowModal(true);
@@ -111,6 +230,10 @@ const Appointments = () => {
     };
 
     const handleCreateWithDate = (date) => {
+        if (isPastDate(date)) {
+            return;
+        }
+        setAppointmentReadOnly(false);
         setSelectedAppointment(null);
         setPreSelectedDate(date);
         setShowModal(true);
@@ -119,6 +242,24 @@ const Appointments = () => {
 
     const handleQuickStatus = async (e, apt, status) => {
         e.stopPropagation();
+        const aptEnd = apt?.end ? parseISO(apt.end) : null;
+        const hasEnded = aptEnd ? isBefore(aptEnd, new Date()) : false;
+        if (status === 'completed') {
+            if (!hasEnded || apt?.isCompleted) {
+                return;
+            }
+            try {
+                await apiClient.post(`/appointments/${apt.id}/complete`, {});
+                toast.success('Session completed');
+                fetchAppointments();
+            } catch (error) {
+                toast.error('Failed to complete session');
+            }
+            return;
+        }
+        if (apt?.start && isPastDate(parseISO(apt.start))) {
+            return;
+        }
 
         if (status === 'settle') {
             if (!confirm('Settle payout for this session? This will create an expense and mark commission as PAID.')) return;
@@ -154,6 +295,64 @@ const Appointments = () => {
         }
     };
 
+    const handleCompletePending = async (appointmentId) => {
+        try {
+            await apiClient.post(`/appointments/${appointmentId}/complete`, {});
+            toast.success('Session completed');
+            setPendingCompletion((prev) => prev.filter(item => item.id !== appointmentId));
+            seenPendingIdsRef.current.delete(appointmentId);
+            fetchAppointments();
+        } catch (error) {
+            toast.error('Failed to complete session');
+        }
+    };
+
+    const renderPendingCompletion = () => (
+        <div className="space-y-3">
+            {pendingCompletionLoading && (
+                <div className="text-xs text-slate-400">{t('common.loading', 'Loading...')}</div>
+            )}
+            {pendingCompletion.length === 0 && (
+                <div className="text-center py-20 text-slate-500">
+                    {t('appointments.noAppointments')}
+                </div>
+            )}
+            {pendingCompletion.map((apt) => {
+                const memberName = [apt.member?.firstName, apt.member?.lastName].filter(Boolean).join(' ').trim();
+                const trainerName = apt.trainer?.name || '';
+                const serviceName = apt.title || '';
+                return (
+                    <div key={apt.id} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-slate-800/50 border border-white/5 rounded-2xl">
+                        <div>
+                            <div className="text-sm font-bold text-white">
+                                {memberName || t('appointments.member', 'Member')}
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1">
+                                {apt.end ? `${formatDate(apt.end, i18n.language)} ${formatTime(apt.end, i18n.language)}` : ''}
+                                {trainerName ? ` • ${isRtl ? 'المدرب:' : 'Trainer:'} ${trainerName}` : ''}
+                                {serviceName ? ` • ${serviceName}` : ''}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => handleEdit(apt)}
+                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
+                            >
+                                {t('common.view', 'View')}
+                            </button>
+                            <button
+                                onClick={() => handleCompletePending(apt.id)}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
+                            >
+                                {t('appointments.complete', 'Complete')}
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+
     // Calendar Generation
     const renderCalendar = () => {
         // ... (calendar generation logic same, just using 'appointments' state which is now filtered)
@@ -177,10 +376,12 @@ const Appointments = () => {
 
                 {/* Calendar Days Grid */}
                 <div className="grid grid-cols-7 auto-rows-fr bg-slate-800/20">
-                    {allDays.map((dayItem) => {
-                        const isCurrentMonth = isSameMonth(dayItem, monthStart);
-                        const dayApts = appointments.filter(a => isSameDay(parseISO(a.start), dayItem));
+                      {allDays.map((dayItem) => {
+                          const isCurrentMonth = isSameMonth(dayItem, monthStart);
+                          const dayKey = format(dayItem, 'yyyy-MM-dd');
+                          const dayApts = appointmentsByDate[dayKey] || [];
                         const isTodayDate = isToday(dayItem);
+                        const isPastDay = isPastDate(dayItem);
 
                         const hasCompleted = dayApts.some(a => a.status === 'completed' || a.status === 'auto_completed');
                         const hasScheduled = dayApts.some(a => a.status === 'scheduled');
@@ -207,18 +408,29 @@ const Appointments = () => {
                             <div
                                 key={dayItem.toString()}
                                 onClick={() => {
-                                    if (dayApts.length === 0 && isCurrentMonth) {
+                                    if (dayApts.length > 0) {
+                                        setSelectedDayDate(dayItem);
+                                        return;
+                                    }
+                                    if (dayApts.length === 0 && isCurrentMonth && !isPastDay) {
                                         handleCreateWithDate(dayItem);
                                     }
                                 }}
                                 className={`min-h-[140px] p-3 border-r-2 border-b-2 ${dayBorderColor} transition-all duration-200 relative group
-                                    ${dayApts.length === 0 && isCurrentMonth ? 'cursor-pointer hover:ring-2 hover:ring-blue-500/30' : ''}
+                                    ${dayApts.length === 0 && isCurrentMonth && !isPastDay ? 'cursor-pointer hover:ring-2 hover:ring-blue-500/30' : ''}
                                     ${!isCurrentMonth ? 'bg-slate-900/60 opacity-40' : dayBgColor}
                                 `}
                             >
                                 {/* Day Number */}
                                 <div
-                                    onClick={(e) => { e.stopPropagation(); if (dayApts.length > 0) setSelectedDayDate(dayItem); else handleCreateWithDate(dayItem); }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (dayApts.length > 0) {
+                                            setSelectedDayDate(dayItem);
+                                        } else if (!isPastDay) {
+                                            handleCreateWithDate(dayItem);
+                                        }
+                                    }}
                                     className={`text-sm font-black mb-2 transition-all cursor-pointer hover:scale-110 active:scale-95
                                     ${isTodayDate
                                             ? 'bg-blue-600 text-white w-8 h-8 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/50 ring-2 ring-blue-400/50'
@@ -229,6 +441,11 @@ const Appointments = () => {
                                 `}>
                                     {format(dayItem, 'd')}
                                 </div>
+                                {isPastDay && (
+                                    <div className="absolute top-2 right-2 text-slate-500" title={t('appointments.readOnly', 'Read only')}>
+                                        <Lock size={14} />
+                                    </div>
+                                )}
 
                                 {/* Appointment Cards */}
                                 <div className="space-y-1.5">
@@ -257,6 +474,11 @@ const Appointments = () => {
                                                 <User size={12} className="flex-shrink-0" />
                                                 <span className="truncate font-medium">{apt.member?.firstName}</span>
                                             </div>
+                                            {apt.trainer?.name && (
+                                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                                    {isRtl ? 'المدرب:' : 'Trainer:'} {apt.trainer.name}
+                                                </div>
+                                            )}
                                             {apt.status === 'no_show' && (
                                                 <div className="text-[10px] uppercase font-black tracking-widest mt-1 opacity-70">No Show</div>
                                             )}
@@ -273,7 +495,7 @@ const Appointments = () => {
                                 </div>
 
                                 {/* Click hint for empty days */}
-                                {dayApts.length === 0 && isCurrentMonth && (
+                                {dayApts.length === 0 && isCurrentMonth && !isPastDay && (
                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none">
                                         <div className="bg-blue-600/90 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-blue-400/50 backdrop-blur-sm">
                                             {t('appointments.bookAppointment')}
@@ -364,11 +586,16 @@ const Appointments = () => {
                             <div className="text-sm text-slate-400 mt-0.5">
                                 {formatTime(apt.start, i18n.language)} - {formatTime(apt.end, i18n.language)} • {apt.member?.firstName} {apt.member?.lastName}
                             </div>
+                            {apt.trainer?.name && (
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                    {isRtl ? 'المدرب:' : 'Trainer:'} {apt.trainer.name}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Quick Actions for Scheduled Items */}
-                        {(apt.status === 'scheduled' || apt.status === 'pending') && (
+                        {(apt.status === 'scheduled' || apt.status === 'pending') && !apt.isCompleted && (
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                     onClick={(e) => handleQuickStatus(e, apt, 'completed')}
@@ -438,6 +665,17 @@ const Appointments = () => {
                         <button onClick={() => setView('notifications')} className={`p-2.5 rounded-lg transition-all ${view === 'notifications' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
                             <Bell size={20} />
                         </button>
+                        <button onClick={() => setView('pending')} className={`p-2.5 rounded-lg transition-all flex items-center gap-2 ${view === 'pending' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
+                            <AlertCircle size={20} />
+                            <span className="text-[10px] font-black uppercase tracking-wider hidden md:inline">
+                                {isRtl ? 'جلسات تحتاج إكمال' : 'PENDING COMPLETION'}
+                            </span>
+                            {pendingCompletion.length > 0 && (
+                                <span className="text-[10px] font-black bg-white/10 px-1.5 py-0.5 rounded-full">
+                                    {pendingCompletion.length}
+                                </span>
+                            )}
+                        </button>
                     </div>
                     <button
                         onClick={handleCreate}
@@ -448,6 +686,12 @@ const Appointments = () => {
                     </button>
                 </div>
             </div>
+
+            {pendingCompletion.length > 0 && (
+                <div className="text-xs font-bold text-amber-300">
+                    فيه جلسات محتاجة إكمال   هتلاقيها في تبويب (Pending Completion).
+                </div>
+            )}
 
             {/* Controls & Legend Row */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
@@ -506,7 +750,7 @@ const Appointments = () => {
             </div>
 
             {/* Content */}
-            {view === 'calendar' ? renderCalendar() : view === 'list' ? renderList() : renderNotifications()}
+            {view === 'calendar' ? renderCalendar() : view === 'list' ? renderList() : view === 'pending' ? renderPendingCompletion() : renderNotifications()}
 
             {/* Create/Edit Modal */}
             {showModal && (
@@ -516,27 +760,30 @@ const Appointments = () => {
                         setShowModal(false);
                         setPreSelectedDate(null);
                         setPendingCompletionId(null);
+                        setAppointmentReadOnly(false);
                     }}
                     onSuccess={fetchAppointments}
                     appointment={selectedAppointment}
                     initialDate={preSelectedDate}
+                    readOnly={appointmentReadOnly}
                     autoCompleteTriggerId={pendingCompletionId}
                     onAutoCompleteTriggered={() => setPendingCompletionId(null)}
                 />
             )}
 
-            {/* Day Details Modal */}
-            <DayDetailsModal
-                isOpen={!!selectedDayDate}
-                onClose={() => setSelectedDayDate(null)}
-                date={selectedDayDate || new Date()}
-                appointments={appointments.filter(a => selectedDayDate && isSameDay(parseISO(a.start), selectedDayDate))}
-                onStatusUpdate={handleQuickStatus}
-                onEdit={(apt) => {
-                    setSelectedDayDate(null);
-                    handleEdit(apt);
-                }}
-            />
+              {/* Day Details Modal */}
+              <DayDetailsModal
+                  isOpen={!!selectedDayDate}
+                  onClose={() => setSelectedDayDate(null)}
+                  date={selectedDayDate || new Date()}
+                  appointments={selectedDayDate ? (appointmentsByDate[format(selectedDayDate, 'yyyy-MM-dd')] || []) : []}
+                  readOnly={selectedDayDate ? isPastDate(selectedDayDate) : false}
+                  onStatusUpdate={handleQuickStatus}
+                  onEdit={(apt) => {
+                      setSelectedDayDate(null);
+                      handleEdit(apt);
+                  }}
+              />
         </div>
     );
 };

@@ -7,31 +7,28 @@ import {
     ArrowDownCircle,
     ArrowUpCircle,
     Banknote,
-    Calendar
+    Calendar,
+    Download
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency, formatNumber } from '../utils/numberFormatter';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useSettingsStore } from '../store';
-import ReportSummaryCards from './ReportSummaryCards';
+import ReportLayout from './Reports/ReportLayout';
 
 const CashMovementsReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
     const isRTL = i18n.language === 'ar';
-    const alignStart = isRTL ? 'text-right' : 'text-left';
-    const alignEnd = isRTL ? 'text-left' : 'text-right';
 
     const [data, setData] = useState({ data: [], totals: { payIn: 0, payOut: 0, net: 0, count: 0 } });
     const [isLoading, setIsLoading] = useState(false);
 
-    // Filters
     const [filters, setFilters] = useState({
         startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
-        type: '',
-        employeeId: ''
+        type: ''
     });
 
     const currencyConf = {
@@ -45,7 +42,6 @@ const CashMovementsReport = ({ isActive }) => {
             const params = new URLSearchParams(filters);
             const response = await api.get(`/cash-movements?${params}`);
 
-            // Calculate totals manually if backend doesn't return them for specific filters
             const movements = response.data.data || [];
             const payIn = movements.filter(m => m.type === 'IN').reduce((sum, m) => sum + (m.amount || 0), 0);
             const payOut = movements.filter(m => m.type === 'OUT').reduce((sum, m) => sum + (m.amount || 0), 0);
@@ -66,7 +62,7 @@ const CashMovementsReport = ({ isActive }) => {
         if (isActive) {
             fetchReport();
         }
-    }, [isActive, filters.startDate, filters.endDate, filters.type]);
+    }, [isActive]);
 
     const handleExport = () => {
         if (!data.data.length) return;
@@ -97,178 +93,170 @@ const CashMovementsReport = ({ isActive }) => {
     if (!isActive) return null;
 
     return (
-        <div className="space-y-4">
-            {/* Summary Cards */}
-            <ReportSummaryCards
-                gridClassName="md:grid-cols-2 xl:grid-cols-4"
-                items={[
-                    {
-                        label: t('payInOut.totalIn', 'Total pay in'),
-                        value: `+${formatCurrency(data.totals.payIn, i18n.language, currencyConf)}`,
-                        icon: ArrowDownCircle,
-                        iconClassName: 'bg-emerald-500'
-                    },
-                    {
-                        label: t('payInOut.totalOut', 'Total pay out'),
-                        value: `-${formatCurrency(data.totals.payOut, i18n.language, currencyConf)}`,
-                        icon: ArrowUpCircle,
-                        iconClassName: 'bg-red-500'
-                    },
-                    {
-                        label: t('payInOut.net', 'Net'),
-                        value: formatCurrency(data.totals.net, i18n.language, currencyConf),
-                        icon: Banknote,
-                        iconClassName: 'bg-indigo-500'
-                    },
-                    {
-                        label: t('reports.fields.count', 'Transactions'),
-                        value: formatNumber(data.totals.count || 0, i18n.language),
-                        icon: FileSpreadsheet,
-                        iconClassName: 'bg-slate-600'
-                    }
-                ]}
-            />
+        <ReportLayout>
+            <div className="p-6 max-w-7xl mx-auto">
+                <ReportLayout.Header
+                    icon={Banknote}
+                    title={t('payInOut.title', 'النقدية الخاص')}
+                    subtitle={t('payInOut.subtitle', 'Cash drawer manual movements')}
+                />
 
-            {/* Toolbar */}
-            <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 p-4">
-                <div className="flex flex-wrap items-end gap-3">
-                    <div className="flex-1 min-w-[160px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-                            <Calendar size={14} />
-                            {t('reports.from', 'From')}
-                        </label>
-                        <input
-                            type="date"
-                            value={filters.startDate}
-                            onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
-                        />
-                    </div>
-                    <div className="flex-1 min-w-[160px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
-                            <Calendar size={14} />
-                            {t('reports.to', 'To')}
-                        </label>
-                        <input
-                            type="date"
-                            value={filters.endDate}
-                            onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
-                        />
-                    </div>
-                    <div className="flex-1 min-w-[160px] space-y-1.5">
-                        <label className="text-xs font-semibold text-gray-400">
-                            {t('reports.type', 'Type')}
+                <ReportLayout.FilterBar>
+                    <ReportLayout.DateInput
+                        label={t('reports.startDate', 'تاريخ البدء')}
+                        value={filters.startDate}
+                        onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                        icon={Calendar}
+                    />
+                    <ReportLayout.DateInput
+                        label={t('reports.endDate', 'تاريخ الانتهاء')}
+                        value={filters.endDate}
+                        onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                        icon={Calendar}
+                    />
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                            <FileSpreadsheet size={14} />
+                            {t('payInOut.type', 'Type')}
                         </label>
                         <select
                             value={filters.type}
                             onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-                            className="w-full h-11 px-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
+                            className="w-full bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
                         >
-                            <option value="">{t('common.all', 'All')}</option>
-                            <option value="IN">{t('payInOut.in', 'Pay in')}</option>
-                            <option value="OUT">{t('payInOut.out', 'Pay out')}</option>
+                            <option value="">{t('common.all', 'الكل')}</option>
+                            <option value="IN">{t('payInOut.in', 'In')}</option>
+                            <option value="OUT">{t('payInOut.out', 'Out')}</option>
                         </select>
                     </div>
-                    <div className="flex items-center gap-2 ml-auto">
-                        <button
+
+                    <div className="flex gap-2">
+                        <ReportLayout.RefreshButton
                             onClick={fetchReport}
-                            disabled={isLoading}
-                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+                            loading={isLoading}
+                            icon={RefreshCw}
                         >
-                            <RefreshCw size={18} />
-                            {t('common.refresh', 'Refresh')}
-                        </button>
+                            {t('common.refresh', 'تحديث')}
+                        </ReportLayout.RefreshButton>
+
                         <button
                             onClick={handleExport}
-                            className="h-11 px-4 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white border border-slate-600"
+                            disabled={!data.data.length}
+                            className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm rounded-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-[42px]"
                         >
-                            <FileSpreadsheet size={18} />
-                            {t('reports.export', 'Export')}
+                            <Download size={18} />
+                            {t('common.export', 'تصدير')}
                         </button>
                     </div>
-                </div>
-            </div>
+                </ReportLayout.FilterBar>
 
-            {/* Table */}
-            <div className="bg-slate-800/40 dark:bg-slate-800/40 rounded-xl border border-slate-700/50 dark:border-slate-700/50 overflow-hidden">
-                {isLoading ? (
-                    <div className="py-16 flex flex-col items-center justify-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">{t('common.loading', 'Loading...')}</p>
-                    </div>
-                ) : data.data.length === 0 ? (
-                    <div className="py-16 flex flex-col items-center justify-center">
-                        <Banknote className="w-12 h-12 text-gray-600 mb-3" />
-                        <p className="text-sm text-gray-400 font-medium">{t('common.noResults', 'No data available')}</p>
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-900/70 border-b border-slate-700/50 sticky top-0">
-                                <tr>
-                                    <th className={`px-4 py-3  text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>
-                                        {t('reports.fields.date', 'Date')}
-                                    </th>
-                                    <th className={`px-4 py-3  text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>
-                                        {t('reports.type', 'Type')}
-                                    </th>
-                                    <th className={`px-4 py-3  text-xs font-bold text-gray-400 uppercase tracking-wider ${alignEnd}`}>
-                                        {t('reports.fields.amount', 'Amount')}
-                                    </th>
-                                    <th className={`px-4 py-3  text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>
-                                        {t('reports.fields.reason', 'Reason')}
-                                    </th>
-                                    <th className={`px-4 py-3  text-xs font-bold text-gray-400 uppercase tracking-wider ${alignStart}`}>
-                                        {t('reports.fields.employee', 'Employee')}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700/50">
-                                {data.data.map((movement, idx) => (
-                                    <tr key={movement.id} className="hover:bg-slate-700/30 transition-colors">
-                                        <td className={`px-4 py-3 text-white ${alignStart}`}>
-                                            <span className="text-sm font-medium">
-                                                {formatDateTime(movement.createdAt, i18n.language)}
-                                            </span>
-                                        </td>
-                                        <td className={`px-4 py-3 ${alignStart}`}>
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${movement.type === 'IN'
-                                                ? 'bg-emerald-500/20 text-emerald-400'
-                                                : 'bg-red-500/20 text-red-400'
-                                                }`}>
-                                                {movement.type === 'IN' ? (t('payInOut.in', 'Pay in')) : (t('payInOut.out', 'Pay out'))}
-                                            </span>
-                                        </td>
-                                        <td className={`px-4 py-3  ${alignEnd}`}>
-                                            <span className={`font-mono font-semibold ${movement.type === 'IN' ? 'text-emerald-400' : 'text-red-400'
-                                                }`}>
-                                                {movement.type === 'IN' ? '+' : '-'}{formatCurrency(movement.amount, i18n.language, currencyConf)}
-                                            </span>
-                                        </td>
-                                        <td className={`px-4 py-3 ${alignStart}`}>
-                                            <div>
-                                                <p className="text-sm font-medium text-white">{movement.reason}</p>
-                                                {movement.notes && (
-                                                    <p className="text-xs text-gray-400 mt-0.5">{movement.notes}</p>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className={`px-4 py-3 ${alignStart}`}>
-                                            <span className="text-sm text-gray-300">
-                                                {movement.employee?.firstName} {movement.employee?.lastName}
-                                            </span>
-                                        </td>
+                <ReportLayout.MetricsGrid>
+                    <ReportLayout.MetricCard
+                        icon={FileSpreadsheet}
+                        label={t('reports.fields.count', 'TRANSACTIONS')}
+                        value={formatNumber(data.totals.count || 0, i18n.language)}
+                        color="blue"
+                        loading={isLoading}
+                    />
+                    <ReportLayout.MetricCard
+                        icon={Banknote}
+                        label={t('payInOut.net', 'NET')}
+                        value={formatCurrency(data.totals.net, i18n.language, currencyConf)}
+                        color="teal"
+                        loading={isLoading}
+                    />
+                    <ReportLayout.MetricCard
+                        icon={ArrowDownCircle}
+                        label={t('payInOut.totalIn', 'TOTAL PAY IN')}
+                        value={`+${formatCurrency(data.totals.payIn, i18n.language, currencyConf)}`}
+                        color="emerald"
+                        loading={isLoading}
+                    />
+                    <ReportLayout.MetricCard
+                        icon={ArrowUpCircle}
+                        label={t('payInOut.totalOut', 'TOTAL PAY OUT')}
+                        value={`-${formatCurrency(data.totals.payOut, i18n.language, currencyConf)}`}
+                        color="red"
+                        loading={isLoading}
+                    />
+                </ReportLayout.MetricsGrid>
+
+                <ReportLayout.Content>
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
+                        </div>
+                    ) : data.data.length === 0 ? (
+                        <ReportLayout.EmptyState
+                            icon={Banknote}
+                            title={t('reports.noData', 'لا توجد بيانات')}
+                            subtitle={t('reports.adjustFilters', 'اضبط المرشحات او اختر نطاق تاريخ اخر')}
+                        />
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-900/50 border-b border-white/5">
+                                    <tr>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('reports.fields.date', 'Date')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('payInOut.type', 'Type')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('reports.fields.amount', 'Amount')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('payInOut.reason', 'Reason')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('reports.fields.notes', 'Notes')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('reports.fields.employee', 'Employee')}
+                                        </th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {data.data.map((movement) => (
+                                        <tr key={movement.id} className="hover:bg-white/5 transition">
+                                            <td className="p-4 text-slate-300 font-mono text-xs text-center">
+                                                {formatDateTime(movement.createdAt)}
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex justify-center">
+                                                    {movement.type === 'IN' ? (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 w-fit">
+                                                            <ArrowDownCircle size={14} />
+                                                            {t('payInOut.in', 'In')}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1 w-fit">
+                                                            <ArrowUpCircle size={14} />
+                                                            {t('payInOut.out', 'Out')}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className={`p-4 text-center font-bold ${movement.type === 'IN' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {movement.type === 'IN' ? '+' : '-'}{formatCurrency(movement.amount, i18n.language, currencyConf)}
+                                            </td>
+                                            <td className="p-4 text-white text-center">{movement.reason}</td>
+                                            <td className="p-4 text-slate-400 italic text-xs text-center">{movement.notes || '-'}</td>
+                                            <td className="p-4 text-slate-300 text-center">
+                                                {movement.employee ? `${movement.employee.firstName} ${movement.employee.lastName}` : '-'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </ReportLayout.Content>
             </div>
-        </div>
+        </ReportLayout>
     );
 };
 
 export default CashMovementsReport;
-

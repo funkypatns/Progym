@@ -20,11 +20,13 @@ import {
     RefreshCw,
     Key,
     Bell,
+    Activity,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { useSettingsStore, useThemeStore, useLicenseStore, usePlanStore, usePosStore } from '../store';
 import AlertsRemindersSettings from '../components/AlertsRemindersSettings';
+import ServicesManager from '../components/settings/ServicesManager';
 
 const Settings = () => {
     const { t, i18n } = useTranslation();
@@ -233,6 +235,7 @@ const Settings = () => {
     const tabs = [
         { id: 'general', label: t('settings.general'), icon: Building },
         { id: 'branding', label: t('settings.branding'), icon: Globe },
+        { id: 'services', label: t('settings.services', 'Services'), icon: Activity },
         { id: 'alerts', label: i18n.language === 'ar' ? 'التنبيهات والتذكير' : 'Alerts & Reminders', icon: Bell },
         { id: 'backup', label: t('settings.backup'), icon: Database },
         { id: 'data', label: t('settings.data', 'Data Management'), icon: Trash2 },
@@ -425,6 +428,10 @@ const Settings = () => {
                             </button>
                         </div>
                     </div>
+                )}
+
+                {activeTab === 'services' && (
+                    <ServicesManager />
                 )}
 
                 {activeTab === 'alerts' && (

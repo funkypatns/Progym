@@ -59,7 +59,15 @@ const PERMISSIONS = {
 
     // Subscription Alerts
     ALERTS_VIEW: 'alerts.view',
-    ALERTS_MANAGE: 'alerts.manage'
+    ALERTS_MANAGE: 'alerts.manage',
+
+    // Appointments
+    APPOINTMENTS_VIEW: 'appointments.view',
+    APPOINTMENTS_MANAGE: 'appointments.manage',
+
+    // Coaches
+    COACHES_VIEW: 'coaches.view',
+    COACHES_MANAGE: 'coaches.manage'
 };
 
 /**
@@ -161,7 +169,17 @@ const PERMISSION_CATEGORIES = {
         label: 'POS',
         permissions: [
             PERMISSIONS.POS_SHIFT_OPEN,
+            PERMISSIONS.POS_SHIFT_OPEN,
             PERMISSIONS.POS_SHIFT_CLOSE
+        ]
+    },
+    coaching: {
+        label: 'Coaching',
+        permissions: [
+            PERMISSIONS.APPOINTMENTS_VIEW,
+            PERMISSIONS.APPOINTMENTS_MANAGE,
+            PERMISSIONS.COACHES_VIEW,
+            PERMISSIONS.COACHES_MANAGE
         ]
     }
 };

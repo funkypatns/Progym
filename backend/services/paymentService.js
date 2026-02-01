@@ -63,10 +63,10 @@ async function createPaymentWithRetry(prisma, data, options = {}) {
 }
 
 async function recordPaymentTransaction(prisma, input, options = {}) {
-const status = input.status || 'completed';
-const normalizedMethod = normalizePaymentMethod(input.method);
-const paidAt = input.paidAt || new Date();
-const safeRef = resolvePaymentReference(normalizedMethod, input.externalReference, input.transactionRef);
+    const status = input.status || 'completed';
+    const normalizedMethod = normalizePaymentMethod(input.method);
+    const paidAt = input.paidAt || new Date();
+    const safeRef = resolvePaymentReference(normalizedMethod, input.externalReference, input.transactionRef);
 
     const idempotencyWindowMs = Number.isFinite(options.idempotencyWindowMs)
         ? options.idempotencyWindowMs
@@ -129,6 +129,7 @@ const safeRef = resolvePaymentReference(normalizedMethod, input.externalReferenc
     };
 
     if (input.subscriptionId) prismaData.subscriptionId = parseInt(input.subscriptionId);
+    if (input.appointmentId) prismaData.appointmentId = parseInt(input.appointmentId);
     if (finalNotes) prismaData.notes = finalNotes;
     if (input.shiftId) prismaData.shiftId = parseInt(input.shiftId);
     if (input.createdBy) prismaData.createdBy = parseInt(input.createdBy);

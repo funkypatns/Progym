@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, CreditCard, CalendarCheck, Receipt,
     BarChart3, Settings, LogOut, Sun, Moon, Globe, Dumbbell,
     ChevronLeft, ClipboardList, Package, ShieldCheck, Shield,
-    Bell, ArrowUpCircle, ShoppingCart, Menu, Search
+    Bell, ArrowUpCircle, ShoppingCart, Menu, Search, Calendar, Briefcase
 } from 'lucide-react';
 import { useAuthStore, useThemeStore, useSidebarStore, usePosStore, useSettingsStore } from '../store';
 import PosShiftModal from '../components/PosShiftModal';
@@ -20,6 +20,7 @@ import NotificationBell from '../components/NotificationBell';
 import { usePermissions } from '../hooks/usePermissions';
 import { useSubscriptionAlerts } from '../hooks/useSubscriptionAlerts';
 import { useVoiceAlerts } from '../hooks/useVoiceAlerts';
+import PermissionDebug from '../components/PermissionDebug';
 
 const MainLayout = () => {
     const { t, i18n } = useTranslation();
@@ -52,6 +53,12 @@ const MainLayout = () => {
         };
     }, [user, isAuthenticated]);
 
+    // Sync Global Direction & Language
+    React.useEffect(() => {
+        document.documentElement.dir = i18n.dir();
+        document.documentElement.lang = i18n.language;
+    }, [i18n.language]);
+
     const handleLogout = async () => {
         if (currentShift) {
             setIsShiftModalOpen(true);
@@ -69,27 +76,41 @@ const MainLayout = () => {
     const { can, isAdmin, PERMISSIONS } = usePermissions();
     const isRTL = i18n.dir() === 'rtl';
 
+    // Safe Label Helper with Fallbacks
+    const safeT = (key, fallback) => {
+        const val = t(key);
+        const normalized = typeof val === 'string' ? val : String(val || '');
+        // If i18next returns key/empty or still looks like a key
+        if (!normalized || normalized === key || normalized.startsWith('nav.') || normalized.startsWith('reports.')) {
+            return fallback;
+        }
+        return normalized;
+    };
+
     // Navigation Items
     const navItems = [
-        { path: '/', icon: LayoutDashboard, label: t('nav.dashboard'), permission: PERMISSIONS.DASHBOARD_VIEW_BASIC },
-        { path: '/members', icon: Users, label: t('nav.members'), permission: PERMISSIONS.MEMBERS_VIEW },
-        { path: '/subscriptions', icon: CreditCard, label: t('nav.subscriptions'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
-        { path: '/plans', icon: ClipboardList, label: t('nav.plans'), permission: PERMISSIONS.PLANS_VIEW },
-        { path: '/checkin', icon: CalendarCheck, label: t('nav.checkin'), permission: PERMISSIONS.CHECKINS_VIEW },
-        { path: '/payments', icon: Receipt, label: t('nav.payments'), permission: PERMISSIONS.PAYMENTS_VIEW },
-        { path: '/sales', icon: ShoppingCart, label: t('nav.pos'), permission: PERMISSIONS.PAYMENTS_VIEW },
-        { path: '/products', icon: Package, label: t('nav.products'), permission: PERMISSIONS.PLANS_VIEW },
-        { path: '/reports', icon: BarChart3, label: t('nav.reports'), permission: PERMISSIONS.REPORTS_VIEW },
-        { path: '/payment-alerts', icon: Bell, label: t('nav.paymentAlerts'), permission: PERMISSIONS.REPORTS_VIEW },
-        { path: '/subscription-alerts', icon: Bell, label: t('nav.subscriptionAlerts'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
-        { path: '/pay-in-out', icon: ArrowUpCircle, label: t('nav.payInOut'), permission: PERMISSIONS.PAYMENTS_VIEW },
-        { path: '/settings', icon: Settings, label: t('nav.settings'), permission: PERMISSIONS.SETTINGS_VIEW },
+        { path: '/', icon: LayoutDashboard, label: safeT('nav.dashboard', isRTL ? 'لوحة التحكم' : 'Dashboard'), permission: PERMISSIONS.DASHBOARD_VIEW_BASIC },
+        { path: '/members', icon: Users, label: safeT('nav.members', isRTL ? 'الأعضاء' : 'Members'), permission: PERMISSIONS.MEMBERS_VIEW },
+        { path: '/subscriptions', icon: CreditCard, label: safeT('nav.subscriptions', isRTL ? 'الاشتراكات' : 'Subscriptions'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
+        { path: '/plans', icon: ClipboardList, label: safeT('nav.plans', isRTL ? 'الخطط' : 'Plans'), permission: PERMISSIONS.PLANS_VIEW },
+        { path: '/checkin', icon: CalendarCheck, label: safeT('nav.checkin', isRTL ? 'تسجيل الحضور' : 'Check-in'), permission: PERMISSIONS.CHECKINS_VIEW },
+        { path: '/appointments', icon: Calendar, label: safeT('nav.appointments', isRTL ? 'المواعيد' : 'Appointments'), permission: PERMISSIONS.APPOINTMENTS_VIEW },
+        { path: '/coaches', icon: Briefcase, label: safeT('nav.coaches', isRTL ? 'المدربين' : 'Coaches'), permission: PERMISSIONS.COACHES_VIEW },
+        { path: '/payments', icon: Receipt, label: safeT('nav.payments', isRTL ? 'المدفوعات' : 'Payments'), permission: PERMISSIONS.PAYMENTS_VIEW },
+        { path: '/sales', icon: ShoppingCart, label: safeT('nav.pos', isRTL ? 'نقاط البيع' : 'POS'), permission: PERMISSIONS.PAYMENTS_VIEW },
+        { path: '/products', icon: Package, label: safeT('nav.products', isRTL ? 'المنتجات' : 'Products'), permission: PERMISSIONS.PLANS_VIEW },
+        { path: '/reports', icon: BarChart3, label: safeT('nav.reports', isRTL ? 'التقارير' : 'Reports'), permission: PERMISSIONS.REPORTS_VIEW },
+        { path: '/payment-alerts', icon: Bell, label: safeT('nav.paymentAlerts', isRTL ? 'تنبيهات الدفع' : 'Payment Alerts'), permission: PERMISSIONS.REPORTS_VIEW },
+        { path: '/subscription-alerts', icon: Bell, label: safeT('nav.subscriptionAlerts', isRTL ? 'تنبيهات الاشتراكات' : 'Subscription Alerts'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
+        { path: '/pay-in-out', icon: ArrowUpCircle, label: safeT('nav.payInOut', isRTL ? 'صادر / وارد' : 'Pay In/Out'), permission: PERMISSIONS.PAYMENTS_VIEW },
+        { path: '/settings', icon: Settings, label: safeT('nav.settings', isRTL ? 'الإعدادات' : 'Settings'), permission: PERMISSIONS.SETTINGS_VIEW },
     ];
 
     if (isAdmin()) {
         navItems.push(
-            { path: '/employees', icon: ShieldCheck, label: t('nav.employees'), permission: PERMISSIONS.EMPLOYEES_VIEW },
-            { path: '/permissions', icon: Shield, label: t('nav.permissions'), permission: PERMISSIONS.EMPLOYEES_PERMISSIONS }
+            { path: '/employees', icon: ShieldCheck, label: safeT('nav.employees', isRTL ? 'الموظفين' : 'Employees'), permission: PERMISSIONS.EMPLOYEES_VIEW },
+            { path: '/staff-trainers', icon: ShieldCheck, label: safeT('nav.staffTrainers', isRTL ? 'المدربين' : 'Trainers'), permission: PERMISSIONS.COACHES_VIEW },
+            { path: '/permissions', icon: Shield, label: safeT('nav.permissions', isRTL ? 'الصلاحيات' : 'Permissions'), permission: PERMISSIONS.EMPLOYEES_PERMISSIONS }
         );
     }
 
@@ -266,6 +287,8 @@ const MainLayout = () => {
                 onSuccess={(type) => type === 'close' && handleLogout()}
                 onLogoutOnly={async () => { await logout(); navigate('/login'); }}
             />
+            {/* Debug Tools */}
+            <PermissionDebug />
         </div>
     );
 };

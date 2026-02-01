@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
-import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle } from 'lucide-react';
+import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle, Lock } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
 import toast from 'react-hot-toast';
 import { format, parseISO, startOfMonth, endOfMonth, addMonths, addMinutes, isBefore, isAfter } from 'date-fns';
@@ -11,9 +11,10 @@ import CoachScheduleModal from './CoachScheduleModal';
 import CompletionPreviewModal from './CompletionPreviewModal';
 import ReceiptModal from '../../components/payments/ReceiptModal';
 
-const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, autoCompleteTriggerId, onAutoCompleteTriggered }) => {
+const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, autoCompleteTriggerId, onAutoCompleteTriggered, readOnly }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
+    const isReadOnly = Boolean(readOnly);
 
     // Form State
     const [memberSearch, setMemberSearch] = useState('');
@@ -269,6 +270,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isReadOnly) {
+            return;
+        }
         setLoading(true);
 
         try {
@@ -316,6 +320,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const handleCancel = async () => {
+        if (isReadOnly) {
+            return;
+        }
         if (!confirm('Are you sure you want to cancel this appointment? This will mark it as Cancelled.')) return;
         setLoading(true);
         try {
@@ -332,6 +339,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
     const handleCompletionClick = async () => {
         if (!appointment) return;
+        const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
+        if (!ended || appointment?.isCompleted) {
+            return;
+        }
         setCompletionLoading(true);
         try {
             // First, get preview
@@ -358,6 +369,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [receiptData, setReceiptData] = useState(null);
 
     const confirmCompletion = async (payload) => {
+        const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
+        if (!appointment || !ended || appointment?.isCompleted) {
+            return;
+        }
         setCompletionLoading(true);
         try {
             const res = await apiClient.post(`/appointments/${appointment.id}/complete`, payload);
@@ -402,7 +417,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         }
     };
 
-    const isSubmitDisabled = loading || isOverlapping || isPastSelection || validationError;
+    const hasEnded = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
+    const canComplete = appointment && hasEnded && !appointment.isCompleted;
+    const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError;
 
     return (
         <Transition appear show={open} as={Fragment}>
@@ -415,12 +432,24 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                 <Dialog.Title as="h3" className="text-xl font-black text-white uppercase tracking-tight">
                                     {appointment ? t('appointments.editAppointment') : t('appointments.newAppointment')}
                                 </Dialog.Title>
+                                {isReadOnly && (
+                                    <div className="flex items-center gap-1 text-amber-400 text-xs font-bold uppercase tracking-widest">
+                                        <Lock size={14} />
+                                        {t('appointments.readOnly', 'Read only')}
+                                    </div>
+                                )}
+                                {appointment && !appointment.isCompleted && hasEnded && (
+                                    <div className="text-xs font-bold uppercase tracking-widest text-amber-400">
+                                        {t('appointments.pendingCompletion', 'Pending Completion')}
+                                    </div>
+                                )}
                                 <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/5 transition">
                                     <X size={20} />
                                 </button>
                             </div>
 
                             <form onSubmit={handleSubmit} className="space-y-4">
+                                <fieldset disabled={isReadOnly} className={isReadOnly ? 'opacity-80' : ''}>
 
                                 {/* 1. Member Search */}
                                 {!appointment && (
@@ -701,43 +730,51 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                     />
                                 </div>
 
+                                </fieldset>
+
                                 {/* 9. Confirm Booking Button */}
-                                <div className="flex items-center gap-3 pt-4">
-                                    {appointment && (
-                                        <>
-                                            {/* Show for any status NOT completed/cancelled */}
-                                            {!['completed', 'auto_completed', 'cancelled', 'no_show'].includes((appointment.status || '').toLowerCase()) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleCompletionClick}
-                                                    disabled={completionLoading}
-                                                    className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition flex-1 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-emerald-900/20"
-                                                >
-                                                    {completionLoading ? (
-                                                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                                                    ) : (
-                                                        <CheckCircle size={18} />
-                                                    )}
-                                                    {t('appointments.complete')}
-                                                </button>
-                                            )}
+                                {(canComplete || !isReadOnly) && (
+                                    <div className="flex items-center gap-3 pt-4">
+                                        {appointment && (
+                                            <>
+                                                {/* Show for any status NOT completed/cancelled */}
+                                                {canComplete && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCompletionClick}
+                                                        disabled={completionLoading}
+                                                        className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition flex-1 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-emerald-900/20"
+                                                    >
+                                                        {completionLoading ? (
+                                                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                                                        ) : (
+                                                            <CheckCircle size={18} />
+                                                        )}
+                                                        {t('appointments.complete')}
+                                                    </button>
+                                                )}
+                                                {!isReadOnly && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCancel}
+                                                        className="px-6 py-3 bg-rose-600/10 hover:bg-rose-600 text-rose-500 hover:text-white rounded-xl font-bold transition flex-1 whitespace-nowrap"
+                                                    >
+                                                        {t('appointments.cancelAppointment')}
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                        {!isReadOnly && (
                                             <button
-                                                type="button"
-                                                onClick={handleCancel}
-                                                className="px-6 py-3 bg-rose-600/10 hover:bg-rose-600 text-rose-500 hover:text-white rounded-xl font-bold transition flex-1 whitespace-nowrap"
+                                                type="submit"
+                                                disabled={isSubmitDisabled}
+                                                className={`px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition flex-[2] flex items-center justify-center gap-2 ${isSubmitDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
-                                                {t('appointments.cancelAppointment')}
+                                                {loading ? t('appointments.saving') : (appointment ? t('appointments.update') : t('appointments.confirmBooking'))}
                                             </button>
-                                        </>
-                                    )}
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitDisabled}
-                                        className={`px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition flex-[2] flex items-center justify-center gap-2 ${isSubmitDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    >
-                                        {loading ? t('appointments.saving') : (appointment ? t('appointments.update') : t('appointments.confirmBooking'))}
-                                    </button>
-                                </div>
+                                        )}
+                                    </div>
+                                )}
                             </form>
                         </Dialog.Panel>
                     </div>

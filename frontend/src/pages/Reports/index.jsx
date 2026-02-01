@@ -13,7 +13,8 @@ import {
     Package,
     FileText,
     PieChart,
-    Target
+    Target,
+    Briefcase
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -103,6 +104,13 @@ const ReportsDashboard = () => {
             icon: Clipboard,
             gradient: "bg-gradient-to-br from-slate-500 to-gray-700",
             to: "/reports/cash-closing"
+        },
+        {
+            title: t('reports.gymIncome.title') || "Gym Income",
+            desc: t('reports.gymIncome.subtitle') || "Net income from sessions",
+            icon: Briefcase,
+            gradient: "bg-gradient-to-br from-green-500 to-teal-600",
+            to: "/reports/gym-income"
         }
     ];
 

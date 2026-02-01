@@ -228,10 +228,32 @@ router.post('/reset', authorize('admin'), async (req, res) => {
                 await tx.payment.deleteMany({ where: dateFilter });
             }
 
-            // 5. Cash Closings (Reconciliation)
+            // 5. Coach Earnings & Appointments (Must delete before Members and Users)
+            if (isFullReset || targets.includes('payments') || targets.includes('members')) {
+                // Delete coach earnings first (references Appointment)
+                await tx.coachEarning.deleteMany({ where: dateFilter });
+                // Delete financial records (references Appointment) -- FIX FOR RESET CRASH
+                // Note: AppointmentFinancialRecord relies on appointmentId, must be deleted BEFORE appointment
+                // However, we need to map dateFilter (createdAt) correctly or if it uses completedAt?
+                // Schema says createdAt exists.
+                await tx.appointmentFinancialRecord.deleteMany({ where: dateFilter });
+
+                // Delete settlements (references Expense and Coach)
+                await tx.coachSettlement.deleteMany({ where: dateFilter });
+                // Delete appointments (references Member and Coach)
+                await tx.appointment.deleteMany({ where: dateFilter });
+            }
+
+            // 6. Cash Closings (Reconciliation)
             if (isFullReset) {
                 await tx.cashClosingAdjustment.deleteMany({ where: dateFilter });
                 await tx.cashClosing.deleteMany({ where: dateFilter });
+                // Delete receipts
+                await tx.receipt.deleteMany({ where: dateFilter });
+            }
+
+            // 7. Expenses (Must be after CoachSettlement which references it)
+            if (isFullReset) {
                 await tx.expense.deleteMany({ where: dateFilter });
             }
 
@@ -265,8 +287,10 @@ router.post('/reset', authorize('admin'), async (req, res) => {
                 await tx.pOSShift.deleteMany({ where: dateFilter });
             }
 
-            // 11. Plans (Only on full reset)
+            // 11. Plans & Coach Settings (Only on full reset)
             if (isFullReset) {
+                // Delete coach commission settings (references User)
+                await tx.coachCommissionSettings.deleteMany({});
                 await tx.subscriptionPlan.deleteMany({ where: dateFilter });
             }
 

@@ -186,7 +186,7 @@ const Members = () => {
                     <div className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center whitespace-nowrap border-e border-gray-100 dark:border-white/5">{safeT('nav.members', 'Members')}</div>
                     <div className="px-4 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center whitespace-nowrap border-e border-gray-100 dark:border-white/5">{safeT('common.info', 'Info')}</div>
                     <div className="px-4 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center whitespace-nowrap border-e border-gray-100 dark:border-white/5">{safeT('common.status', 'Status')}</div>
-                    <div className="px-4 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center whitespace-nowrap border-e border-gray-100 dark:border-white/5">{safeT('checkin.checkout', 'تسجيل خروج')}</div>
+                    <div className="px-4 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center whitespace-nowrap border-e border-gray-100 dark:border-white/5">{safeT('checkin.checkOut', 'تسجيل خروج')}</div>
                     <div className="px-4 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">{safeT('common.actions', 'Actions')}</div>
                 </div>
 
@@ -271,12 +271,12 @@ const Members = () => {
                                             onClick={isCheckedIn ? () => handleMemberCheckout(member) : undefined}
                                             disabled={!isCheckedIn || isLoading}
                                             className={`p-2.5 w-10 h-10 flex items-center justify-center rounded-xl border transition-all ${isLoading
-                                                    ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-500/20 cursor-wait'
-                                                    : isCheckedIn
-                                                        ? 'text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 border-rose-500/20 hover:scale-110 cursor-pointer shadow-sm'
-                                                        : 'text-gray-300 bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 cursor-not-allowed opacity-40'
+                                                ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-500/20 cursor-wait'
+                                                : isCheckedIn
+                                                    ? 'text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 border-rose-500/20 hover:scale-110 cursor-pointer shadow-sm'
+                                                    : 'text-gray-300 bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 cursor-not-allowed opacity-40'
                                                 }`}
-                                            title={isLoading ? safeT('common.processing', 'Processing...') : isCheckedIn ? safeT('checkin.checkout', 'Check Out') : safeT('checkin.notCheckedIn', 'Not Checked In')}
+                                            title={isLoading ? safeT('common.processing', 'Processing...') : isCheckedIn ? safeT('checkin.checkOut', 'Check Out') : safeT('checkin.notCheckedIn', 'Not Checked In')}
                                         >
                                             {isLoading ? (
                                                 <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
@@ -317,7 +317,7 @@ const Members = () => {
                                 <button
                                     onClick={() => setLedgerMember(member)}
                                     className="p-2 w-9 h-9 flex items-center justify-center text-amber-600 bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 rounded-xl transition-all shadow-sm border border-amber-500/20 hover:scale-110"
-                                    title={safeT('reports.financials', 'Member Financials')}
+                                    title={safeT('memberDetails.financials', 'Member Financials')}
                                 >
                                     <FileSpreadsheet size={16} />
                                 </button>

@@ -275,12 +275,25 @@ const StandardReportPage = ({ type }) => {
                                 >
                                     {columns.map(col => (
                                         <td key={col} className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                            {typeof row[col] === 'number' &&
-                                                (col.toLowerCase().includes('amount') ||
-                                                    col.toLowerCase().includes('price') ||
-                                                    col.toLowerCase().includes('total'))
-                                                ? formatCurrency(row[col])
-                                                : (row[col] ?? '-')}
+                                            {(() => {
+                                                const val = row[col];
+                                                const lowerCol = col.toLowerCase();
+                                                const isCurrency = typeof val === 'number' && (lowerCol.includes('amount') || lowerCol.includes('price') || lowerCol.includes('total'));
+                                                const isDate = typeof val === 'string' && (lowerCol.includes('date') || lowerCol.includes('at') || lowerCol.match(/^\d{4}-\d{2}-\d{2}/));
+
+                                                if (isCurrency) return formatCurrency(val);
+                                                if (isDate) {
+                                                    const d = new Date(val);
+                                                    if (!isNaN(d.getTime())) {
+                                                        return d.toLocaleDateString(i18n.language, {
+                                                            year: 'numeric',
+                                                            month: 'short',
+                                                            day: 'numeric'
+                                                        });
+                                                    }
+                                                }
+                                                return val ?? '-';
+                                            })()}
                                         </td>
                                     ))}
                                 </motion.tr>

@@ -59,6 +59,15 @@ model User {
   // Sales & Inventory
   stockMovements StockMovement[]
   sales         SaleTransaction[]
+  
+  // Appointments & Coaching
+  appointmentsAsCoach Appointment[] @relation("CoachAppointments")
+  commissionSettings  CoachCommissionSettings?
+  earnings            CoachEarning[]
+  settlements         CoachSettlement[]
+  financialRecords    AppointmentFinancialRecord[]
+  createdAppointments Appointment[] @relation("AppointmentCreatedBy")
+  completedAppointments Appointment[] @relation("AppointmentCompletedBy")
 }
 
 /// Activity log for audit trail
@@ -113,6 +122,8 @@ model Member {
   checkIns      CheckIn[]
   payments      Payment[]
   reminders     Reminder[]
+  appointmentRecords AppointmentFinancialRecord[]
+  appointments  Appointment[]
 
   @@index([gender])
 }
@@ -253,6 +264,10 @@ model Payment {
   creator      User?         @relation("PaymentCreator", fields: [createdBy], references: [id])
   refunds      Refund[]
   
+  earnings     CoachEarning[] // Linked commission earning
+  appointmentId Int?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  
   @@index([transactionRef])
 }
 
@@ -303,6 +318,8 @@ model Expense {
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  settlement  CoachSettlement?
 }
 
 // ============================================
@@ -427,6 +444,15 @@ model CashClosing {
   differenceCash        Float    @default(0)
   differenceNonCash     Float    @default(0)
   differenceTotal       Float    @default(0)
+
+  // Financial Snapshot (Immutable Report)
+  totalSessions         Int      @default(0)
+  grossRevenue          Float    @default(0)
+  totalCoachCommissions Float    @default(0)
+  gymNetIncome          Float    @default(0)
+  
+  breakdownByCoach      String?  // JSON string
+  breakdownByService    String?  // JSON string
   
   status                String   // shortage, overage, balanced
   notes                 String?
@@ -532,6 +558,21 @@ model StaffNotification {
   @@index([userId, seenAt])
 }
 
+/// Trainers (staff) available for sessions
+model StaffTrainer {
+  id                Int      @id @default(autoincrement())
+  name              String
+  phone             String?
+  commissionPercent Int?
+  commissionType    String   @default("percentage") // percentage, fixed
+  commissionValue   Float?
+  internalSessionValue Float @default(0)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  appointments      Appointment[]
+}
+
 // ============================================
 // SALES & INVENTORY
 // ============================================
@@ -598,3 +639,165 @@ model SaleItem {
   transaction SaleTransaction @relation(fields: [saleTransactionId], references: [id], onDelete: Cascade)
   product     Product         @relation(fields: [productId], references: [id])
 }
+
+// ============================================
+// SERVICE CONFIGURATION
+// ============================================
+
+/// Configurable Services (Session Types)
+model Service {
+  id              Int      @id @default(autoincrement())
+  name            String
+  type            String   @default("SESSION") // SESSION, SUBSCRIPTION
+  defaultPrice    Float    @default(0)
+  defaultDuration Int      @default(60) // minutes
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================
+// APPOINTMENTS & COACHING
+// ============================================
+
+/// Personal Training / Service Appointments
+model Appointment {
+  id          Int      @id @default(autoincrement())
+  title       String?  // e.g. "PT Session"
+  memberId    Int
+  coachId     Int
+  
+  start       DateTime
+  end         DateTime
+  price       Float    @default(0)
+  paidAmount  Float    @default(0)
+  paymentStatus String @default("unpaid") // unpaid, partial, paid
+  
+  status      String   @default("scheduled") // scheduled, completed, cancelled, no_show
+  notes       String?
+
+  createdByEmployeeId   Int?
+  completedByEmployeeId Int?
+  completedAt           DateTime?
+  isCompleted           Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  member      Member   @relation(fields: [memberId], references: [id])
+    coach       User     @relation("CoachAppointments", fields: [coachId], references: [id])
+  createdByEmployee   User? @relation("AppointmentCreatedBy", fields: [createdByEmployeeId], references: [id])
+  completedByEmployee User? @relation("AppointmentCompletedBy", fields: [completedByEmployeeId], references: [id])
+  
+    trainerId   Int?
+    trainer     StaffTrainer? @relation(fields: [trainerId], references: [id])
+    payments    Payment[]
+    earnings    CoachEarning[]
+    financialRecord AppointmentFinancialRecord?
+}
+
+/// Commission configuration per coach
+model CoachCommissionSettings {
+  id                  Int      @id @default(autoincrement())
+  coachId             Int      @unique
+  type                String   @default("percentage") // percentage, fixed
+  value               Float    // e.g. 10.0 (10%) or 50.0 (fixed currency)
+  internalSessionValue Float   @default(0) // Default value for session if percentage
+  
+  coach       User     @relation(fields: [coachId], references: [id])
+}
+
+// ============================================
+// FINANCIAL RECORDS (SINGLE SOURCE OF TRUTH)
+// ============================================
+
+/// Immutable record created upon appointment completion
+model AppointmentFinancialRecord {
+  id              Int      @id @default(autoincrement())
+  
+  // Source
+  appointmentId   Int      @unique
+  memberId        Int
+  coachId         Int
+  
+  // Financials
+  sessionPrice    Float    // Gross Revenue
+  coachCommission Float    // Deducted Commission
+  gymNetIncome    Float    // Net Profit for Gym
+  
+  // Metadata
+  commissionType  String?  // 'percentage' or 'fixed'
+  commissionValue Float?   // The % or fixed amount used
+  basisAmount     Float?   // The amount commission was calculated on
+  
+  // Status
+  status          String   @default("PENDING") // PENDING (for coach payout) -> PAID
+  
+  // Timestamps
+  completedAt     DateTime // When the session was marked complete
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  appointment     Appointment @relation(fields: [appointmentId], references: [id])
+  member          Member      @relation(fields: [memberId], references: [id])
+  coach           User        @relation(fields: [coachId], references: [id])
+  
+  // Optional link to settlement if paid out
+  settlementId    Int?
+  settlement      CoachSettlement? @relation(fields: [settlementId], references: [id])
+}
+
+/// Ledger of coach earnings (commissions) - LEGACY SUPPORT / MAPPED TO FINANCIAL RECORD
+model CoachEarning {
+  id                  Int      @id @default(autoincrement())
+  coachId             Int
+  memberId            Int?     // Snapshot of member for easier reporting
+  appointmentId       Int?     @unique // Source - Unique to prevent duplicates
+  paymentId           Int?     // Trigger (Optional, legacy)
+  
+  amount              Float    // Calculated Commission amount
+  basisAmount         Float    // Value used for calc (internal or price)
+  
+  // Snapshots for audit
+  commissionType      String?
+  commissionValue     Float?
+  internalSessionValue Float?
+
+  status              String   @default("pending") // pending, paid
+  notes               String?
+  paidAt              DateTime?
+  paidByUserId        Int?
+  
+  settlementId        Int?
+  
+  createdAt           DateTime @default(now())
+  
+  // Relations
+  coach         User        @relation(fields: [coachId], references: [id])
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  payment       Payment?     @relation(fields: [paymentId], references: [id])
+  settlement    CoachSettlement? @relation(fields: [settlementId], references: [id])
+}
+
+/// Payout batches
+model CoachSettlement {
+  id          Int      @id @default(autoincrement())
+  coachId     Int
+  totalAmount Float
+  startDate   DateTime // Period start
+  endDate     DateTime // Period end
+  status      String   @default("completed")
+  
+  expenseId   Int?     @unique
+  
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  coach       User     @relation(fields: [coachId], references: [id])
+  expense     Expense? @relation(fields: [expenseId], references: [id])
+  earnings    CoachEarning[]
+  financialRecords AppointmentFinancialRecord[]
+}
+

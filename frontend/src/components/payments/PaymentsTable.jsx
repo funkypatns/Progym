@@ -2,16 +2,16 @@ import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, Trash2, ChevronLeft, ChevronRight, Download, XCircle, Banknote, RotateCcw, PauseCircle, Clock, ChevronDown, ChevronUp, History, User } from 'lucide-react';
 import api from '../../utils/api';
+import { formatDate, formatTime } from '../../utils/dateFormatter';
 import AddPaymentDialog from './AddPaymentDialog';
 import RefundSummaryModal from '../RefundSummaryModal';
 
 const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [currentPage, setCurrentPage] = useState(1);
     const [filter, setFilter] = useState('');
     const [expandedGroups, setExpandedGroups] = useState({});
     const itemsPerPage = 8;
-
     // Modal & Action States
     const [payModalOpen, setPayModalOpen] = useState(false);
     const [refundModalOpen, setRefundModalOpen] = useState(false);
@@ -25,46 +25,118 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
 
         payments.forEach(payment => {
             const subId = payment.subscription?.id;
-            if (!subId) return;
+            const aptId = payment.appointment?.id;
 
-            if (!groups[subId]) {
-                const sub = payment.subscription;
-                const total = sub.price ?? sub.plan?.price ?? 0;
-                const paid = sub.paidAmount || 0;
-                const remaining = Math.max(0, total - paid);
+            const groupId = subId
+                ? `sub-${subId}`
+                : `pay-${payment.id}`;
 
-                // Initial status logic
-                let status = 'DUE';
-                if (paid >= total && remaining === 0) status = 'PAID';
-                else if (paid > 0 && remaining > 0) status = 'PARTIAL';
+            if (!groups[groupId]) {
+                if (subId) {
+                    const sub = payment.subscription;
+                    const total = sub.price ?? sub.plan?.price ?? 0;
+                    const paid = sub.paidAmount || 0;
+                    const remaining = Math.max(0, total - paid);
 
-                if (sub.paymentStatus === 'refunded') status = 'REFUNDED';
+                    let status = 'DUE';
+                    if (paid >= total && remaining === 0) status = 'PAID';
+                    else if (paid > 0 && remaining > 0) status = 'PARTIAL';
+                    if (sub.paymentStatus === 'refunded') status = 'REFUNDED';
 
-                // Days remaining
-                let daysRemaining = 0;
-                if (sub.endDate) {
-                    const end = new Date(sub.endDate);
-                    const now = new Date();
-                    daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+                    let daysRemaining = 0;
+                    if (sub.endDate) {
+                        const end = new Date(sub.endDate);
+                        const now = new Date();
+                        daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+                    }
+
+                    groups[groupId] = {
+                        type: 'subscription',
+                        uniqueId: groupId,
+                        subscription: sub,
+                        member: payment.member,
+                        payments: [],
+                        total,
+                        paid,
+                        remaining,
+                        status,
+                        daysRemaining,
+                        isPaused: sub.isPaused,
+                        lastPaymentDate: payment.createdAt || payment.date,
+                        canPay: true,
+                        canRefund: true
+                    };
+                } else if (aptId) {
+                    // Appointment Logic
+                    const apt = payment.appointment;
+                    const total = apt.price || 0;
+                    const paid = apt.paidAmount || 0;
+                    const remaining = Math.max(0, total - paid);
+
+                    let status = 'DUE';
+                    if (paid >= total - 0.01) status = 'PAID';
+                    else if (paid > 0) status = 'PARTIAL';
+
+                    // Allow Manual Override status if present? No, calculate it.
+
+                    groups[groupId] = {
+                        type: 'appointment',
+                        uniqueId: groupId,
+                        subscription: { // Mock for UI compatibility
+                            id: aptId,
+                            plan: { name: apt.title || 'Service Session' },
+                            status: apt.paymentStatus,
+                            canceledAt: null,
+                            refundedAmount: 0
+                        },
+                        member: payment.member,
+                        payments: [],
+                        total,
+                        paid,
+                        remaining,
+                        status: status,
+                        daysRemaining: 0,
+                        isPaused: false,
+                        lastPaymentDate: payment.createdAt || payment.date,
+                        canPay: false, // Disable Pay from here for now
+                        canRefund: false // Disable Refund from here for now
+                    };
+                } else {
+                    // General / Misc Payment Logic (Orphan)
+                    groups[groupId] = {
+                        type: 'general',
+                        uniqueId: groupId,
+                        subscription: { // Mock
+                            id: 0,
+                            plan: { name: 'General Payment' },
+                            status: 'completed',
+                            canceledAt: null,
+                            refundedAmount: 0
+                        },
+                        member: payment.member,
+                        payments: [],
+                        total: 0, // Will sum up from payments
+                        paid: 0,
+                        remaining: 0,
+                        status: 'PAID',
+                        daysRemaining: 0,
+                        isPaused: false,
+                        lastPaymentDate: payment.createdAt || payment.date,
+                        canPay: false,
+                        canRefund: false
+                    };
                 }
-
-                groups[subId] = {
-                    subscription: sub,
-                    member: payment.member,
-                    payments: [],
-                    total,
-                    paid,
-                    remaining,
-                    status,
-                    daysRemaining,
-                    isPaused: sub.isPaused,
-                    lastPaymentDate: payment.createdAt || payment.date,
-                };
             }
 
-            groups[subId].payments.push(payment);
-            if (new Date(payment.createdAt) > new Date(groups[subId].lastPaymentDate)) {
-                groups[subId].lastPaymentDate = payment.createdAt;
+            groups[groupId].payments.push(payment);
+            if (new Date(payment.createdAt) > new Date(groups[groupId].lastPaymentDate)) {
+                groups[groupId].lastPaymentDate = payment.createdAt;
+            }
+
+            // Accumulate totals for general group
+            if (!subId && !aptId) {
+                groups[groupId].total += (parseFloat(payment.amount) || 0);
+                groups[groupId].paid += (parseFloat(payment.amount) || 0);
             }
         });
 
@@ -146,14 +218,18 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                         {paginatedGroups.map(group => {
-                            const isExpanded = expandedGroups[group.subscription.id];
+                            const isExpanded = expandedGroups[group.uniqueId];
                             const hasHistory = group.payments && group.payments.length > 0;
                             const subscriptionStatus = String(group.subscription?.status || '').toLowerCase();
                             const isCancelled = ['cancelled', 'canceled', 'terminated'].includes(subscriptionStatus);
                             const cancelledAt = group.subscription?.canceledAt ? new Date(group.subscription.canceledAt) : null;
+                            const coachPayment = group.payments?.find(p => p.appointment && p.appointment.coach) || null;
+                            const trainerName = coachPayment?.appointment?.coach
+                                ? `${coachPayment.appointment.coach.firstName} ${coachPayment.appointment.coach.lastName}`.trim()
+                                : null;
 
                             return (
-                                <React.Fragment key={group.subscription.id}>
+                                <React.Fragment key={group.uniqueId}>
                                     <tr className={`group transition-all hover:bg-blue-50/30 dark:hover:bg-blue-900/10 ${isExpanded ? 'bg-blue-50/20 dark:bg-blue-900/5' : ''}`}>
 
                                         {/* 1. Member Column */}
@@ -167,6 +243,11 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                         {group.member?.firstName} {group.member?.lastName}
                                                     </span>
                                                     <span className="text-xs text-slate-400 font-mono">#{group.member?.memberId}</span>
+                                                    {trainerName && (
+                                                        <span className="text-[10px] text-slate-400">
+                                                            {t('payments.sessionCoach', 'Trainer')}: {trainerName}
+                                                        </span>
+                                                    )}
                                                     <div className="flex flex-wrap gap-1.5 mt-1">
                                                         <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase rounded-md border border-indigo-100/50">
                                                             {group.subscription.plan?.name}
@@ -184,7 +265,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                     </div>
                                                     {isCancelled && cancelledAt && (
                                                         <span className="text-[10px] font-bold text-rose-500">
-                                                            {t('common.cancelled', 'Cancelled')}: {cancelledAt.toLocaleDateString('ar-EG')}
+                                                            {t('common.cancelled', 'Cancelled')}: {formatDate(cancelledAt, i18n.language)}
                                                         </span>
                                                     )}
                                                 </div>
@@ -233,7 +314,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                 <div className="flex flex-col">
                                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Last Activity</span>
                                                     <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                                                        {new Date(group.lastPaymentDate).toLocaleDateString('ar-EG')}
+                                                        {formatDate(group.lastPaymentDate, i18n.language)}
                                                     </span>
                                                 </div>
                                                 {group.daysRemaining > 0 && group.status !== 'REFUNDED' && (
@@ -249,7 +330,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                             <div className="flex items-center justify-center gap-1.5">
                                                 {/* History Toggle */}
                                                 <button
-                                                    onClick={() => toggleExpand(group.subscription.id)}
+                                                    onClick={() => toggleExpand(group.uniqueId)}
                                                     className={`p-2 rounded-xl transition-all ${isExpanded ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
                                                     title="Transaction History"
                                                 >
@@ -259,7 +340,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                 <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
                                                 {/* Pay Action */}
-                                                {group.remaining > 0 && group.status !== 'REFUNDED' && (
+                                                {group.canPay && group.remaining > 0 && group.status !== 'REFUNDED' && (
                                                     <button
                                                         onClick={() => handlePayClick(group)}
                                                         className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all active:scale-95"
@@ -270,7 +351,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                 )}
 
                                                 {/* Refund Action */}
-                                                {group.paid > 0 && group.status !== 'REFUNDED' && (
+                                                {group.canRefund && group.paid > 0 && group.status !== 'REFUNDED' && (
                                                     <button
                                                         onClick={() => handleRefundClick(group)}
                                                         className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all active:scale-95"
@@ -311,10 +392,10 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                                     <div className="text-[10px] font-black text-slate-300 w-6">#{idx + 1}</div>
                                                                     <div className="flex flex-col">
                                                                         <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                                                                            {new Date(p.createdAt || p.date).toLocaleDateString('ar-EG')}
+                                                                            {formatDate(p.createdAt || p.date, i18n.language)}
                                                                         </span>
                                                                         <span className="text-[10px] font-bold text-slate-400">
-                                                                            {new Date(p.createdAt || p.date).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                                                                            {formatTime(p.createdAt || p.date, i18n.language)}
                                                                         </span>
                                                                     </div>
                                                                 </div>

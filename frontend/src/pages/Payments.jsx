@@ -7,8 +7,6 @@ import { Plus, DollarSign, CreditCard, TrendingUp, Download } from 'lucide-react
 import PaymentsTable from '../components/payments/PaymentsTable';
 import AddPaymentDialog from '../components/payments/AddPaymentDialog';
 import ReceiptModal from '../components/payments/ReceiptModal';
-// MemberLedgerModal is intended for the Members page, but could be triggered here if needed. 
-// For now, I'll integrate ReceiptModal which was missing.
 
 const Payments = () => {
     const { t } = useTranslation();
@@ -17,10 +15,11 @@ const Payments = () => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedPayment, setSelectedPayment] = useState(null); // For ReceiptModal
     const [summary, setSummary] = useState({ total: 0, count: 0 });
+    const [activeTab, setActiveTab] = useState('all'); // 'all', 'subscription', 'session'
 
     useEffect(() => {
         fetchPayments();
-    }, []);
+    }, [activeTab]); // Refetch when tab changes
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -29,18 +28,25 @@ const Payments = () => {
         };
         window.addEventListener('payments:updated', handlePaymentsUpdated);
         return () => window.removeEventListener('payments:updated', handlePaymentsUpdated);
-    }, []);
+    }, [activeTab]);
 
     const fetchPayments = async () => {
         setLoading(true);
         try {
-            const res = await apiClient.get('/payments');
+        const params = {};
+        if (activeTab === 'subscription') params.type = 'SUBSCRIPTION';
+        else if (activeTab === 'session') params.type = 'SESSION';
+
+        const res = await apiClient.get('/payments', { params });
+
             if (res.data.success) {
                 // Handle various response formats (Array, Paginated with 'docs', Paginated with 'payments')
                 const rawData = res.data.data;
                 const data = Array.isArray(rawData)
                     ? rawData
                     : (rawData?.payments || rawData?.docs || []);
+
+
 
                 setPayments(data);
 
@@ -142,6 +148,28 @@ const Payments = () => {
                             <div className="text-sm text-gray-500 font-medium">{t('common.thisMonth')}</div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* Tabs Navigation */}
+            <div className="flex justify-start animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
+                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl inline-flex gap-1">
+                    {[
+                        { id: 'all', label: t('payments.allPayments', 'All Payments') },
+                        { id: 'subscription', label: t('payments.subscriptionPayments', 'Subscription Payments') },
+                        { id: 'session', label: t('payments.sessionPayments', 'Session Payments') }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === tab.id
+                                ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-700/50'
+                                }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 

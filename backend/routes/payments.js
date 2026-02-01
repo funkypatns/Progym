@@ -11,6 +11,7 @@ const { body, validationResult } = require('express-validator');
 const PDFDocument = require('pdfkit');
 const { v4: uuidv4 } = require('uuid');
 const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransaction } = require('../services/paymentService');
+const CommissionService = require('../services/commissionService');
 const { createReceipt, buildTransactionId, parseReceiptJson } = require('../services/receiptService');
 const { roundMoney, clampMoney } = require('../utils/money');
 
@@ -91,9 +92,13 @@ router.get('/', async (req, res) => {
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const where = {};
+        const rawTypeFilter = String(req.query.type || '').trim().toUpperCase();
+        const debugTypeFilter = process.env.DEBUG_PAYMENT_TYPE_FILTER === '1';
 
-        // RBAC: Staff can ONLY see payments for their current open shift
-        if ((req.user.role || '').toLowerCase() !== 'admin') {
+        const userRole = (req.user.role || '').toLowerCase();
+        const privilegedRoles = ['admin', 'owner', 'superadmin'];
+        // RBAC: Non-privileged staff can ONLY see payments for their current open shift
+        if (!privilegedRoles.includes(userRole)) {
             const openShift = await req.prisma.pOSShift.findFirst({
                 where: {
                     openedBy: req.user.id,
@@ -101,31 +106,33 @@ router.get('/', async (req, res) => {
                 }
             });
 
-            if (!openShift) {
-                // No open shift = No visibility
-                return res.json({
-                    success: true,
-                    data: {
-                        payments: [],
-                        pagination: {
-                            page: parseInt(page),
-                            limit: parseInt(limit),
-                            total: 0,
-                            totalPages: 0
-                        }
-                    }
-                });
-            }
-
+            // If no open shift, we just don't add the shiftId filter clause, 
+            // but we MUST allow them to see their own payments (createdBy) or pending ones.
+            
             where.OR = [
-                { shiftId: openShift.id },
                 { status: 'pending' },
                 { createdBy: req.user.id } // Allow seeing own payments regardless of shift
             ];
+
+            if (openShift) {
+                where.OR.push({ shiftId: openShift.id });
+            }
         }
 
         if (memberId) where.memberId = parseInt(memberId);
         if (status) where.status = status;
+
+        // Type Filtering (session = appointmentId, subscription = subscriptionId)
+        if (rawTypeFilter === 'SESSION') {
+            where.appointmentId = { not: null };
+        } else if (rawTypeFilter === 'SUBSCRIPTION') {
+            where.subscriptionId = { not: null };
+        }
+        if (debugTypeFilter) {
+            console.log(`[PAYMENTS] role=${userRole} type=${rawTypeFilter || 'ALL'} filters`, { appointment: where.appointmentId, subscription: where.subscriptionId });
+        }
+
+
         if (startDate || endDate) {
             where.paidAt = {};
             if (startDate) where.paidAt.gte = new Date(startDate);
@@ -153,12 +160,25 @@ router.get('/', async (req, res) => {
                     creator: {
                         select: { id: true, firstName: true, lastName: true, role: true }
                     },
+                    appointment: {
+                        include: {
+                            payments: {
+                                select: { amount: true, status: true }
+                            },
+                            coach: {
+                                select: { id: true, firstName: true, lastName: true }
+                            }
+                        }
+                    },
                     refunds: true
                 }
             }),
             req.prisma.payment.count({ where })
         ]);
 
+        if (debugTypeFilter) {
+            console.log(`[PAYMENTS] returning ${payments.length} rows for role=${userRole} type=${rawTypeFilter || 'ALL'}`);
+        }
         res.json({
             success: true,
             data: {
@@ -266,7 +286,7 @@ router.post('/', requirePermission('payments.create'), [
             return res.status(400).json({ success: false, errors: errors.array() });
         }
 
-        const { memberId, subscriptionId, amount, method, notes, transactionRef, machineId, collectorId, collectorName, verificationMode, posAmountVerified } = req.body;
+        const { memberId, subscriptionId, appointmentId, amount, method, notes, transactionRef, machineId, collectorId, collectorName, verificationMode, posAmountVerified } = req.body;
         const paymentType = String(req.body.type || 'subscription').toLowerCase();
         const paymentMode = String(req.body.paymentMode || req.body.paymentType || '').toLowerCase();
         const normalizedPaymentMode = ['partial', 'full'].includes(paymentMode) ? paymentMode : null;
@@ -293,7 +313,7 @@ router.post('/', requirePermission('payments.create'), [
             let existingPayment = null;
             try {
                 existingPayment = await req.prisma.payment.findUnique({
-                    where: { transactionRef: idempotencyKey }
+                    where: { idempotencyKey }
                 });
             } catch (lookupErr) {
                 console.warn('[PAYMENTS] Failed to lookup idempotency key:', lookupErr.message);
@@ -341,6 +361,31 @@ router.post('/', requirePermission('payments.create'), [
                 success: false,
                 message: 'Subscription is required to record this payment'
             });
+        }
+
+        if (normalizedPaymentMode && subscriptionId && memberId) {
+            const recentWindowMs = 4000;
+            const recentWhere = {
+                memberId: parseInt(memberId),
+                subscriptionId: parseInt(subscriptionId),
+                status: 'completed',
+                paidAt: { gte: new Date(Date.now() - recentWindowMs) }
+            };
+            if (Number.isInteger(finalCreatedBy)) {
+                recentWhere.createdBy = finalCreatedBy;
+            }
+            const recentPayment = await req.prisma.payment.findFirst({
+                where: recentWhere,
+                orderBy: { paidAt: 'desc' }
+            });
+            if (recentPayment) {
+                const existingPayload = await buildPaymentResponsePayload(recentPayment, req.prisma);
+                return res.json({
+                    success: true,
+                    message: 'Payment already processed',
+                    data: existingPayload
+                });
+            }
         }
 
         if (!isSubscriptionPayment && (amountValue === null || amountValue <= 0)) {
@@ -449,23 +494,26 @@ router.post('/', requirePermission('payments.create'), [
             // collectorName String?
 
             // 3. Create Payment (shared service)
-        const finalTransactionRef = idempotencyKey || transactionRef;
-        const paymentResult = await recordPaymentTransaction(prisma, {
-            memberId,
-            subscriptionId,
-            amount: resolvedAmount,
-            method: normalizedMethod,
-            status: 'completed',
-            notes,
-            shiftId,
-            createdBy: finalCreatedBy,
-            collectorName: finalCollectorName,
-            externalReference: safeRef,
-            transactionRef: finalTransactionRef,
-            verificationMode,
-            posAmountVerified
-        });
+            const paymentResult = await recordPaymentTransaction(prisma, {
+                memberId,
+                subscriptionId,
+                amount: resolvedAmount,
+                method: normalizedMethod,
+                status: 'completed',
+                notes,
+                shiftId,
+                createdBy: finalCreatedBy,
+                collectorName: finalCollectorName,
+                externalReference: safeRef,
+                transactionRef,
+                verificationMode,
+                posAmountVerified,
+                appointmentId
+            }, { idempotencyKey });
             const payment = paymentResult.payment;
+
+            // 3.1 Process Commission is HANDLED BY SESSION COMPLETION ONLY.
+            // DO NOT Add commission logic here. Subscription payments must NOT trigger commissions.
 
             // 4. Update subscription payment status if applicable
             if (subscriptionId) {

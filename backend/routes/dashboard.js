@@ -117,6 +117,50 @@ router.get('/stats', async (req, res) => {
         // Get inactive members count
         const inactiveMembersCount = totalMembers - activeMembers;
 
+        // 4. Extended Metrics for Redesign (Parallel Fetch)
+        const [
+            coachCommissions,
+            activeShifts,
+            todaysSessions,
+            completedSessions,
+            manualTransactions,
+            totalDiscounts
+        ] = await Promise.all([
+            // Coach Commissions (using AppointmentFinancialRecord for accurate verified income)
+            req.prisma.appointmentFinancialRecord.aggregate({
+                _sum: { coachCommission: true },
+                where: {
+                    completedAt: { gte: monthStart }
+                }
+            }),
+            // Active Shifts
+            req.prisma.pOSShift.count({
+                where: { status: 'open' }
+            }),
+            // Today's All Sessions
+            req.prisma.appointment.count({
+                where: { start: { gte: todayStart, lt: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000) } }
+            }),
+            // Today's Completed Sessions
+            req.prisma.appointment.count({
+                where: {
+                    start: { gte: todayStart, lt: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000) },
+                    status: 'completed'
+                }
+            }),
+            req.prisma.payment.count({
+                where: {
+                    paidAt: { gte: todayStart },
+                    method: { in: ['manual', 'cash'] }
+                }
+            }),
+            Promise.resolve(0)
+        ]);
+
+        const outstandingCount = await req.prisma.subscription.count({
+            where: { status: 'active', paymentStatus: { in: ['partial', 'unpaid'] } }
+        });
+
         res.json({
             success: true,
             data: {
@@ -129,7 +173,22 @@ router.get('/stats', async (req, res) => {
                 subscriptions: {
                     active: activeSubscriptions,
                     expiring: expiringSubscriptions,
-                    expired: expiredSubscriptions
+                    expired: expiredSubscriptions,
+                    outstanding: outstandingCount
+                },
+                financials: {
+                    netIncome: monthStats.netRevenue || 0,
+                    grossRevenue: monthStats.grossRevenue || 0,
+                    coachCommissions: coachCommissions._sum.coachCommission || 0,
+                    expenseRatio: monthStats.grossRevenue > 0 ? (monthStats.totalRefunds / monthStats.grossRevenue) * 100 : 0,
+                    discounts: totalDiscounts,
+                    refunds: monthStats.totalRefunds || 0
+                },
+                operations: {
+                    activeShifts,
+                    sessionCompletion: todaysSessions > 0 ? Math.round((completedSessions / todaysSessions) * 100) : 0,
+                    manualTransactions,
+                    cashStatus: 'Open'
                 },
                 checkIns: {
                     today: todayCheckIns

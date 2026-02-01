@@ -90,6 +90,20 @@ const Employees = () => {
         }
     };
 
+    const handleDelete = async (user) => {
+        if (!window.confirm(`Are you sure you want to delete ${user.firstName} ${user.lastName}? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            await api.delete(`/users/${user.id}`);
+            toast.success('Employee deleted');
+            fetchUsers();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete employee');
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -170,12 +184,21 @@ const Employees = () => {
                                         {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
                                     </td>
                                     <td>
-                                        <button
-                                            onClick={() => handleEdit(user)}
-                                            className="btn-icon hover:text-white"
-                                        >
-                                            <Edit className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => handleEdit(user)}
+                                                className="btn-icon hover:text-white"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(user)}
+                                                className="btn-icon hover:text-red-500 text-red-500/70"
+                                                title="Delete Employee"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))

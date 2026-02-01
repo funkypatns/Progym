@@ -2,8 +2,10 @@ import React, { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Printer, RefreshCw, User, CreditCard, Banknote, Building, FileText, ArrowRight } from 'lucide-react';
 
+import { formatDateTime } from '../../utils/dateFormatter';
+
 const ReceiptModal = ({ payment, onClose, onRefund, onDownload, currencySymbol = 'EGP' }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const modalRef = useRef(null);
 
     if (!payment) return null;
@@ -60,7 +62,7 @@ const ReceiptModal = ({ payment, onClose, onRefund, onDownload, currencySymbol =
                         <div className="divide-y divide-gray-100 dark:divide-gray-700">
                             <div className="py-2 flex justify-between items-center">
                                 <span className="text-sm text-gray-600 dark:text-gray-400">{t('common.date')}</span>
-                                <span className="text-sm font-mono text-gray-900 dark:text-white">{new Date(payment.paidAt || payment.createdAt).toLocaleString('ar-EG')}</span>
+                                <span className="text-sm font-mono text-gray-900 dark:text-white">{formatDateTime(payment.paidAt || payment.createdAt, i18n.language)}</span>
                             </div>
                             <div className="py-2 flex justify-between items-center">
                                 <span className="text-sm text-gray-600 dark:text-gray-400">{t('payments.paidBy')}</span>

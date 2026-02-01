@@ -45,6 +45,7 @@ import CancellationsReportPage from './pages/Reports/CancellationsReportPage';
 import Settings from './pages/Settings';
 import Plans from './pages/Plans';
 import Packages from './pages/Packages';
+import Trainers from './pages/Trainers';
 
 import LicenseExpired from './pages/LicenseExpired';
 import Employees from './pages/Employees';
@@ -54,6 +55,11 @@ import SubscriptionAlerts from './pages/SubscriptionAlerts';
 import PayInOut from './pages/PayInOut';
 import Products from './pages/Products';
 import Sales from './pages/Sales';
+import Appointments from './pages/Appointments';
+import Coaches from './pages/Coaches';
+import CoachReportsPage from './pages/Reports/CoachReportsPage';
+import GymIncomeReport from './pages/Reports/GymIncomeReport';
+import SessionNotificationsPage from './pages/Notifications/SessionNotificationsPage';
 
 // Protected Route Component (Exists)
 const ProtectedRoute = ({ children }) => {
@@ -64,35 +70,46 @@ const ProtectedRoute = ({ children }) => {
 // Permission Guard Component (New)
 const PermissionGuard = ({ children, permission, requireAdmin = false }) => {
     const { can, isAdmin } = usePermissions();
-    const [denied, setDenied] = React.useState(false);
 
-    React.useEffect(() => {
-        if (requireAdmin && !isAdmin()) {
-            setDenied(true);
-        } else if (permission && !can(permission)) {
-            setDenied(true);
-        }
-    }, [permission, requireAdmin, can, isAdmin]);
-
-    if (denied) {
-        return <Navigate to="/" replace />;
-    }
-
-    // Prevent flicker or premature redirect while checking? 
-    // can() is sync if user is loaded. user is loaded by ProtectedRoute.
-
-    // Check access
+    // Check access directly during render
     const hasAccess = (requireAdmin && isAdmin()) || (!requireAdmin && (!permission || can(permission)));
 
-
-    useEffect(() => {
+    // Side effect for notification
+    React.useEffect(() => {
         if (!hasAccess) {
             toast.error('Access Denied: You do not have permission to view this page.');
         }
     }, [hasAccess]);
 
+    // Conditional return AFTER all hooks
     if (!hasAccess) {
-        return <Navigate to="/" replace />;
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
+                <div className="bg-red-500/10 p-6 rounded-full mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Access Denied</h2>
+                <p className="text-slate-400 max-w-md mb-6">
+                    You do not have permission to view this page.
+                </p>
+                <div className="flex gap-4">
+                    <button
+                        onClick={() => window.history.back()}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors"
+                    >
+                        Go Back
+                    </button>
+                    <button
+                        onClick={() => window.location.href = '/'}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-medium transition-colors"
+                    >
+                        Go Home
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     return children;
@@ -237,6 +254,8 @@ function App() {
                         <Route path="pay-in-out" element={<PayInOutReportPage />} />
                         <Route path="refunds" element={<RefundsReportPage />} />
                         <Route path="cancellations" element={<CancellationsReportPage />} />
+                        <Route path="coach-earnings" element={<CoachReportsPage />} />
+                        <Route path="gym-income" element={<GymIncomeReport />} />
 
                         {/* Admin Only */}
                         <Route path="outstanding" element={<OutstandingReportPage />} />
@@ -245,6 +264,9 @@ function App() {
                         {/* Fallback to dashboard */}
                         <Route path="*" element={<Navigate to="/reports" replace />} />
                     </Route>
+                    <Route path="/notifications/sessions" element={
+                        <PermissionGuard permission={PERMISSIONS.APPOINTMENTS_VIEW}><SessionNotificationsPage /></PermissionGuard>
+                    } />
                     <Route path="/payment-alerts" element={
                         <PermissionGuard permission={PERMISSIONS.REPORTS_VIEW}><PaymentAlerts /></PermissionGuard>
                     } />
@@ -265,6 +287,15 @@ function App() {
                     } />
                     <Route path="/sales" element={
                         <PermissionGuard permission={PERMISSIONS.PAYMENTS_VIEW}><Sales /></PermissionGuard>
+                    } />
+                    <Route path="/appointments" element={
+                        <PermissionGuard permission={PERMISSIONS.APPOINTMENTS_VIEW}><Appointments /></PermissionGuard>
+                    } />
+                    <Route path="/coaches" element={
+                        <PermissionGuard permission={PERMISSIONS.COACHES_VIEW}><Coaches /></PermissionGuard>
+                    } />
+                    <Route path="/staff-trainers" element={
+                        <PermissionGuard permission={PERMISSIONS.COACHES_VIEW}><Trainers /></PermissionGuard>
                     } />
 
                     {/* Admin Only */}

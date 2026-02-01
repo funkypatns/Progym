@@ -60,7 +60,11 @@ const ReportsShell = ({
                         />
                     }
                     aria-label="breadcrumb"
-                    sx={{ mb: 2 }}
+                    sx={{
+                        mb: 2,
+                        justifyContent: centerHeader ? 'center' : 'flex-start',
+                        display: 'flex'
+                    }}
                 >
                     <Link
                         to="/reports"

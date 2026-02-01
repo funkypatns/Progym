@@ -10,7 +10,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useSettingsStore } from '../../store';
 import ThermalReceipt from '../receipts/ThermalReceipt';
 
-const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubscriptionId }) => {
+const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubscriptionId, initialAppointment }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
     const { getSetting } = useSettingsStore();
@@ -119,11 +119,9 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     useEffect(() => {
         if (paymentMode === 'full') {
             setPayNowAmount(totalDue > 0 ? totalDue.toString() : '');
-            return;
         }
-        if (paymentMode === 'partial') {
-            setPayNowAmount('');
-        }
+        // Removed the 'partial' block that cleared the input
+        // This prevents the input from being wiped when the user types and triggers a switch to 'partial'
     }, [totalDue, paymentMode]);
 
     useEffect(() => {
@@ -219,6 +217,41 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
         } catch (error) { toast.error(t('errors.fetchSubscriptions')); }
         finally { setLoading(false); }
     };
+
+    // Initialize from props
+    useEffect(() => {
+        if (!open) {
+            setStep(1);
+            setMethod('cash');
+            setPaymentMode(null);
+            setTransactionRef('');
+            setPayNowAmount('');
+            setReceiptData(null);
+            setLastReceiptError(null);
+            submitLockRef.current = false;
+        } else if (open && initialMember) {
+            // Only initialize if we haven't selected a member yet, OR if it's a fresh open
+            // This prevents re-initialization if the parent updates the 'initialMember' prop reference while we are working
+            if (!selectedMember || selectedMember.id !== initialMember.id) {
+                setSelectedMember(initialMember);
+                if (initialAppointment) {
+                    setStep(2);
+                    setTotalDue(initialAppointment.price);
+                    setPayNowAmount(initialAppointment.price?.toString() || '0');
+                    setPaymentMode('full');
+                } else if (initialSubscriptionId) {
+                    // Subscription Mode - wait for subscriptions to fetch
+                }
+            }
+        }
+    }, [open, initialMember, initialSubscriptionId, initialAppointment]);
+
+    // Handle initial fetch when member selected
+    useEffect(() => {
+        if (selectedMember && open && !initialAppointment) {
+            fetchMemberSubscriptions(selectedMember.id);
+        }
+    }, [selectedMember, open, initialAppointment]);
 
     const getSubscriptionMeta = (sub) => {
         const total = roundMoney(Number.isFinite(sub.price) ? sub.price : (Number.isFinite(sub.plan?.price) ? sub.plan.price : 0));
@@ -417,8 +450,13 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const handleSubmit = async (event) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        if (submitLockRef.current || isSubmitting) return;
+
+        // 1. HARD LOCK: Prevent multiple submissions
+        if (submitLockRef.current || isSubmitting || step === 3) return;
+
+        // 2. PARTIAL LOCK: Prevent double submit on partial
         if (paymentMode === 'partial' && partialSubmitRef.current) return;
+
         submitLockRef.current = true;
         setIsSubmitting(true);
         setLoading(true);
@@ -467,13 +505,21 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                 memberId: selectedMember.id,
                 amount: amountValue,
                 method,
-                type,
+                type: initialAppointment ? 'appointment' : type,
                 paymentMode,
                 transactionRef: transactionRef || undefined,
                 date: new Date().toISOString()
             };
 
-            if (type === 'subscription') {
+            if (initialAppointment) {
+                payload.appointmentId = initialAppointment.id;
+                payload.notes = `Appointment: ${initialAppointment.title || 'Session'}`;
+            } else {
+                if (!selectedSubscriptionId) {
+                    toast.error(t('payments.selectSubscription', 'Select a subscription first'));
+                    abortSubmit();
+                    return;
+                }
                 payload.subscriptionId = parseInt(selectedSubscriptionId, 10);
             }
 
@@ -484,24 +530,30 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                 idempotencyKeyRef.current = window.crypto?.randomUUID?.() || `payment-${Date.now()}`;
             }
             const idempotencyKey = idempotencyKeyRef.current;
+
+            // 3. SINGLE API CALL
             const res = await apiClient.post('/payments', payload, {
                 headers: {
                     'Idempotency-Key': idempotencyKey
                 },
                 signal: controller.signal
             });
+
             if (!successToastRef.current) {
                 toast.success(t('payments.paymentRecorded'));
                 successToastRef.current = true;
             }
+
+            // 4. DO NOT CALL onSuccess() YET to prevent auto-loop/re-open by parent
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('payments:updated'));
             }
-            if (onSuccess) onSuccess();
+            // if (onSuccess) onSuccess(); <--- REMOVED to prevent loop
 
             const responseData = res.data?.data || {};
             const receipt = responseData.receipt || null;
             const status = responseData.receiptStatus || (receipt ? 'ready' : 'missing');
+
             setReceiptData(receipt);
             setReceiptStatus(status);
             setReceiptMessage(responseData.receiptMessage || '');
@@ -510,10 +562,17 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
             setReceiptIsCopy(!responseData.receiptCreated && Boolean(receipt));
             setHasPrintedReceipt(false);
             setShowReceiptPreview(false);
+
+            // 5. STAY IN MODAL - SHOW SUCCESS STEP
             setStep(3);
+
             if (paymentMode === 'partial') {
                 partialSubmitRef.current = true;
             }
+
+            // Keep submitLockRef.current = true; (Do not unlock)
+            // This prevents any further clicks on Confirm
+
         } catch (e) {
             const msg = e.response?.data?.message || t('common.error');
             toast.error(msg);
@@ -608,7 +667,8 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
     const isFullyPaid = totalDue <= 0;
     const amountValue = roundMoney(payNowAmount);
     const isAmountValid = Number.isFinite(amountValue) && amountValue > 0 && amountValue <= totalDue + 0.01;
-    const isConfirmDisabled = step !== 2 || !isSubscriptionSelected || isFullyPaid || !isAmountValid || loading || isSubmitting || ((method === 'card' || method === 'transfer') && !transactionRef);
+
+    const isConfirmDisabled = step !== 2 || (!isSubscriptionSelected && !initialAppointment) || isFullyPaid || !isAmountValid || loading || isSubmitting || ((method === 'card' || method === 'transfer') && !transactionRef);
     const isButtonBusy = isSubmitting || loading;
 
     return (
@@ -698,7 +758,24 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                         )}
                                     </div>
 
-                                    {selectedSubscription ? (
+                                    {initialAppointment ? (
+                                        <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-black bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md uppercase tracking-tight border border-blue-500/10">
+                                                        APPOINTMENT
+                                                    </span>
+                                                </div>
+                                                <div className="text-[9px] font-bold text-slate-500 flex items-center gap-1">
+                                                    {initialAppointment.title || 'Session'}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Price</div>
+                                                <div className="text-sm font-black text-white">{initialAppointment.price?.toLocaleString()} EGP</div>
+                                            </div>
+                                        </div>
+                                    ) : selectedSubscription ? (
                                         <div className="pt-3 border-t border-white/5 flex items-center justify-between">
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
@@ -728,62 +805,64 @@ const AddPaymentDialog = ({ open, onClose, onSuccess, initialMember, initialSubs
                                 </div>
 
                                 {/* Subscription Selector */}
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Subscription</label>
-                                    {isSubscriptionMissing ? (
-                                        <div className="p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-bold uppercase tracking-widest text-center">
-                                            No subscription found. Create subscription first from Subscriptions.
-                                        </div>
-                                    ) : (
-                                        <select
-                                            className="w-full px-4 py-3 bg-slate-900/50 border border-white/5 rounded-2xl text-xs font-bold text-white outline-none focus:border-blue-500/50 transition-all"
-                                            value={selectedSubscriptionId}
-                                            onChange={(e) => {
-                                                const sub = memberSubscriptions.find(s => s.id === parseInt(e.target.value));
-                                                if (sub) handleSubscriptionSelect(sub);
-                                                else {
-                                                    setSelectedSubscriptionId('');
-                                                    setTotalDue(0);
-                                                    setPaymentMode('full');
-                                                    setPayNowAmount('');
-                                                }
-                                            }}
-                                        >
-                                            <option value="">Select a subscription...</option>
-                                            {memberSubscriptions.map(sub => {
-                                                const meta = getSubscriptionMeta(sub);
-                                                const status = (sub.status || '').toUpperCase();
-                                                return (
-                                                    <option key={sub.id} value={sub.id}>
-                                                        {sub.plan?.name || 'Plan'} • {meta.remaining} / {meta.total} EGP • {status}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    )}
-                                    {selectedMeta && (
-                                        <div className="grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-400">
-                                            <div className="p-2 bg-slate-900/40 rounded-xl text-center">Total: {selectedMeta.total}</div>
-                                            <div className="p-2 bg-slate-900/40 rounded-xl text-center text-emerald-400">Paid: {selectedMeta.paid}</div>
-                                            <div className="p-2 bg-slate-900/40 rounded-xl text-center text-orange-400">Remaining: {selectedMeta.remaining}</div>
-                                        </div>
-                                    )}
-                                </div>
+                                {!initialAppointment && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Subscription</label>
+                                        {isSubscriptionMissing ? (
+                                            <div className="p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs font-bold uppercase tracking-widest text-center">
+                                                No subscription found. Create subscription first from Subscriptions.
+                                            </div>
+                                        ) : (
+                                            <select
+                                                className="w-full px-4 py-3 bg-slate-900/50 border border-white/5 rounded-2xl text-xs font-bold text-white outline-none focus:border-blue-500/50 transition-all"
+                                                value={selectedSubscriptionId}
+                                                onChange={(e) => {
+                                                    const sub = memberSubscriptions.find(s => s.id === parseInt(e.target.value));
+                                                    if (sub) handleSubscriptionSelect(sub);
+                                                    else {
+                                                        setSelectedSubscriptionId('');
+                                                        setTotalDue(0);
+                                                        setPaymentMode('full');
+                                                        setPayNowAmount('');
+                                                    }
+                                                }}
+                                            >
+                                                <option value="">Select a subscription...</option>
+                                                {memberSubscriptions.map(sub => {
+                                                    const meta = getSubscriptionMeta(sub);
+                                                    const status = (sub.status || '').toUpperCase();
+                                                    return (
+                                                        <option key={sub.id} value={sub.id}>
+                                                            {sub.plan?.name || 'Plan'} • {meta.remaining} / {meta.total} EGP • {status}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                        )}
+                                        {selectedMeta && (
+                                            <div className="grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-400">
+                                                <div className="p-2 bg-slate-900/40 rounded-xl text-center">Total: {selectedMeta.total}</div>
+                                                <div className="p-2 bg-slate-900/40 rounded-xl text-center text-emerald-400">Paid: {selectedMeta.paid}</div>
+                                                <div className="p-2 bg-slate-900/40 rounded-xl text-center text-orange-400">Remaining: {selectedMeta.remaining}</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Amount Selector */}
                                 <div className="space-y-4">
                                     <div className="flex p-1 bg-slate-900/50 rounded-xl border border-white/5">
                                         <button
                                             onClick={() => setPaymentMode('full')}
-                                            disabled={isFullyPaid || !isSubscriptionSelected}
-                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'full' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'} ${isFullyPaid || !isSubscriptionSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            disabled={isFullyPaid || (!isSubscriptionSelected && !initialAppointment)}
+                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'full' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'} ${isFullyPaid || (!isSubscriptionSelected && !initialAppointment) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                             Full Payment
                                         </button>
                                         <button
                                             onClick={() => setPaymentMode('partial')}
-                                            disabled={isFullyPaid || !isSubscriptionSelected}
-                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'partial' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'} ${isFullyPaid || !isSubscriptionSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            disabled={isFullyPaid || (!isSubscriptionSelected && !initialAppointment)}
+                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${paymentMode === 'partial' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'} ${isFullyPaid || (!isSubscriptionSelected && !initialAppointment) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                             Partial
                                         </button>

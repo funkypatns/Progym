@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-01-26
+Last updated: 2026-01-31
 
 Purpose:
 This file is the single source of truth for plans, tasks, and progress tracking. It is meant to help resume work after context compaction or a new chat session, and to prevent duplicate work.
@@ -99,6 +99,7 @@ Phase 4 - Receipts system
 | 2026-01-26 | 5d80430 | Stabilize idempotency key per modal session to block repeat submits. |
 | 2026-01-26 | 3d3313d | Enforce payment idempotency via transactionRef unique + backend dedupe. |
 | 2026-01-26 | 3a570a3 | Prevent Record Payment reinit when parent refreshes while open. |
+| 2026-01-31 | e84f6bc | Stabilize license endpoints and add license server root status. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.

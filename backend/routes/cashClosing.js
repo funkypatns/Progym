@@ -13,7 +13,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createAuditLog } = require('../services/auditService');
-const { calculateDailyRevenue, calculateNetRevenue } = require('../utils/financialCalculations');
+const { calculateDailyRevenue, calculateNetRevenue, calculateCashClosingStats, calculateFinancialSnapshot } = require('../utils/financialCalculations');
 const { parseDateRange } = require('../utils/dateParams');
 
 
@@ -292,8 +292,6 @@ router.get('/calculate-expected', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid date format' });
         }
 
-        const { calculateCashClosingStats } = require('../utils/financialCalculations');
-
         // Filter logic:
         // If Admin: can filter by employeeId (or 'all' for everyone).
         // If Staff: forced to their own ID.
@@ -431,6 +429,31 @@ router.get('/sales-preview', async (req, res) => {
 });
 
 /**
+ * GET /api/cash-closings/financial-preview
+ * Financial Snapshot Preview (Strict Logic)
+ * Accessible to all authenticated users
+ */
+router.get('/financial-preview', async (req, res) => {
+    try {
+        const { startAt, endAt } = req.query;
+
+        if (!startAt || !endAt) {
+            return res.status(400).json({ success: false, message: 'Start and end dates are required' });
+        }
+
+        const stats = await calculateFinancialSnapshot(req.prisma, new Date(startAt), new Date(endAt));
+
+        res.json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        console.error('Financial preview error:', error);
+        res.status(500).json({ success: false, message: 'Failed to calculate financial preview' });
+    }
+});
+
+/**
  * POST /api/cash-closings
  * Create new cash closing (IMMUTABLE)
  * Accessible to all authenticated users
@@ -495,8 +518,10 @@ router.post('/', [
         }
 
         // Calculate expected amounts (SNAPSHOT)
-        const { calculateCashClosingStats } = require('../utils/financialCalculations');
         const stats = await calculateCashClosingStats(req.prisma, new Date(startAt), new Date(endAt), targetEmployeeId);
+
+        // Calculate FINANCIAL SNAPSHOT (Strict)
+        const financialSnapshot = await calculateFinancialSnapshot(req.prisma, new Date(startAt), new Date(endAt));
 
         const expectedCashAmount = stats.expectedCashAmount;
         const expectedNonCashAmount = stats.expectedNonCashAmount;
@@ -538,7 +563,15 @@ router.post('/', [
                 differenceTotal,
                 status,
                 notes,
-                createdBy: req.user.id
+                createdBy: req.user.id,
+
+                // Save Financial Snapshot
+                totalSessions: financialSnapshot.totalSessions,
+                grossRevenue: financialSnapshot.grossRevenue,
+                totalCoachCommissions: financialSnapshot.totalCoachCommissions,
+                gymNetIncome: financialSnapshot.gymNetIncome,
+                breakdownByCoach: JSON.stringify(financialSnapshot.breakdownByCoach),
+                breakdownByService: JSON.stringify(financialSnapshot.breakdownByService)
             },
             include: {
                 employee: {

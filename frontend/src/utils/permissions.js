@@ -55,7 +55,15 @@ export const PERMISSIONS = {
 
     // POS
     POS_SHIFT_OPEN: 'pos.shift_open',
-    POS_SHIFT_CLOSE: 'pos.shift_close'
+    POS_SHIFT_CLOSE: 'pos.shift_close',
+
+    // Appointments
+    APPOINTMENTS_VIEW: 'appointments.view',
+    APPOINTMENTS_MANAGE: 'appointments.manage',
+
+    // Coaches
+    COACHES_VIEW: 'coaches.view',
+    COACHES_MANAGE: 'coaches.manage'
 };
 
 /**
@@ -139,6 +147,15 @@ export const PERMISSION_CATEGORIES = {
         permissions: [
             PERMISSIONS.POS_SHIFT_OPEN,
             PERMISSIONS.POS_SHIFT_CLOSE
+        ]
+    },
+    COACHING: {
+        label: 'Coaching',
+        permissions: [
+            PERMISSIONS.APPOINTMENTS_VIEW,
+            PERMISSIONS.APPOINTMENTS_MANAGE,
+            PERMISSIONS.COACHES_VIEW,
+            PERMISSIONS.COACHES_MANAGE
         ]
     }
 };

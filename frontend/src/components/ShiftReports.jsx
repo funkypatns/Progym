@@ -6,7 +6,7 @@ import apiClient from '../utils/api';
 import { formatDateTime } from '../utils/dateFormatter';
 import { formatCurrency } from '../utils/numberFormatter';
 import { useSettingsStore } from '../store';
-import ReportSummaryCards from './ReportSummaryCards';
+import ReportLayout from './Reports/ReportLayout';
 
 const ShiftReports = ({ isActive }) => {
     const { t, i18n } = useTranslation();
@@ -15,10 +15,6 @@ const ShiftReports = ({ isActive }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [nameFilter, setNameFilter] = useState('');
     const isRTL = i18n.language === 'ar';
-    const alignStart = isRTL ? 'text-right' : 'text-left';
-    const alignEnd = isRTL ? 'text-left' : 'text-right';
-    const searchInputPadding = isRTL ? 'pr-10 pl-3' : 'pl-10 pr-3';
-    const searchIconPosition = isRTL ? 'right-3' : 'left-3';
 
     // Date filter state
     const [dateRange, setDateRange] = useState({
@@ -97,200 +93,161 @@ const ShiftReports = ({ isActive }) => {
     if (!isActive) return null;
 
     return (
-        <div className="w-full px-6 py-6">
-            <div className="w-full space-y-5 rounded-2xl border border-slate-800/70 bg-slate-900/70 p-6">
-                <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 px-5 py-4">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/15 text-indigo-300">
-                            <BarChart3 className="h-6 w-6" />
-                        </div>
-                        <div className={alignStart}>
-                            <p className="text-lg font-semibold text-white">
-                                {t('reports.shiftReport.title', 'Shift report')}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                                {t('reports.shiftReport.subtitle', 'Cashier shift activity and balances')}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-4">
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5 items-end">
-                        <div className="space-y-2">
-                            <label className={`text-xs font-semibold text-slate-400 flex items-center gap-1.5 ${alignStart}`}>
-                                <Calendar size={14} />
-                                {t('reports.from', 'From')}
-                            </label>
-                            <input
-                                type="date"
-                                value={dateRange.startDate}
-                                onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                                className="w-full h-11 px-3 bg-slate-950/40 border border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className={`text-xs font-semibold text-slate-400 flex items-center gap-1.5 ${alignStart}`}>
-                                <Calendar size={14} />
-                                {t('reports.to', 'To')}
-                            </label>
-                            <input
-                                type="date"
-                                value={dateRange.endDate}
-                                onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                                className="w-full h-11 px-3 bg-slate-950/40 border border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white"
-                            />
-                        </div>
-
-                        <div className="space-y-2 xl:col-span-2">
-                            <label className={`text-xs font-semibold text-slate-400 ${alignStart}`}>
-                                {t('reports.filterByName', 'Filter by name')}
-                            </label>
-                            <div className="relative">
-                                <Search size={16} className={`absolute top-1/2 -translate-y-1/2 ${searchIconPosition} text-slate-500`} />
-                                <input
-                                    type="text"
-                                    placeholder={t('reports.searchStaff', 'Search by staff...')}
-                                    value={nameFilter}
-                                    onChange={(e) => setNameFilter(e.target.value)}
-                                    className={`w-full h-11 ${searchInputPadding} bg-slate-950/40 border border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-colors text-sm text-white placeholder:text-gray-500`}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex items-center">
-                            <button
-                                onClick={fetchShifts}
-                                disabled={isLoading}
-                                className="h-11 w-full xl:w-auto px-6 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                {isLoading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                                {t('common.refresh', 'Refresh')}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <ReportSummaryCards
-                    gridClassName="md:grid-cols-2 xl:grid-cols-4"
-                    items={[
-                        {
-                            label: t('reports.shifts.total', 'Total shifts'),
-                            value: summary.total,
-                            icon: Activity,
-                            iconClassName: 'bg-indigo-500/15 border border-indigo-500/30',
-                            iconColorClassName: 'text-indigo-300'
-                        },
-                        {
-                            label: t('reports.shifts.active', 'Active shifts'),
-                            value: summary.active,
-                            icon: Clock,
-                            iconClassName: 'bg-blue-500/15 border border-blue-500/30',
-                            iconColorClassName: 'text-blue-300'
-                        },
-                        {
-                            label: t('cashClosing.status.balanced', 'Balanced'),
-                            value: summary.balanced,
-                            icon: CheckCircle,
-                            iconClassName: 'bg-emerald-500/15 border border-emerald-500/30',
-                            iconColorClassName: 'text-emerald-300'
-                        },
-                        {
-                            label: t('reports.shifts.needsReview', 'Needs review'),
-                            value: summary.review,
-                            icon: AlertCircle,
-                            iconClassName: 'bg-amber-500/15 border border-amber-500/30',
-                            iconColorClassName: 'text-amber-300'
-                        }
-                    ]}
+        <ReportLayout>
+            <div className="p-6 max-w-7xl mx-auto">
+                {/* Header */}
+                <ReportLayout.Header
+                    icon={BarChart3}
+                    title={t('reports.shiftReport.title', 'Shift report')}
+                    subtitle={t('reports.shiftReport.subtitle', 'Cashier shift salary and balance')}
                 />
 
-                <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 overflow-hidden">
+                {/* Filter Bar */}
+                <ReportLayout.FilterBar>
+                    <ReportLayout.DateInput
+                        label={t('reports.startDate', 'تاريخ البدء')}
+                        value={dateRange.startDate}
+                        onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                        icon={Calendar}
+                    />
+                    <ReportLayout.DateInput
+                        label={t('reports.endDate', 'تاريخ الانتهاء')}
+                        value={dateRange.endDate}
+                        onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                        icon={Calendar}
+                    />
+                    <ReportLayout.SearchInput
+                        label={t('reports.filterByName', 'Filter by name')}
+                        value={nameFilter}
+                        onChange={(e) => setNameFilter(e.target.value)}
+                        placeholder={t('reports.searchStaff', 'Search by staff...')}
+                        icon={Search}
+                    />
+                    <ReportLayout.RefreshButton
+                        onClick={fetchShifts}
+                        loading={isLoading}
+                        icon={RefreshCw}
+                    >
+                        {t('common.refresh', 'تحديث')}
+                    </ReportLayout.RefreshButton>
+                </ReportLayout.FilterBar>
+
+                {/* Metrics Grid */}
+                <ReportLayout.MetricsGrid>
+                    <ReportLayout.MetricCard
+                        icon={Activity}
+                        label={t('reports.shifts.total', 'TOTAL SHIFTS')}
+                        value={summary.total}
+                        color="blue"
+                        loading={isLoading}
+                    />
+                    <ReportLayout.MetricCard
+                        icon={Clock}
+                        label={t('reports.shifts.active', 'ACTIVE SHIFTS')}
+                        value={summary.active}
+                        color="teal"
+                        loading={isLoading}
+                    />
+                    <ReportLayout.MetricCard
+                        icon={CheckCircle}
+                        label={t('cashClosing.status.balanced', 'مكتمل')}
+                        value={summary.balanced}
+                        color="emerald"
+                        loading={isLoading}
+                    />
+                    <ReportLayout.MetricCard
+                        icon={AlertCircle}
+                        label={t('reports.shifts.needsReview', 'NEEDS REVIEW')}
+                        value={summary.review}
+                        color="amber"
+                        loading={isLoading}
+                    />
+                </ReportLayout.MetricsGrid>
+
+                {/* Content */}
+                <ReportLayout.Content>
                     {isLoading ? (
-                        <div className="py-16 text-center">
-                            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                            <p className="text-sm text-slate-400">{t('common.loading', 'Loading...')}</p>
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
                         </div>
                     ) : filteredShifts.length === 0 ? (
-                        <div className="py-16 text-center">
-                            <AlertCircle className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-                            <p className="text-sm text-slate-400">{t('common.noResults', 'No data available')}</p>
-                        </div>
+                        <ReportLayout.EmptyState
+                            icon={AlertCircle}
+                            title={t('reports.noData', 'لا توجد بيانات')}
+                            subtitle={t('reports.adjustFilters', 'اضغط على تحديث او اضبط المرشحات لعرض البيانات')}
+                        />
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-slate-900/70 border-b border-slate-800/70 sticky top-0">
-                                    <tr>
-                                        <th className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider ${alignStart}`}>
-                                            <div className="flex items-center gap-2">
-                                                <Clock size={14} />
-                                                {t('reports.fields.paidAt', 'Date')}
-                                            </div>
+                                <thead className="bg-slate-900/50 border-b border-white/5">
+                                    <tr className={isRTL ? 'text-right' : 'text-left'}>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('cashClosing.table.shift', 'Shift')}
                                         </th>
-                                        <th className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider ${alignStart}`}>
-                                            {t('auth.role_staff', 'Staff')}
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('cashClosing.table.cashier', 'Cashier')}
                                         </th>
-                                        <th className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider ${alignEnd}`}>
-                                            {t('cashClosing.expectedCash', 'Expected')}
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('cashClosing.table.startTime', 'Start time')}
                                         </th>
-                                        <th className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider ${alignEnd}`}>
-                                            {t('cashClosing.declaredCash', 'Actual')}
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                            {t('cashClosing.table.endTime', 'End time')}
                                         </th>
-                                        <th className={`px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider ${alignEnd}`}>
-                                            {t('cashClosing.differenceCash', 'Diff')}
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                                            {t('cashClosing.table.expected', 'Expected')}
                                         </th>
-                                        <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-center">
-                                            {t('reports.fields.status', 'Status')}
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                                            {t('cashClosing.table.actual', 'Actual')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                                            {t('cashClosing.table.difference', 'Difference')}
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">
+                                            {t('cashClosing.table.status', 'Status')}
                                         </th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800/70">
+                                <tbody className="divide-y divide-white/5">
                                     {filteredShifts.map((shift) => {
-                                        const diff = (shift.endedCash || 0) - (shift.expectedCash || 0);
+                                        const expected = shift.expectedCash || 0;
+                                        const actual = shift.endedCash || 0;
+                                        const diff = actual - expected;
                                         const isBalanced = Math.abs(diff) < 0.01;
+                                        const isActive = !shift.endedAt;
 
                                         return (
-                                            <tr key={shift.id} className="hover:bg-slate-800/40 transition-colors">
-                                                <td className={`px-4 py-3 ${alignStart}`}>
-                                                    <div className="font-medium text-white">
-                                                        {formatDateTime(shift.startedAt, i18n.language).split(',')[0]}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500">
-                                                        {shift.endedAt
-                                                            ? formatDateTime(shift.endedAt, i18n.language).split(',')[1]
-                                                            : t('reports.status.active', 'Active')}
-                                                    </div>
+                                            <tr key={shift.id} className="hover:bg-white/5 transition">
+                                                <td className="p-4 text-white font-medium">#{shift.id}</td>
+                                                <td className="p-4 text-slate-300">
+                                                    {shift.opener?.firstName} {shift.opener?.lastName}
                                                 </td>
-                                                <td className={`px-4 py-3 ${alignStart}`}>
-                                                    <div className="font-medium text-white">
-                                                        {shift.opener?.firstName} {shift.opener?.lastName}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 capitalize">
-                                                        {shift.opener?.role || t('auth.role_staff', 'Staff')}
-                                                    </div>
+                                                <td className="p-4 text-slate-400 font-mono text-xs">
+                                                    {formatDateTime(shift.createdAt)}
                                                 </td>
-                                                <td className={`px-4 py-3 ${alignEnd} font-mono text-slate-300`}>
-                                                    {formatCurrency(shift.expectedCash || 0, i18n.language, currencyConf)}
+                                                <td className="p-4 text-slate-400 font-mono text-xs">
+                                                    {shift.endedAt ? formatDateTime(shift.endedAt) : '-'}
                                                 </td>
-                                                <td className={`px-4 py-3 ${alignEnd} font-mono font-bold text-white`}>
-                                                    {shift.endedCash ? formatCurrency(shift.endedCash, i18n.language, currencyConf) : '-'}
+                                                <td className="p-4 text-right text-white font-medium">
+                                                    {formatCurrency(expected, currencyConf)}
                                                 </td>
-                                                <td className={`px-4 py-3 ${alignEnd} font-mono font-bold ${diff < 0 ? 'text-red-400' : diff > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                                    {Math.abs(diff) > 0 ? (diff > 0 ? '+' : '') + formatCurrency(diff, i18n.language, currencyConf) : '-'}
+                                                <td className="p-4 text-right text-white font-medium">
+                                                    {shift.endedAt ? formatCurrency(actual, currencyConf) : '-'}
                                                 </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    {!shift.endedAt ? (
-                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-500/20 text-indigo-300">
-                                                            {t('reports.status.active', 'Active')}
+                                                <td className={`p-4 text-right font-bold ${diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                                                    {shift.endedAt ? (diff > 0 ? '+' : '') + formatCurrency(diff, currencyConf) : '-'}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {isActive ? (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                            {t('cashClosing.status.active', 'Active')}
                                                         </span>
                                                     ) : isBalanced ? (
-                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/20 text-emerald-300">
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                                             {t('cashClosing.status.balanced', 'Balanced')}
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-red-500/20 text-red-300">
-                                                            {t('reports.status.review', 'Review')}
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                                            {t('cashClosing.status.review', 'Review')}
                                                         </span>
                                                     )}
                                                 </td>
@@ -301,9 +258,9 @@ const ShiftReports = ({ isActive }) => {
                             </table>
                         </div>
                     )}
-                </div>
+                </ReportLayout.Content>
             </div>
-        </div>
+        </ReportLayout>
     );
 };
 
