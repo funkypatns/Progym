@@ -105,6 +105,7 @@ Phase 4 - Receipts system
 | 2026-02-01 | e08562d | Add trainer delete UI with hard-delete guard against linked data. |
 | 2026-02-01 | d93e498 | Allow manual appointment completion at any time with early-complete confirmation. |
 | 2026-02-01 | 9a629ed | Add trainer payouts with persistent earnings tracking and payout UI. |
+| 2026-02-01 | 80a2f85 | Create pending payment invoice on appointment completion when balance remains. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
