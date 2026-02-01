@@ -4,7 +4,7 @@ import apiClient from '../utils/api';
 import { useTranslation } from 'react-i18next';
 import {
     Users, DollarSign, Activity, Calendar,
-    TrendingUp, TrendingDown, Briefcase,
+    TrendingUp, TrendingDown,
     Shield, CreditCard, Inbox, AlertCircle,
     Percent, RotateCcw, FileWarning, Clock,
     UserPlus, CheckCircle
@@ -124,14 +124,6 @@ const Dashboard = () => {
                                 color="blue"
                                 subtitle={t('dashboard.thisMonth', 'This Month')}
                                 link="/reports/revenue"
-                            />
-                            <StatCard
-                                title={t('dashboard.coachEarnings')}
-                                value={money(stats.financials.coachCommissions)}
-                                icon={Briefcase}
-                                color="orange"
-                                subtitle={t('dashboard.thisMonth', 'This Month')}
-                                link="/reports/coach"
                             />
                             <StatCard
                                 title={t('dashboard.expenseRatio')}

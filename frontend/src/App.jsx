@@ -57,8 +57,6 @@ import Products from './pages/Products';
 import Sales from './pages/Sales';
 import Appointments from './pages/Appointments';
 import Coaches from './pages/Coaches';
-import CoachReportsPage from './pages/Reports/CoachReportsPage';
-import GymIncomeReport from './pages/Reports/GymIncomeReport';
 import SessionNotificationsPage from './pages/Notifications/SessionNotificationsPage';
 
 // Protected Route Component (Exists)
@@ -254,8 +252,6 @@ function App() {
                         <Route path="pay-in-out" element={<PayInOutReportPage />} />
                         <Route path="refunds" element={<RefundsReportPage />} />
                         <Route path="cancellations" element={<CancellationsReportPage />} />
-                        <Route path="coach-earnings" element={<CoachReportsPage />} />
-                        <Route path="gym-income" element={<GymIncomeReport />} />
 
                         {/* Admin Only */}
                         <Route path="outstanding" element={<OutstandingReportPage />} />
