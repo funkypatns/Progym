@@ -92,3 +92,7 @@
 [PROGRESS]
 - 2026-02-02T00:09:14+02:00 [CODE] Added gym income sessions report (frontend page + nav/route) and backend /api/reports/gym-income-sessions endpoint for session-only revenue totals and rows.
 
+
+[PROGRESS]
+- 2026-02-02T00:47:27.8367870+02:00 [CODE] Reports now reuse live staff-trainer earnings and payments endpoints; trainer and gym-income reports show real data with end-of-day date filters.
+
