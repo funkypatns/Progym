@@ -49,8 +49,7 @@ const ReportsLayout = () => {
         { path: '/reports/pay-in-out', label: safeT('payInOut.title', isRTL ? 'صادر / وارد' : 'Pay In/Out'), icon: ArrowRightLeft },
         { path: '/reports/refunds', label: safeT('reports.fields.refunds.title', isRTL ? 'الاسترجاع' : 'Refunds'), icon: ArrowRightLeft },
         { path: '/reports/cancellations', label: safeT('reports.cancellations.title', isRTL ? 'الإلغاءات' : 'Cancellations'), icon: XOctagon },
-        { path: '/reports/coach-earnings', label: safeT('reports.coachEarnings.title', isRTL ? 'أرباح المدربين' : 'Coach Earnings'), icon: Users },
-        { path: '/reports/gym-income', label: safeT('reports.gymIncome.title', isRTL ? 'دخل الجيم' : 'Gym Income'), icon: Banknote },
+        { path: '/reports/gym-income-sessions', label: safeT('reports.gymIncomeSessions', isRTL ? 'دخل الجيم - الجلسات' : 'Gym Income - Sessions'), icon: Banknote },
 
         // Admin Features
         { path: '/reports/outstanding', label: safeT('reports.outstanding', isRTL ? 'الأرصدة المستحقة' : 'Outstanding Balance'), icon: AlertCircle },

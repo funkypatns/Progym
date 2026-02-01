@@ -2240,6 +2240,159 @@ router.get('/gym-income', async (req, res) => {
 });
 
 /**
+ * GET /api/reports/gym-income-sessions
+ * Session-only revenue report (appointments payments only)
+ */
+router.get('/gym-income-sessions', async (req, res) => {
+    try {
+        const { from, to, startDate: startDateParam, endDate: endDateParam, serviceId, trainerId, employeeId, method } = req.query;
+        const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
+        if (error) {
+            return res.status(400).json({ success: false, message: error });
+        }
+
+        const paymentWhere = {
+            appointmentId: { not: null },
+            status: { in: ['completed', 'COMPLETED', 'paid', 'PAID'] },
+            paidAt: { gte: startDate, lte: endDate }
+        };
+
+        const normalizedMethod = typeof method === 'string' ? method.toLowerCase() : '';
+        if (normalizedMethod && normalizedMethod !== 'all') {
+            paymentWhere.method = normalizedMethod;
+        }
+
+        const appointmentWhere = { status: { in: ['completed', 'COMPLETED'] } };
+
+        const parsedTrainerId = parseInt(trainerId, 10);
+        if (trainerId && !Number.isNaN(parsedTrainerId)) {
+            appointmentWhere.trainerId = parsedTrainerId;
+        }
+
+        const parsedEmployeeId = parseInt(employeeId, 10);
+        if (employeeId && !Number.isNaN(parsedEmployeeId)) {
+            paymentWhere.OR = [
+                { createdBy: parsedEmployeeId },
+                { appointment: { completedByEmployeeId: parsedEmployeeId } }
+            ];
+        }
+
+        if (serviceId) {
+            const parsedServiceId = parseInt(serviceId, 10);
+            if (!Number.isNaN(parsedServiceId)) {
+                const service = await req.prisma.service.findUnique({ where: { id: parsedServiceId } });
+                if (service) {
+                    appointmentWhere.title = { contains: service.name, mode: 'insensitive' };
+                }
+            }
+        }
+
+        paymentWhere.appointment = appointmentWhere;
+
+        const payments = await req.prisma.payment.findMany({
+            where: paymentWhere,
+            include: {
+                member: { select: { firstName: true, lastName: true, memberId: true } },
+                creator: { select: { firstName: true, lastName: true } },
+                appointment: {
+                    select: {
+                        id: true,
+                        title: true,
+                        start: true,
+                        end: true,
+                        price: true,
+                        member: { select: { firstName: true, lastName: true, memberId: true } },
+                        trainer: { select: { id: true, name: true } },
+                        completedByEmployee: { select: { firstName: true, lastName: true } }
+                    }
+                }
+            },
+            orderBy: { paidAt: 'desc' }
+        });
+
+        const rowsMap = new Map();
+        const byMethod = { CASH: 0, CARD: 0, TRANSFER: 0 };
+
+        payments.forEach((payment) => {
+            const methodKey = (payment.method || '').toUpperCase();
+            if (byMethod[methodKey] !== undefined) {
+                byMethod[methodKey] += payment.amount || 0;
+            }
+
+            const appointmentId = payment.appointmentId;
+            if (!appointmentId) return;
+
+            if (!rowsMap.has(appointmentId)) {
+                rowsMap.set(appointmentId, {
+                    appointmentId,
+                    paidAt: payment.paidAt,
+                    methods: new Set(),
+                    amount: 0,
+                    appointment: payment.appointment,
+                    member: payment.appointment?.member || payment.member,
+                    cashier: payment.creator,
+                    completedBy: payment.appointment?.completedByEmployee
+                });
+            }
+
+            const row = rowsMap.get(appointmentId);
+            row.amount += payment.amount || 0;
+            row.methods.add(methodKey || 'UNKNOWN');
+            if (payment.paidAt > row.paidAt) {
+                row.paidAt = payment.paidAt;
+            }
+        });
+
+        const rows = Array.from(rowsMap.values()).map((row) => {
+            const memberName = [row.member?.firstName, row.member?.lastName].filter(Boolean).join(' ').trim();
+            const trainerName = row.appointment?.trainer?.name || '';
+            const employee = row.cashier || row.completedBy;
+            const employeeName = employee ? [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() : '';
+            const methodLabel = row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED';
+
+                return {
+                    appointmentId: row.appointmentId,
+                    paidAt: row.paidAt,
+                    sessionDate: row.appointment?.start || row.paidAt,
+                    customerName: memberName,
+                    customerCode: row.member?.memberId || '',
+                    serviceName: row.appointment?.title || '',
+                    trainerName,
+                    employeeName,
+                    paymentMethod: methodLabel,
+                    amount: row.amount || 0
+                };
+            });
+
+        const totalRevenue = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
+        const sessionsCount = rows.length;
+        const averagePrice = sessionsCount ? totalRevenue / sessionsCount : 0;
+
+        return res.json({
+            success: true,
+            data: {
+                summary: {
+                    totalRevenue,
+                    sessionsCount,
+                    averagePrice,
+                    byMethod
+                },
+                rows
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Gym income sessions error:', error);
+        return res.json({
+            success: true,
+            data: {
+                summary: { totalRevenue: 0, sessionsCount: 0, averagePrice: 0, byMethod: { CASH: 0, CARD: 0, TRANSFER: 0 } },
+                rows: []
+            }
+        });
+    }
+});
+
+/**
  * GET /api/reports/trainer-earnings
  * Trainer earnings report sourced from TrainerEarning table
  */

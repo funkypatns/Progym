@@ -98,6 +98,13 @@ const ReportsDashboard = () => {
             to: "/reports/trainers"
         },
         {
+            title: t('reports.gymIncomeSessions') || "Gym Income - Sessions",
+            desc: "Paid session revenue with filters and totals",
+            icon: DollarSign,
+            gradient: "bg-gradient-to-br from-emerald-500 to-teal-600",
+            to: "/reports/gym-income-sessions"
+        },
+        {
             title: t('reports.memberReport') || "Members Analytics",
             desc: "Insights into member demographics and distribution",
             icon: Users,

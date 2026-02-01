@@ -42,6 +42,7 @@ import CashClosingReportPage from './pages/Reports/CashClosingReportPage';
 import RefundsReportPage from './pages/Reports/RefundsReportPage';
 import CancellationsReportPage from './pages/Reports/CancellationsReportPage';
 import TrainerReportPage from './pages/Reports/TrainerReportPage';
+import GymIncomeSessionsReportPage from './pages/Reports/GymIncomeSessionsReportPage';
 
 import Settings from './pages/Settings';
 import Plans from './pages/Plans';
@@ -246,6 +247,7 @@ function App() {
                         <Route path="attendance" element={<StandardReportPage type="attendance" />} />
                         <Route path="payments-summary" element={<StandardReportPage type="payments-summary" />} />
                         <Route path="trainers" element={<TrainerReportPage />} />
+                        <Route path="gym-income-sessions" element={<GymIncomeSessionsReportPage />} />
 
                         {/* Complex Reports */}
                         <Route path="employee-collections" element={<EmployeeCollectionsPage />} />
