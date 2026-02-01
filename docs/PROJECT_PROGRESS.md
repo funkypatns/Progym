@@ -109,6 +109,7 @@ Phase 4 - Receipts system
 | 2026-02-01 | 4694b35 | Persist trainerId on appointment create/update so trainer earnings are recorded on completion. |
 | 2026-02-01 | 9cad451 | Allow same-day past-time bookings, simplify appointment modal fields, and update time UI. |
 | 2026-02-01 | 913c4f9 | Restore appointment modal details with trainer/coach selection, member info, and commission preview. |
+| 2026-02-01 | 5953e1f | Fix coach dropdown selection in appointment modal by adding placeholder and controlled value. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.

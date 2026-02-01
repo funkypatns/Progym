@@ -74,6 +74,7 @@
 - 2026-02-01T09:30:00+02:00 [CODE] Appointment create/update now persists trainerId so TrainerEarning is created on completion.
 - 2026-02-01T12:44:22+02:00 [CODE] Appointment booking now blocks only past dates (not past times), removes trainer selection from booking modal, and switches time input to 12-hour UI while storing 24-hour values.
 - 2026-02-01T12:57:16+02:00 [CODE] Restored appointment modal coach/trainer fields, member info display, and added commission preview with 12-hour time picker improvements.
+- 2026-02-01T13:02:41+02:00 [CODE] Coach dropdown now includes placeholder and stays controlled, preventing empty coachId on submit.
 
 [DISCOVERIES]
 - 2026-02-01T08:12:00+02:00 [CODE] Existing staff-trainers route already handled commission/earnings; updated to persistent trainer earnings/payouts.
