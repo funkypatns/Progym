@@ -79,3 +79,8 @@
 
 [DISCOVERIES]
 - 2026-02-01T08:12:00+02:00 [CODE] Existing staff-trainers route already handled commission/earnings; updated to persistent trainer earnings/payouts.
+
+[PROGRESS]
+- 2026-02-01T23:06:13+02:00 [CODE] Added trainer report page in Reports with trainer earnings/payouts tables, CSV export, and payout modal wired to TrainerEarning/TrainerPayout endpoints.
+- 2026-02-01T23:06:13+02:00 [CODE] Added reports endpoints for trainer earnings/payouts and mounted /api/trainers payout route for report settlements.
+
