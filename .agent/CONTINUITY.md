@@ -61,3 +61,6 @@
 
 [PROGRESS]
 - 2026-02-01T07:05:52+02:00 [CODE] Disabled staff trainer delete endpoint (403) to enforce non-deletable trainers.
+
+[PROGRESS]
+- 2026-02-01T07:16:28+02:00 [CODE] Added trainer delete UI and hard-delete endpoint with dependency checks.

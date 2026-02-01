@@ -113,10 +113,32 @@ router.patch('/:id/toggle', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  return res.status(403).json({
-    success: false,
-    message: 'Trainer deletion is disabled. Use Active/Inactive instead.'
-  });
+  const trainerId = parseInt(req.params.id, 10);
+  if (Number.isNaN(trainerId)) {
+    return res.status(400).json({ success: false, message: 'Invalid trainer id' });
+  }
+  try {
+    await req.prisma.$transaction(async (tx) => {
+      const [appointmentsCount, earningsCount, paymentsCount] = await Promise.all([
+        tx.appointment.count({ where: { trainerId } }),
+        tx.coachEarning.count({ where: { appointment: { trainerId } } }),
+        tx.payment.count({ where: { appointment: { trainerId } } })
+      ]);
+      if (appointmentsCount > 0 || earningsCount > 0 || paymentsCount > 0) {
+        const error = new Error('لا يمكن حذف المدرب لوجود بيانات مرتبطة به');
+        error.status = 400;
+        throw error;
+      }
+      await tx.staffTrainer.delete({ where: { id: trainerId } });
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[STAFF TRAINERS] Delete error:', error);
+    return res.status(error.status || 400).json({
+      success: false,
+      message: error.message || 'Failed to delete trainer'
+    });
+  }
 });
 
 /**

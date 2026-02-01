@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Plus, Edit, Loader2, Power } from 'lucide-react';
+import { Plus, Edit, Loader2, Power, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import CommissionSettingsModal from './Coaches/CommissionSettingsModal';
@@ -17,6 +17,7 @@ const Trainers = () => {
     const [editingTrainer, setEditingTrainer] = useState(null);
     const [showCommissionModal, setShowCommissionModal] = useState(false);
     const [commissionTrainer, setCommissionTrainer] = useState(null);
+    const [deleteTrainer, setDeleteTrainer] = useState(null);
     const [formData, setFormData] = useState({
         name: '',
         phone: '',
@@ -120,6 +121,23 @@ const Trainers = () => {
         }
     };
 
+    const handleDeleteRequest = (trainer) => {
+        setDeleteTrainer(trainer);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!deleteTrainer) return;
+        try {
+            await api.delete(`/staff-trainers/${deleteTrainer.id}`);
+            toast.success('Trainer deleted');
+            setTrainers(prev => prev.filter(item => item.id !== deleteTrainer.id));
+            setDeleteTrainer(null);
+            fetchTrainers();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete trainer');
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -191,6 +209,9 @@ const Trainers = () => {
                                             <button onClick={() => handleToggle(trainer)} className="btn-icon hover:text-blue-400">
                                                 <Power className="w-4 h-4" />
                                             </button>
+                                            <button onClick={() => handleDeleteRequest(trainer)} className="btn-icon text-red-400 hover:text-red-300">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -228,6 +249,21 @@ const Trainers = () => {
                                 <button type="submit" className="btn-primary">Save</button>
                             </div>
                         </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {deleteTrainer && (
+                <div className="modal-overlay" onClick={() => setDeleteTrainer(null)}>
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="modal-content p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold text-white mb-4">حذف المدرب</h2>
+                        <p className="text-sm text-slate-300">
+                            هل أنت متأكد من حذف هذا المدرب نهائيا لا يمكن التراجع عن هذا الإجراء.
+                        </p>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button type="button" onClick={() => setDeleteTrainer(null)} className="btn-secondary">إلغاء</button>
+                            <button type="button" onClick={handleDeleteConfirm} className="btn-primary bg-red-600 hover:bg-red-500">حذف</button>
+                        </div>
                     </motion.div>
                 </div>
             )}
