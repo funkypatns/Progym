@@ -108,3 +108,7 @@
 [PROGRESS]
 - 2026-02-02T01:18:34.8706941+02:00 [CODE] Gym Income Sessions report now mirrors Payments endpoint params (type=SESSION only) and logs request/row counts in dev for verification.
 
+
+[PROGRESS]
+- 2026-02-02T01:28:59.5556799+02:00 [CODE] Added Pending Completion report page (/reports/pending-completion) using appointments pending-completion endpoint, filters, CSV export, and AppointmentModal completion flow.
+

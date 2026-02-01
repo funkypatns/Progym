@@ -133,3 +133,4 @@ Phase 4 - Receipts system
 | 2026-02-01 | 4b298b6 | Fix Trainer Report crash by adding missing table subcomponents. |
 | 2026-02-01 | 40320c5 | Add gym income sessions report filters/search using session payments; include member phone for search. |
 | 2026-02-01 | 58ba4b3 | Restore gym income sessions report to use session payments endpoint and add dev logs for rows/totals. |
+| 2026-02-02 | a0455f8 | Add pending completion report with filters, CSV export, and completion modal action. |
