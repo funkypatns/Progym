@@ -60,6 +60,7 @@ const AppointmentService = {
             data: {
                 memberId: parseInt(data.memberId),
                 coachId,
+                trainerId: data.trainerId ? parseInt(data.trainerId) : null,
                 title: data.title || null,
                 start: timeRange.start,
                 end: timeRange.end,
@@ -182,6 +183,9 @@ const AppointmentService = {
             data: {
                 ...updatePayload,
                 coachId: updatePayload.coachId ? parseInt(updatePayload.coachId) : undefined,
+                trainerId: updatePayload.trainerId !== undefined
+                    ? (updatePayload.trainerId ? parseInt(updatePayload.trainerId) : null)
+                    : undefined,
                 start: updatePayload.start ? new Date(updatePayload.start) : undefined,
                 end: updatePayload.end ? new Date(updatePayload.end) : undefined,
                 price: updatePayload.price ? parseFloat(updatePayload.price) : undefined
