@@ -93,12 +93,19 @@ const GymIncomeSessionsReportPage = () => {
             const endDate = toEndOfDay(filters.to);
             const params = new URLSearchParams({
                 type: 'SESSION',
-                status: 'completed',
                 startDate,
                 endDate,
                 page: '1',
                 limit: '10000'
             });
+
+            if (import.meta.env.DEV) {
+                console.log('[REPORTS][gym-income-sessions] request', {
+                    startDate,
+                    endDate,
+                    type: 'SESSION'
+                });
+            }
 
             const response = await apiClient.get(`/payments?${params.toString()}`);
             const rawData = response.data?.data;
@@ -195,6 +202,14 @@ const GymIncomeSessionsReportPage = () => {
                 byMethod
             });
             setRows(rows);
+
+            if (import.meta.env.DEV) {
+                console.log('[REPORTS][gym-income-sessions] response', {
+                    paymentsCount: payments.length,
+                    rowsCount: rows.length,
+                    totalRevenue
+                });
+            }
         } catch (error) {
             toast.error(isRTL ? 'فشل تحميل تقرير دخل الجلسات' : 'Failed to load sessions income report');
             setSummary({ totalRevenue: 0, sessionsCount: 0, averagePrice: 0, byMethod: { CASH: 0, CARD: 0, TRANSFER: 0 } });
