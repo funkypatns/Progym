@@ -314,6 +314,7 @@
         "attendanceReport": "Attendance Report",
         "subscriptionReport": "Subscriptions Report",
         "trainersReport": "Trainer Report",
+        "pendingCompletion": "Pending Completion",
         "export": "Export",
         "exportExcel": "Export to Excel",
         "exportPdf": "Export to PDF",

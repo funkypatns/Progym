@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Calendar, ClipboardList, Download, Filter, Users } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
@@ -30,6 +30,7 @@ const PendingCompletionReportPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [autoCompleteTriggerId, setAutoCompleteTriggerId] = useState(null);
+    const errorToastShownRef = useRef(false);
 
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
@@ -120,8 +121,12 @@ const PendingCompletionReportPage = () => {
             });
 
             setRows(normalized);
+            errorToastShownRef.current = false;
         } catch (error) {
-            toast.error(isRTL ? 'فشل تحميل الجلسات المتأخرة' : 'Failed to load pending completion');
+            if (!errorToastShownRef.current) {
+                toast.error(isRTL ? 'فشل تحميل الجلسات المتأخرة' : 'Failed to load pending completion');
+                errorToastShownRef.current = true;
+            }
             setRows([]);
         } finally {
             setLoading(false);

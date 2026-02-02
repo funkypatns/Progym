@@ -68,7 +68,9 @@ const ReportsLayout = () => {
                     </h3>
                 </div>
                 <nav className="flex-1 p-2 space-y-1">
-                    {reportLinks.map((link) => (
+                    {reportLinks.map((link) => {
+                        const labelText = typeof link.label === 'function' ? link.label() : link.label;
+                        return (
                         <NavLink
                             key={link.path}
                             to={link.path}
@@ -81,9 +83,9 @@ const ReportsLayout = () => {
                             `}
                         >
                             <link.icon size={16} />
-                            <span className="truncate">{link.label}</span>
+                            <span className="truncate">{labelText}</span>
                         </NavLink>
-                    ))}
+                    );})}
                 </nav>
             </div>
 
