@@ -68,7 +68,7 @@ router.get('/pending-completion', authenticate, async (req, res) => {
         const where = {
             end: { lt: now },
             isCompleted: false,
-            status: { notIn: ['cancelled', 'no_show'] }
+            status: { notIn: ['cancelled', 'no_show', 'completed'] }
         };
         if (startDateParam && endDateParam) {
             const { startDate, endDate, error } = parseDateRange(startDateParam, endDateParam);
@@ -83,7 +83,20 @@ router.get('/pending-completion', authenticate, async (req, res) => {
         }
         const appointments = await req.prisma.appointment.findMany({
             where,
-            include: {
+            select: {
+                id: true,
+                title: true,
+                start: true,
+                end: true,
+                status: true,
+                price: true,
+                paidAmount: true,
+                paymentStatus: true,
+                trainerId: true,
+                memberId: true,
+                coachId: true,
+                createdByEmployeeId: true,
+                isCompleted: true,
                 member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
                 coach: { select: { firstName: true, lastName: true } },
                 trainer: { select: { id: true, name: true } },
@@ -94,7 +107,7 @@ router.get('/pending-completion', authenticate, async (req, res) => {
         return res.json({ success: true, data: appointments || [] });
     } catch (error) {
         console.error('[APPOINTMENTS] Pending completion error:', error);
-        return res.json({ success: true, data: [] });
+        return res.json({ success: true, data: [], error: 'pending_completion_query_failed' });
     }
 });
 

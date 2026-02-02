@@ -1,15 +1,15 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Calendar, ClipboardList, Download, Filter, Users } from 'lucide-react';
+import toast from 'react-hot-toast';
 import apiClient, { getStaffTrainers } from '../../utils/api';
 import ReportsPageShell from '../../components/Reports/ReportsPageShell';
 import ReportsToolbar from '../../components/Reports/ReportsToolbar';
-import ReportsTableContainer from '../../components/Reports/ReportsTableContainer';
+import ReportsTableContainer, { ReportsTableRow, ReportsTableCell } from '../../components/Reports/ReportsTableContainer';
 import AppointmentModal from '../Appointments/AppointmentModal';
-import toast from 'react-hot-toast';
 
 const PendingCompletionReportPage = () => {
-    const { i18n } = useTranslation();
+    const { i18n, t } = useTranslation();
     const isRTL = i18n.dir() === 'rtl';
     const language = i18n.language || 'en';
 
@@ -31,6 +31,7 @@ const PendingCompletionReportPage = () => {
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [autoCompleteTriggerId, setAutoCompleteTriggerId] = useState(null);
     const errorToastShownRef = useRef(false);
+    const requestIdRef = useRef(0);
 
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
@@ -70,21 +71,32 @@ const PendingCompletionReportPage = () => {
     }, []);
 
     const fetchPendingCompletion = async () => {
-        const normalized = normalizeRange(filters.from, filters.to);
-        if (normalized.swapped) {
-            setFilters((prev) => ({ ...prev, from: normalized.from, to: normalized.to }));
+        const normalizedRange = normalizeRange(filters.from, filters.to);
+        if (normalizedRange.swapped) {
+            setFilters((prev) => ({ ...prev, from: normalizedRange.from, to: normalizedRange.to }));
             return;
         }
-        setLoading(true);
-        try {
-            const startDate = toStartOfDay(normalized.from);
-            const endDate = toEndOfDay(normalized.to);
-            const params = new URLSearchParams();
-            if (startDate) params.append('startDate', startDate);
-            if (endDate) params.append('endDate', endDate);
 
-            const response = await apiClient.get(`/appointments/pending-completion?${params.toString()}`);
+        const requestId = Date.now();
+        requestIdRef.current = requestId;
+        setLoading(true);
+
+        try {
+            const startDate = toStartOfDay(normalizedRange.from);
+            const endDate = toEndOfDay(normalizedRange.to);
+
+            const response = await apiClient.get('/appointments/pending-completion', {
+                params: {
+                    startDate,
+                    endDate,
+                    _t: requestId
+                }
+            });
+
             const items = Array.isArray(response.data?.data) ? response.data.data : [];
+
+            // Filter out any that might be returned as completed (safety net)
+            const activeItems = items.filter((i) => !i.isCompleted && i.status !== 'completed');
 
             const serviceName = filters.serviceId
                 ? (services.find((service) => String(service.id) === String(filters.serviceId))?.name || '').toLowerCase()
@@ -93,7 +105,7 @@ const PendingCompletionReportPage = () => {
             const employeeId = filters.employeeId ? String(filters.employeeId) : '';
             const searchValue = filters.search.trim().toLowerCase();
 
-            const normalized = items.map((appointment) => {
+            const normalizedRows = activeItems.map((appointment) => {
                 const member = appointment.member || {};
                 const customerName = `${member.firstName || ''} ${member.lastName || ''}`.trim();
                 const trainerName = appointment.trainer?.name
@@ -120,16 +132,20 @@ const PendingCompletionReportPage = () => {
                 return true;
             });
 
-            setRows(normalized);
+            if (requestIdRef.current !== requestId) return;
+            setRows(normalizedRows);
             errorToastShownRef.current = false;
         } catch (error) {
+            if (requestIdRef.current !== requestId) return;
             if (!errorToastShownRef.current) {
-                toast.error(isRTL ? 'فشل تحميل الجلسات المتأخرة' : 'Failed to load pending completion');
+                toast.error(isRTL ? 'فشل تحميل الجلسات المتأخرة' : 'Failed to load pending completion', { id: 'pending-completion-error' });
                 errorToastShownRef.current = true;
             }
             setRows([]);
         } finally {
-            setLoading(false);
+            if (requestIdRef.current === requestId) {
+                setLoading(false);
+            }
         }
     };
 
@@ -208,8 +224,8 @@ const PendingCompletionReportPage = () => {
 
     return (
         <ReportsPageShell
-            title={isRTL ? 'جلسات تحتاج إكمال' : 'Pending Completion'}
-            subtitle={isRTL ? 'جلسات انتهت ولم يتم إكمالها بعد' : 'Sessions ended but not completed'}
+            title={t('reports.pendingCompletion')}
+            subtitle={t('reports.pendingCompletionSubtitle')}
         >
             <div className="sticky top-0 z-20">
                 <ReportsToolbar className="shadow-sm">
@@ -293,30 +309,30 @@ const PendingCompletionReportPage = () => {
                 loading={loading}
                 empty={!loading && rows.length === 0}
                 emptyMessage={isRTL ? 'لا توجد جلسات تحتاج إكمال' : 'No pending completion sessions'}
-            >
-                {rows.map((row) => (
-                    <ReportsTableContainer.Row key={row.id}>
-                        <ReportsTableContainer.Cell>
+                data={rows}
+                renderRow={(row) => (
+                    <ReportsTableRow key={row.id}>
+                        <ReportsTableCell>
                             {row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName || '-'}
-                        </ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{formatDate(row.start)}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{formatTime(row.start)}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{formatTime(row.end)}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{row.trainerName || '-'}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{row.employeeName || '-'}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{row.price ?? 0}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>{row.status || '-'}</ReportsTableContainer.Cell>
-                        <ReportsTableContainer.Cell>
+                        </ReportsTableCell>
+                        <ReportsTableCell>{formatDate(row.start)}</ReportsTableCell>
+                        <ReportsTableCell>{formatTime(row.start)}</ReportsTableCell>
+                        <ReportsTableCell>{formatTime(row.end)}</ReportsTableCell>
+                        <ReportsTableCell>{row.trainerName || '-'}</ReportsTableCell>
+                        <ReportsTableCell>{row.employeeName || '-'}</ReportsTableCell>
+                        <ReportsTableCell>{row.price ?? 0}</ReportsTableCell>
+                        <ReportsTableCell>{row.status || '-'}</ReportsTableCell>
+                        <ReportsTableCell>
                             <button
                                 onClick={() => handleCompleteNow(row)}
                                 className="text-indigo-600 hover:text-indigo-700 text-sm font-semibold"
                             >
                                 {isRTL ? 'إكمال الآن' : 'Complete Now'}
                             </button>
-                        </ReportsTableContainer.Cell>
-                    </ReportsTableContainer.Row>
-                ))}
-            </ReportsTableContainer>
+                        </ReportsTableCell>
+                    </ReportsTableRow>
+                )}
+            />
 
             {showModal && (
                 <AppointmentModal
@@ -339,7 +355,3 @@ const PendingCompletionReportPage = () => {
 };
 
 export default PendingCompletionReportPage;
-
-
-
-

@@ -198,15 +198,16 @@ const MainLayout = () => {
                                     : 'text-gray-500 dark:text-gray-400 hover:bg-white/10 hover:text-indigo-400 dark:hover:text-white'}
                             `}
                         >
-                            <item.icon className="w-5 h-5 flex-shrink-0 z-10 relative" />
-
-                            {!isCollapsed && (
-                                <span className="font-medium tracking-wide z-10 relative text-sm">{item.label}</span>
-                            )}
-
-                            {/* Glow Effect for Active */}
-                            {({ isActive }) => isActive && (
-                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 z-0" />
+                            {({ isActive }) => (
+                                <>
+                                    <item.icon className="w-5 h-5 flex-shrink-0 z-10 relative" />
+                                    {!isCollapsed && (
+                                        <span className="font-medium tracking-wide z-10 relative text-sm">{item.label}</span>
+                                    )}
+                                    {isActive && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 z-0" />
+                                    )}
+                                </>
                             )}
                         </NavLink>
                     ))}
