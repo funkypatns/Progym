@@ -74,7 +74,6 @@ const PendingCompletionReportPage = () => {
         const normalizedRange = normalizeRange(filters.from, filters.to);
         if (normalizedRange.swapped) {
             setFilters((prev) => ({ ...prev, from: normalizedRange.from, to: normalizedRange.to }));
-            return;
         }
 
         const requestId = Date.now();
@@ -85,15 +84,22 @@ const PendingCompletionReportPage = () => {
             const startDate = toStartOfDay(normalizedRange.from);
             const endDate = toEndOfDay(normalizedRange.to);
 
-            const response = await apiClient.get('/appointments/pending-completion', {
-                params: {
-                    startDate,
-                    endDate,
-                    _t: requestId
-                }
-            });
+            const params = new URLSearchParams();
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (filters.trainerId && filters.trainerId !== 'all') params.append('trainerId', filters.trainerId);
+            if (filters.employeeId && filters.employeeId !== 'all') params.append('employeeId', filters.employeeId);
+            if (filters.search.trim()) params.append('search', filters.search.trim());
+            params.append('_t', requestId);
 
-            const items = Array.isArray(response.data?.data) ? response.data.data : [];
+            const response = await apiClient.get(`/appointments/pending-completion?${params.toString()}`);
+
+            const payload = response?.data;
+            const items = Array.isArray(payload?.data) ? payload.data
+                : Array.isArray(payload?.items) ? payload.items
+                    : Array.isArray(payload?.rows) ? payload.rows
+                        : Array.isArray(payload?.appointments) ? payload.appointments
+                            : (Array.isArray(payload) ? payload : []);
 
             // Filter out any that might be returned as completed (safety net)
             const activeItems = items.filter((i) => !i.isCompleted);
