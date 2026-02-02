@@ -132,3 +132,7 @@
 [PROGRESS]
 - 2026-02-02T03:50:18.0668297+02:00 [CODE] Pending completion endpoint now uses parseDateRange to prevent invalid ranges from causing 500s; returns empty list on parse error.
 
+
+[PROGRESS]
+- 2026-02-02T04:08:47.7603818+02:00 [CODE] Fixed pending completion report nav rendering guard, added i18n key, and prevented repeated error toast.
+
