@@ -140,3 +140,7 @@
 [PROGRESS]
 - 2026-02-02T06:26:33.3478523+02:00 [CODE] Added isRevenueReport guard in StandardReportPage and restored Arabic translations to valid UTF-8 without BOM; i18n encoding check passes.
 
+
+[PROGRESS]
+- 2026-02-02T06:48:47.4041146+02:00 [CODE] Normalized Pending Completion report Arabic labels/placeholders and empty-state strings to stop mojibake UI for that page.
+
