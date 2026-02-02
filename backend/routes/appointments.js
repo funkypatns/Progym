@@ -60,15 +60,15 @@ router.get('/pending-completion', authenticate, async (req, res) => {
         const { startDate: startDateParam, endDate: endDateParam } = req.query;
         const where = {
             isCompleted: false,
+            completedAt: null,
             status: { notIn: ['cancelled', 'no_show', 'completed'] }
         };
-        if (startDateParam && endDateParam) {
-            const { startDate, endDate, error } = parseDateRange(startDateParam, endDateParam);
-            if (error) {
-                return res.json({ success: true, data: [] });
+        if (startDateParam || endDateParam) {
+            const { startDate, endDate, error } = parseDateRange(startDateParam || endDateParam, endDateParam || startDateParam);
+            if (!error && startDate && endDate) {
+                where.start = { gte: startDate };
+                where.end = { lte: endDate };
             }
-            where.start = { gte: startDate };
-            where.end = { lte: endDate };
         }
         const appointments = await req.prisma.appointment.findMany({
             where,
