@@ -138,3 +138,4 @@ Phase 4 - Receipts system
 | 2026-02-02 | 889727e | Fix Revenue report payments tab syntax error (StandardReportPage). |
 | 2026-02-02 | 0e51ad0 | Fix Reports revenue tab guard and repair mojibake Arabic labels in reports UI. |
 | 2026-02-02 | f066717 | Stabilize reports date ranges and filters; remove debug logs and prevent zeroed data on swapped ranges. |
+| 2026-02-02 | b69695d | Harden pending completion report backend date parsing to avoid 500s on invalid ranges. |

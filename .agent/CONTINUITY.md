@@ -128,3 +128,7 @@
 [PROGRESS]
 - 2026-02-02T03:29:52.7923374+02:00 [CODE] Normalized report date ranges across trainer, gym income, pending completion, and revenue payments tab; removed dev logging to avoid noisy zeros.
 
+
+[PROGRESS]
+- 2026-02-02T03:50:18.0668297+02:00 [CODE] Pending completion endpoint now uses parseDateRange to prevent invalid ranges from causing 500s; returns empty list on parse error.
+
