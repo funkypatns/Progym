@@ -143,3 +143,4 @@ Phase 4 - Receipts system
 | 2026-02-02 | 8979f24 | Guard revenue report flag to prevent runtime ReferenceError and restore UTF-8 Arabic translations. |
 | 2026-02-02 | b8d3a23 | Fix pending completion report Arabic strings and empty state messaging. |
 | 2026-02-02 | c552fe7 | Stabilize pending completion report (frontend/backend), prevent console error, ensure API 200 + empty state. |
+| 2026-02-02 | 5b3c190 | Restore trainer report table helpers and show pending completion rows when API returns data. |
