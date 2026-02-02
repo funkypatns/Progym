@@ -116,3 +116,7 @@
 [PROGRESS]
 - 2026-02-02T02:08:22.9643747+02:00 [CODE] Revenue report now has Payments ledger tab with filters (type/method/employee/search), KPIs, and CSV export using /api/payments for date range.
 
+
+[PROGRESS]
+- 2026-02-02T02:12:00.5961548+02:00 [CODE] Fixed StandardReportPage syntax for Revenue payments tab (name filter label/placeholder constants).
+

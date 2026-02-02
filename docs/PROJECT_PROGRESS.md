@@ -135,3 +135,4 @@ Phase 4 - Receipts system
 | 2026-02-01 | 58ba4b3 | Restore gym income sessions report to use session payments endpoint and add dev logs for rows/totals. |
 | 2026-02-02 | a0455f8 | Add pending completion report with filters, CSV export, and completion modal action. |
 | 2026-02-02 | 8069e2f | Add Payments ledger tab inside Revenue report with filters, KPIs, and CSV export. |
+| 2026-02-02 | 889727e | Fix Revenue report payments tab syntax error (StandardReportPage). |
