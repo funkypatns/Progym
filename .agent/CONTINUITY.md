@@ -120,3 +120,7 @@
 [PROGRESS]
 - 2026-02-02T02:12:00.5961548+02:00 [CODE] Fixed StandardReportPage syntax for Revenue payments tab (name filter label/placeholder constants).
 
+
+[PROGRESS]
+- 2026-02-02T02:31:50.7291164+02:00 [CODE] Fixed Revenue report guard (showRevenueReport) and replaced mojibake Arabic strings in reports UI with proper UTF-8 text.
+
