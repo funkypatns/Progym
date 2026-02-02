@@ -57,16 +57,8 @@ router.get('/', authenticate, async (req, res) => {
 // Pending Completion
 router.get('/pending-completion', authenticate, async (req, res) => {
     try {
-        let now = new Date();
-        if (req.query.now && process.env.NODE_ENV !== 'production') {
-            const override = new Date(req.query.now);
-            if (!isNaN(override.getTime())) {
-                now = override;
-            }
-        }
         const { startDate: startDateParam, endDate: endDateParam } = req.query;
         const where = {
-            end: { lt: now },
             isCompleted: false,
             status: { notIn: ['cancelled', 'no_show', 'completed'] }
         };
@@ -75,11 +67,8 @@ router.get('/pending-completion', authenticate, async (req, res) => {
             if (error) {
                 return res.json({ success: true, data: [] });
             }
-            where.end = {
-                lt: now,
-                gte: startDate,
-                lte: endDate
-            };
+            where.start = { gte: startDate };
+            where.end = { lte: endDate };
         }
         const appointments = await req.prisma.appointment.findMany({
             where,
