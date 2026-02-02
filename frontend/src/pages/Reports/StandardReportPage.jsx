@@ -323,8 +323,9 @@ const StandardReportPage = ({ type }) => {
         return () => window.removeEventListener('payments:updated', handlePaymentsUpdated);
     }, [config?.id, dateRange.startDate, dateRange.endDate, paymentMethod]);
 
-    const showRevenueReport = config?.id === 'revenue';
-    if (typeof showRevenueReport !== 'boolean') {
+    const isRevenueReport = config?.id === 'revenue';
+    const showRevenueReport = typeof isRevenueReport === 'boolean' ? isRevenueReport : false;
+    if (typeof isRevenueReport !== 'boolean') {
         console.warn('Report revenue flag missing; defaulting to false.');
     }
 
