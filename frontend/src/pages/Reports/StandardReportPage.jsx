@@ -54,44 +54,6 @@ const KPICard = ({ label, value, icon: Icon, gradient, isCurrency = false, delay
                     </p>
                 </div>
             </div>
-
-                    {isRevenueReport && activeTab === "payments" && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                                    <Filter size={16} />
-                                    {i18n.language === "ar" ? "نوع الدفع" : "Payment Type"}
-                                </label>
-                                <select
-                                    value={paymentType}
-                                    onChange={(e) => setPaymentType(e.target.value)}
-                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
-                                >
-                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
-                                    <option value="SESSION">{i18n.language === "ar" ? "جلسة" : "Session"}</option>
-                                    <option value="SUBSCRIPTION">{i18n.language === "ar" ? "اشتراك" : "Membership"}</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                                    <Users size={16} />
-                                    {i18n.language === "ar" ? "الموظف" : "Employee"}
-                                </label>
-                                <select
-                                    value={employeeFilter}
-                                    onChange={(e) => setEmployeeFilter(e.target.value)}
-                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
-                                >
-                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
-                                    {employees.map((employee) => (
-                                        <option key={employee.id} value={employee.id}>
-                                            {`${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.username || employee.email}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    )}
         </motion.div>
     );
 };
@@ -195,10 +157,10 @@ const StandardReportPage = ({ type }) => {
                     ? `${payment.appointment.completedByEmployee.firstName || ''} ${payment.appointment.completedByEmployee.lastName || ''}`.trim()
                     : '';
                 const typeLabel = payment.appointmentId
-                    ? (i18n.language === 'ar' ? 'Ø¬Ù„Ø³Ø©' : 'Session')
+                    ? (i18n.language === 'ar' ? 'جلسة' : 'Session')
                     : payment.subscriptionId
-                        ? (i18n.language === 'ar' ? 'Ø§Ø´ØªØ±Ø§Ùƒ' : 'Membership')
-                        : (i18n.language === 'ar' ? 'Ø£Ø®Ø±Ù‰' : 'Other');
+                        ? (i18n.language === 'ar' ? 'اشتراك' : 'Membership')
+                        : (i18n.language === 'ar' ? 'أخرى' : 'Other');
 
                 return {
                     id: payment.id,
@@ -220,7 +182,7 @@ const StandardReportPage = ({ type }) => {
             setPaymentsSummary({ count, total, average });
         } catch (err) {
             console.error('Failed to fetch payments ledger', err);
-            toast.error(i18n.language === 'ar' ? 'ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ Ø¯ÙØªØ± Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Failed to load payments ledger');
+            toast.error(i18n.language === 'ar' ? 'فشل تحميل دفتر المدفوعات' : 'Failed to load payments ledger');
             setPaymentsRows([]);
             setPaymentsSummary({ count: 0, total: 0, average: 0 });
         } finally {
@@ -253,11 +215,11 @@ const StandardReportPage = ({ type }) => {
             } else {
                 setReportData(response.data);
             }
-            toast.success(i18n.language === 'ar' ? 'ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØªÙ‚Ø±ÙŠØ±' : 'Report generated');
+            toast.success(i18n.language === 'ar' ? 'تم إنشاء التقرير' : 'Report generated');
         } catch (err) {
             console.error(`Failed to fetch report:`, err);
             setError(err.response?.data?.message || 'Failed to generate report');
-            toast.error(i18n.language === 'ar' ? 'ÙØ´Ù„ Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØªÙ‚Ø±ÙŠØ±' : 'Failed to generate report');
+            toast.error(i18n.language === 'ar' ? 'فشل إنشاء التقرير' : 'Failed to generate report');
         } finally {
             setLoading(false);
         }
@@ -280,9 +242,9 @@ const StandardReportPage = ({ type }) => {
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success(i18n.language === 'ar' ? 'ØªÙ… Ø§Ù„ØªØµØ¯ÙŠØ± Ø¨Ù†Ø¬Ø§Ø­' : 'Exported successfully');
+            toast.success(i18n.language === 'ar' ? 'تم التصدير بنجاح' : 'Exported successfully');
         } catch (err) {
-            toast.error(i18n.language === 'ar' ? 'ÙØ´Ù„ Ø§Ù„ØªØµØ¯ÙŠØ±' : 'Export failed');
+            toast.error(i18n.language === 'ar' ? 'فشل التصدير' : 'Export failed');
         }
     };
 
@@ -336,6 +298,11 @@ const StandardReportPage = ({ type }) => {
         return () => window.removeEventListener('payments:updated', handlePaymentsUpdated);
     }, [config?.id, dateRange.startDate, dateRange.endDate, paymentMethod]);
 
+    const showRevenueReport = config?.id === 'revenue';
+    if (typeof showRevenueReport !== 'boolean') {
+        console.warn('Report revenue flag missing; defaulting to false.');
+    }
+
     if (!config) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -345,12 +312,10 @@ const StandardReportPage = ({ type }) => {
             </div>
         );
     }
-
-    const isRevenueReport = config?.id === 'revenue';
-    const nameFilterLabel = isRevenueReport && activeTab === 'payments'
+    const nameFilterLabel = showRevenueReport && activeTab === 'payments'
         ? (i18n.language === 'ar' ? 'بحث' : 'Search')
         : (i18n.language === 'ar' ? 'فلتر بالاسم' : 'Filter by Name');
-    const nameFilterPlaceholder = isRevenueReport && activeTab === 'payments'
+    const nameFilterPlaceholder = showRevenueReport && activeTab === 'payments'
         ? (i18n.language === 'ar' ? 'اسم / كود / تليفون' : 'Name / code / phone')
         : (i18n.language === 'ar' ? 'بحث بالاسم...' : 'Search by name...');
 
@@ -412,10 +377,10 @@ const StandardReportPage = ({ type }) => {
                 >
                     <Calendar size={80} className="mx-auto text-gray-300 dark:text-gray-600 mb-4 opacity-50" />
                     <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                        {i18n.language === 'ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ù„Ù‡Ø°Ù‡ Ø§Ù„ÙØªØ±Ø©' : 'No data available for this period'}
+                        {i18n.language === 'ar' ? 'لا توجد بيانات لهذه الفترة' : 'No data available for this period'}
                     </h3>
                     <p className="text-gray-500 dark:text-gray-400">
-                        {i18n.language === 'ar' ? 'Ø­Ø§ÙˆÙ„ ØªØºÙŠÙŠØ± Ù†Ø·Ø§Ù‚ Ø§Ù„ØªØ§Ø±ÙŠØ®' : 'Try adjusting the date range'}
+                        {i18n.language === 'ar' ? 'حاول تغيير نطاق التاريخ' : 'Try adjusting the date range'}
                     </p>
                 </motion.div>
             );
@@ -482,17 +447,17 @@ const StandardReportPage = ({ type }) => {
 
     const exportPaymentsCsv = () => {
         if (!paymentsRows.length) {
-            toast.error(i18n.language === 'ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ù„Ù„ØªØµØ¯ÙŠØ±' : 'No data to export');
+            toast.error(i18n.language === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export');
             return;
         }
         const headers = [
-            i18n.language === 'ar' ? 'Ø§Ù„ØªØ§Ø±ÙŠØ®/Ø§Ù„ÙˆÙ‚Øª' : 'Date/Time',
-            i18n.language === 'ar' ? 'Ø§Ù„Ø¹Ù…ÙŠÙ„' : 'Customer',
-            i18n.language === 'ar' ? 'Ø§Ù„Ù†ÙˆØ¹' : 'Type',
-            i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø¨Ù„Øº' : 'Amount',
-            i18n.language === 'ar' ? 'Ø§Ù„Ø·Ø±ÙŠÙ‚Ø©' : 'Method',
-            i18n.language === 'ar' ? 'Ø§Ù„Ù…ÙˆØ¸Ù' : 'Employee',
-            i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø±Ø¬Ø¹' : 'Reference'
+            i18n.language === 'ar' ? 'التاريخ/الوقت' : 'Date/Time',
+            i18n.language === 'ar' ? 'العميل' : 'Customer',
+            i18n.language === 'ar' ? 'النوع' : 'Type',
+            i18n.language === 'ar' ? 'المبلغ' : 'Amount',
+            i18n.language === 'ar' ? 'الطريقة' : 'Method',
+            i18n.language === 'ar' ? 'الموظف' : 'Employee',
+            i18n.language === 'ar' ? 'المرجع' : 'Reference'
         ];
         const csvRows = [headers.join(',')];
         paymentsRows.forEach((row) => {
@@ -521,14 +486,14 @@ const StandardReportPage = ({ type }) => {
             <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                     <KPICard
-                        label={i18n.language === 'ar' ? 'Ø¹Ø¯Ø¯ Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Payments Count'}
+                        label={i18n.language === 'ar' ? 'عدد المدفوعات' : 'Payments Count'}
                         value={paymentsSummary.count}
                         icon={CreditCard}
                         gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
                         delay={0.2}
                     />
                     <KPICard
-                        label={i18n.language === 'ar' ? 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Total Amount'}
+                        label={i18n.language === 'ar' ? 'إجمالي المدفوعات' : 'Total Amount'}
                         value={paymentsSummary.total}
                         icon={DollarSign}
                         gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
@@ -536,7 +501,7 @@ const StandardReportPage = ({ type }) => {
                         delay={0.25}
                     />
                     <KPICard
-                        label={i18n.language === 'ar' ? 'Ù…ØªÙˆØ³Ø· Ø§Ù„Ø¯ÙØ¹' : 'Average Payment'}
+                        label={i18n.language === 'ar' ? 'متوسط الدفع' : 'Average Payment'}
                         value={paymentsSummary.average}
                         icon={TrendingUp}
                         gradient="bg-gradient-to-br from-purple-500 to-pink-600"
@@ -555,7 +520,7 @@ const StandardReportPage = ({ type }) => {
                             }`}
                     >
                         <Download size={18} />
-                        {i18n.language === 'ar' ? 'ØªØµØ¯ÙŠØ± CSV' : 'Export CSV'}
+                        {i18n.language === 'ar' ? 'تصدير CSV' : 'Export CSV'}
                     </button>
                 </div>
 
@@ -564,7 +529,7 @@ const StandardReportPage = ({ type }) => {
                         <div className="py-20 text-center">
                             <Loader2 size={64} className="mx-auto text-indigo-500 animate-spin mb-4" />
                             <p className="text-gray-500 dark:text-gray-400 font-medium">
-                                {i18n.language === 'ar' ? 'Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ Ø¯ÙØªØ± Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª...' : 'Loading payments ledger...'}
+                                {i18n.language === 'ar' ? 'جاري تحميل دفتر المدفوعات...' : 'Loading payments ledger...'}
                             </p>
                         </div>
                     ) : (
@@ -573,25 +538,25 @@ const StandardReportPage = ({ type }) => {
                                 <thead>
                                     <tr className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-white/5">
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„ØªØ§Ø±ÙŠØ®/Ø§Ù„ÙˆÙ‚Øª' : 'Date/Time'}
+                                            {i18n.language === 'ar' ? 'التاريخ/الوقت' : 'Date/Time'}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„Ø¹Ù…ÙŠÙ„' : 'Customer'}
+                                            {i18n.language === 'ar' ? 'العميل' : 'Customer'}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù†ÙˆØ¹' : 'Type'}
+                                            {i18n.language === 'ar' ? 'النوع' : 'Type'}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø¨Ù„Øº' : 'Amount'}
+                                            {i18n.language === 'ar' ? 'المبلغ' : 'Amount'}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„Ø·Ø±ÙŠÙ‚Ø©' : 'Method'}
+                                            {i18n.language === 'ar' ? 'الطريقة' : 'Method'}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù…ÙˆØ¸Ù' : 'Employee'}
+                                            {i18n.language === 'ar' ? 'الموظف' : 'Employee'}
                                         </th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø±Ø¬Ø¹' : 'Reference'}
+                                            {i18n.language === 'ar' ? 'المرجع' : 'Reference'}
                                         </th>
                                     </tr>
                                 </thead>
@@ -599,7 +564,7 @@ const StandardReportPage = ({ type }) => {
                                     {paymentsRows.length === 0 && (
                                         <tr>
                                             <td colSpan={7} className="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
-                                                {i18n.language === 'ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø¯ÙÙˆØ¹Ø§Øª ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„ÙØªØ±Ø©' : 'No payments in this period'}
+                                                {i18n.language === 'ar' ? 'لا توجد مدفوعات في هذه الفترة' : 'No payments in this period'}
                                             </td>
                                         </tr>
                                     )}
@@ -678,11 +643,11 @@ const StandardReportPage = ({ type }) => {
                                 }`}
                         >
                             <Download size={20} />
-                            {i18n.language === 'ar' ? 'ØªØµØ¯ÙŠØ± Excel' : 'Export Excel'}
+                            {i18n.language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
                         </button>
                     </div>
 
-                    {isRevenueReport && activeTab === "payments" && (
+                    {showRevenueReport && activeTab === "payments" && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -733,7 +698,7 @@ const StandardReportPage = ({ type }) => {
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                 <Calendar size={16} />
-                                {i18n.language === 'ar' ? 'Ù…Ù†' : 'From'}
+                                {i18n.language === 'ar' ? 'من' : 'From'}
                             </label>
                             <input
                                 type="date"
@@ -747,7 +712,7 @@ const StandardReportPage = ({ type }) => {
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                 <Calendar size={16} />
-                                {i18n.language === 'ar' ? 'Ø¥Ù„Ù‰' : 'To'}
+                                {i18n.language === 'ar' ? 'إلى' : 'To'}
                             </label>
                             <input
                                 type="date"
@@ -777,17 +742,17 @@ const StandardReportPage = ({ type }) => {
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                     <CreditCard size={16} />
-                                    {i18n.language === 'ar' ? 'Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹' : 'Payment Method'}
+                                    {i18n.language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}
                                 </label>
                                 <select
                                     value={paymentMethod}
                                     onChange={(e) => setPaymentMethod(e.target.value)}
                                     className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
                                 >
-                                    <option value="">{i18n.language === 'ar' ? 'Ø§Ù„ÙƒÙ„' : 'All'}</option>
-                                    <option value="cash">{i18n.language === 'ar' ? 'Ù†Ù‚Ø¯ÙŠ' : 'Cash'}</option>
-                                    <option value="card">{i18n.language === 'ar' ? 'Ø¨Ø·Ø§Ù‚Ø©' : 'Card'}</option>
-                                    <option value="transfer">{i18n.language === 'ar' ? 'ØªØ­ÙˆÙŠÙ„' : 'Transfer'}</option>
+                                    <option value="">{i18n.language === 'ar' ? 'الكل' : 'All'}</option>
+                                    <option value="cash">{i18n.language === 'ar' ? 'نقدي' : 'Cash'}</option>
+                                    <option value="card">{i18n.language === 'ar' ? 'بطاقة' : 'Card'}</option>
+                                    <option value="transfer">{i18n.language === 'ar' ? 'تحويل' : 'Transfer'}</option>
                                 </select>
                             </div>
                         )}
@@ -806,19 +771,19 @@ const StandardReportPage = ({ type }) => {
                                 {loading ? (
                                     <>
                                         <Loader2 size={20} className="animate-spin" />
-                                        {i18n.language === 'ar' ? 'Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ù…ÙŠÙ„...' : 'Loading...'}
+                                        {i18n.language === 'ar' ? 'جاري التحميل...' : 'Loading...'}
                                     </>
                                 ) : (
                                     <>
                                         <RefreshCw size={20} />
-                                        {i18n.language === 'ar' ? 'ØªØ­Ø¯ÙŠØ«' : 'Generate'}
+                                        {i18n.language === 'ar' ? 'تحديث' : 'Generate'}
                                     </>
                                 )}
                             </button>
                         </div>
                     </div>
 
-                    {isRevenueReport && activeTab === "payments" && (
+                    {showRevenueReport && activeTab === "payments" && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -858,7 +823,7 @@ const StandardReportPage = ({ type }) => {
                 </motion.div>
 
 
-                {isRevenueReport && (
+                {showRevenueReport && (
                     <div className="flex justify-start">
                         <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl inline-flex gap-1">
                             {[{ id: "overview", label: i18n.language === "ar" ? "ملخص" : "Overview" }, { id: "payments", label: i18n.language === "ar" ? "دفتر المدفوعات" : "Payments" }].map(tab => (
@@ -886,7 +851,7 @@ const StandardReportPage = ({ type }) => {
                     </motion.div>
                 )}
 
-                {(!isRevenueReport || activeTab === "overview") && (
+                {(!showRevenueReport || activeTab === "overview") && (
                     <>
                         {/* KPI Cards */}
                         {!loading && reportData && renderKPICards()}
@@ -912,7 +877,7 @@ const StandardReportPage = ({ type }) => {
                     </>
                 )}
 
-                {isRevenueReport && activeTab === "payments" && renderPaymentsTab()}
+                {showRevenueReport && activeTab === "payments" && renderPaymentsTab()}
             </div>
         </div>
     );
