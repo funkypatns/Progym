@@ -112,3 +112,7 @@
 [PROGRESS]
 - 2026-02-02T01:28:59.5556799+02:00 [CODE] Added Pending Completion report page (/reports/pending-completion) using appointments pending-completion endpoint, filters, CSV export, and AppointmentModal completion flow.
 
+
+[PROGRESS]
+- 2026-02-02T02:08:22.9643747+02:00 [CODE] Revenue report now has Payments ledger tab with filters (type/method/employee/search), KPIs, and CSV export using /api/payments for date range.
+
