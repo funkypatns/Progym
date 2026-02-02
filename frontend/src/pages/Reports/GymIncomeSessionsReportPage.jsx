@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Calendar,
@@ -12,7 +12,7 @@ import {
 import apiClient, { getStaffTrainers } from '../../utils/api';
 import ReportsPageShell from '../../components/Reports/ReportsPageShell';
 import ReportsToolbar from '../../components/Reports/ReportsToolbar';
-import ReportsTableContainer from '../../components/Reports/ReportsTableContainer';
+import VirtualizedTable from '../../components/Reports/VirtualizedTable';
 import { formatMoney } from '../../utils/numberFormatter';
 import toast from 'react-hot-toast';
 
@@ -55,6 +55,8 @@ const GymIncomeSessionsReportPage = () => {
         method: '',
         search: ''
     });
+    const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+    const reportAbortRef = useRef(null);
 
     const currency = { code: 'EGP', symbol: 'EGP' };
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
@@ -97,6 +99,11 @@ const GymIncomeSessionsReportPage = () => {
     }, []);
 
     const fetchReport = async () => {
+        if (reportAbortRef.current) {
+            reportAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        reportAbortRef.current = controller;
         const normalized = normalizeRange(filters.from, filters.to);
         if (normalized.swapped) {
             setFilters((prev) => ({ ...prev, from: normalized.from, to: normalized.to }));
@@ -114,7 +121,7 @@ const GymIncomeSessionsReportPage = () => {
                 limit: '10000'
             });
 
-            const response = await apiClient.get(`/payments?${params.toString()}`);
+            const response = await apiClient.get(`/payments?${params.toString()}`, { signal: controller.signal });
             const rawData = response.data?.data;
             const payments = Array.isArray(rawData)
                 ? rawData
@@ -126,7 +133,7 @@ const GymIncomeSessionsReportPage = () => {
             const serviceName = filters.serviceId
                 ? (services.find(service => String(service.id) === String(filters.serviceId))?.name || '').toLowerCase()
                 : '';
-            const searchValue = filters.search.trim().toLowerCase();
+            const searchValue = debouncedSearch.trim().toLowerCase();
 
             const byMethod = { CASH: 0, CARD: 0, TRANSFER: 0 };
             const rowsMap = new Map();
@@ -210,19 +217,30 @@ const GymIncomeSessionsReportPage = () => {
             });
             setRows(rows);
         } catch (error) {
+            if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
             toast.error(isRTL ? 'فشل تحميل تقرير دخل الجلسات' : 'Failed to load sessions income report');
             setSummary({ totalRevenue: 0, sessionsCount: 0, averagePrice: 0, byMethod: { CASH: 0, CARD: 0, TRANSFER: 0 } });
             setRows([]);
         } finally {
             setLoading(false);
+            if (reportAbortRef.current === controller) {
+                reportAbortRef.current = null;
+            }
         }
     };
 
     useEffect(() => {
         fetchReport();
-    }, [filters.from, filters.to, filters.trainerId, filters.serviceId, filters.employeeId, filters.method, filters.search]);
+    }, [filters.from, filters.to, filters.trainerId, filters.serviceId, filters.employeeId, filters.method, debouncedSearch]);
 
-    const methodLabel = (value) => {
+    useEffect(() => {
+        const handle = setTimeout(() => {
+            setDebouncedSearch(filters.search);
+        }, 300);
+        return () => clearTimeout(handle);
+    }, [filters.search]);
+
+    const methodLabel = useCallback((value) => {
         const normalized = (value || '').toUpperCase();
         const map = {
             CASH: isRTL ? 'نقدي' : 'Cash',
@@ -231,9 +249,9 @@ const GymIncomeSessionsReportPage = () => {
             MIXED: isRTL ? 'متعدد' : 'Mixed'
         };
         return map[normalized] || normalized || '-';
-    };
+    }, [isRTL]);
 
-    const formatDate = (value) => {
+    const formatDate = useCallback((value) => {
         if (!value) return '-';
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return '-';
@@ -242,9 +260,9 @@ const GymIncomeSessionsReportPage = () => {
             month: '2-digit',
             day: '2-digit'
         });
-    };
+    }, [language]);
 
-    const formatTime = (value) => {
+    const formatTime = useCallback((value) => {
         if (!value) return '-';
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return '-';
@@ -252,7 +270,7 @@ const GymIncomeSessionsReportPage = () => {
             hour: '2-digit',
             minute: '2-digit'
         });
-    };
+    }, [language]);
 
     const exportCsv = () => {
         if (!rows.length) {
@@ -304,6 +322,108 @@ const GymIncomeSessionsReportPage = () => {
     const byMethod = useMemo(() => {
         return summary.byMethod || { CASH: 0, CARD: 0, TRANSFER: 0 };
     }, [summary.byMethod]);
+
+    const tableColumns = useMemo(() => ([
+        {
+            key: 'index',
+            label: '#',
+            width: 64,
+            align: 'center',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap w-16 text-center',
+            cellClassName: 'px-4 py-3 text-gray-500 dark:text-gray-400 text-center font-mono text-xs',
+            render: (_, index) => (index + 1).toString().padStart(2, '0')
+        },
+        {
+            key: 'sessionDate',
+            label: isRTL ? 'التاريخ' : 'Date',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white whitespace-nowrap font-medium',
+            align: 'right',
+            render: (row) => formatDate(row.sessionDate || row.paidAt)
+        },
+        {
+            key: 'customerName',
+            label: isRTL ? 'العميل' : 'Customer',
+            width: 'minmax(180px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white font-medium',
+            align: 'right',
+            render: (row) => {
+                const customerLabel = row.customerCode
+                    ? `${row.customerName} (${row.customerCode})`
+                    : row.customerName;
+                return customerLabel || '—';
+            }
+        },
+        {
+            key: 'serviceName',
+            label: isRTL ? 'الخدمة' : 'Service',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-600 dark:text-gray-300',
+            align: 'right',
+            render: (row) => row.serviceName || '—'
+        },
+        {
+            key: 'trainerName',
+            label: isRTL ? 'المدرب' : 'Trainer',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-600 dark:text-gray-300',
+            align: 'right',
+            render: (row) => row.trainerName || '—'
+        },
+        {
+            key: 'employeeName',
+            label: isRTL ? 'الموظف' : 'Employee',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-500 dark:text-gray-400 text-xs',
+            align: 'right',
+            render: (row) => row.employeeName || '—'
+        },
+        {
+            key: 'paymentMethod',
+            label: isRTL ? 'طريقة الدفع' : 'Payment Method',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3',
+            align: 'right',
+            render: (row) => {
+                const method = row.paymentMethod?.toLowerCase();
+                const badgeClass = method === 'cash'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                    : method === 'card'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                        : method === 'transfer'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+                return (
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${badgeClass}`}>
+                        {methodLabel(row.paymentMethod)}
+                    </span>
+                );
+            }
+        },
+        {
+            key: 'amount',
+            label: isRTL ? 'المبلغ' : 'Amount',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-4 py-3 text-center whitespace-nowrap',
+            align: 'center',
+            render: (row) => (
+                <span className="font-bold text-gray-900 dark:text-white text-base">
+                    {row.amount ? `ج.م ${Number(row.amount).toLocaleString()}` : '—'}
+                </span>
+            )
+        }
+    ]), [formatDate, isRTL, methodLabel]);
+
+    const rowClassName = useCallback((_, index) => (
+        `hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-800/30'}`
+    ), []);
 
     return (
         <ReportsPageShell
@@ -427,45 +547,37 @@ const GymIncomeSessionsReportPage = () => {
                 />
             </div>
 
-            <ReportsTableContainer
-                headers={[
-                    isRTL ? 'التاريخ' : 'Date',
-                    isRTL ? 'الوقت' : 'Time',
-                    isRTL ? 'العميل' : 'Customer',
-                    isRTL ? 'الخدمة' : 'Service',
-                    isRTL ? 'المدرب' : 'Trainer',
-                    isRTL ? 'الموظف' : 'Employee',
-                    isRTL ? 'طريقة الدفع' : 'Method',
-                    isRTL ? 'المبلغ' : 'Amount',
-                    isRTL ? 'رقم الحجز' : 'Appointment'
-                ]}
-                loading={loading}
-                empty={!loading && rows.length === 0}
-                emptyMessage={isRTL ? 'لا توجد جلسات مدفوعة في هذه الفترة' : 'No paid sessions in this period'}
-            >
-                {rows.map((row) => {
-                    const customerLabel = row.customerCode
-                        ? `${row.customerName} (${row.customerCode})`
-                        : row.customerName;
-                    const sessionDate = row.sessionDate || row.paidAt;
-                    return (
-                        <ReportsTableContainer.Row key={`${row.appointmentId}-${row.paidAt}`}>
-                            <ReportsTableContainer.Cell>{formatDate(sessionDate)}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{formatTime(sessionDate)}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{customerLabel || '-'}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{row.serviceName || '-'}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{row.trainerName || '-'}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{row.employeeName || '-'}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{methodLabel(row.paymentMethod)}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{formatMoney(row.amount || 0, language, currency)}</ReportsTableContainer.Cell>
-                            <ReportsTableContainer.Cell>{row.appointmentId || '-'}</ReportsTableContainer.Cell>
-                        </ReportsTableContainer.Row>
-                    );
-                })}
-            </ReportsTableContainer>
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+                {!loading && rows.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 flex-1 h-full">
+                        <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                            <CreditCard className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                            لا توجد جلسات مدفوعة خلال هذه الفترة
+                        </h3>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto flex-1 h-full">
+                        <VirtualizedTable
+                            columns={tableColumns}
+                            rows={rows}
+                            rowHeight={56}
+                            maxHeight={560}
+                            className="text-sm text-right"
+                            headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10 shadow-sm"
+                            baseRowClassName="border-b border-gray-200 dark:border-gray-700"
+                            rowClassName={rowClassName}
+                            getRowKey={(row, index) => `${row.appointmentId}-${row.paidAt}-${index}`}
+                        />
+                    </div>
+                )}
+            </div>
         </ReportsPageShell>
     );
 };
 
 export default GymIncomeSessionsReportPage;
+
+
 

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     Calendar,
@@ -15,6 +15,7 @@ import apiClient, { getStaffTrainers } from '../../utils/api';
 import ReportsPageShell from '../../components/Reports/ReportsPageShell';
 import ReportsToolbar from '../../components/Reports/ReportsToolbar';
 import ReportsTableContainer from '../../components/Reports/ReportsTableContainer';
+import VirtualizedTable from '../../components/Reports/VirtualizedTable';
 import { formatDateTime, formatMoney } from '../../utils/numberFormatter';
 import toast from 'react-hot-toast';
 
@@ -513,10 +514,151 @@ const TrainerReportPage = () => {
         exportCsv('trainer-payouts.csv', rows);
     };
 
-    const handleOpenDetails = (row) => {
+    const handleOpenDetails = useCallback((row) => {
         setSelectedEarning(row);
         setDetailsOpen(true);
-    };
+    }, []);
+
+    const earningsColumns = useMemo(() => ([
+        {
+            key: 'sessionDate',
+            label: isRTL ? 'الوقت' : 'Date/Time',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatDateTime(row.sessionDate, language)
+        },
+        {
+            key: 'customerName',
+            label: isRTL ? 'العميل' : 'Customer',
+            width: 'minmax(180px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName
+        },
+        {
+            key: 'serviceName',
+            label: isRTL ? 'الخدمة' : 'Service',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.serviceName || '-'
+        },
+        {
+            key: 'baseAmount',
+            label: isRTL ? 'الأساس' : 'Base Amount',
+            width: 'minmax(120px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatMoney(row.baseAmount, language, { code: 'EGP', symbol: 'EGP' })
+        },
+        {
+            key: 'ruleText',
+            label: isRTL ? 'قاعدة العمولة' : 'Commission Rule',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.ruleText || '-'
+        },
+        {
+            key: 'commissionAmount',
+            label: isRTL ? 'قيمة العمولة' : 'Commission Amount',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatMoney(row.commissionAmount, language, { code: 'EGP', symbol: 'EGP' })
+        },
+        {
+            key: 'status',
+            label: isRTL ? 'الحالة' : 'Status',
+            width: 'minmax(120px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.status
+        },
+        {
+            key: 'employeeName',
+            label: isRTL ? 'الموظف' : 'Employee',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.employeeName || '-'
+        },
+        {
+            key: 'action',
+            label: '',
+            width: 120,
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => (
+                <button
+                    onClick={() => handleOpenDetails(row)}
+                    className="text-indigo-600 hover:text-indigo-700 text-sm font-semibold"
+                >
+                    {isRTL ? 'عرض' : 'View'}
+                </button>
+            )
+        }
+    ]), [isRTL, language, handleOpenDetails]);
+
+    const payoutsColumns = useMemo(() => ([
+        {
+            key: 'totalAmount',
+            label: isRTL ? 'المبلغ' : 'Amount',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatMoney(row.totalAmount, language, { code: 'EGP', symbol: 'EGP' })
+        },
+        {
+            key: 'paidAt',
+            label: isRTL ? 'التاريخ' : 'Date',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatDateTime(row.paidAt, language)
+        },
+        {
+            key: 'paidByEmployee',
+            label: isRTL ? 'الموظف' : 'Paid By',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.paidByEmployee
+                ? `${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()
+                : '-'
+        },
+        {
+            key: 'trainerName',
+            label: isRTL ? 'المدرب' : 'Trainer',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.trainer?.name || selectedTrainer?.name || '-'
+        },
+        {
+            key: 'note',
+            label: isRTL ? 'ملاحظة' : 'Notes',
+            width: 'minmax(200px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => row.note || '-'
+        }
+    ]), [isRTL, language, selectedTrainer?.name]);
 
     const handlePayoutConfirm = async ({ earningIds, amount, method, note }) => {
         if (!selectedTrainerId) return;
@@ -661,95 +803,36 @@ const TrainerReportPage = () => {
                         title={isRTL ? 'جلسات العمولات' : 'Commission Sessions'}
                         subtitle={isRTL ? 'تفاصيل كل جلسة وعمولتها' : 'Each commission earning item'}
                     >
-                        <ReportsTableContainer.Table>
-                            <ReportsTableContainer.Head>
-                                <ReportsTableContainer.Row>
-                                    <ReportsTableContainer.Header>{isRTL ? 'الوقت' : 'Date/Time'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'العميل' : 'Customer'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'الخدمة' : 'Service'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'الأساس' : 'Base Amount'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'قاعدة العمولة' : 'Commission Rule'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'قيمة العمولة' : 'Commission Amount'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'الحالة' : 'Status'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'الموظف' : 'Employee'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header></ReportsTableContainer.Header>
-                                </ReportsTableContainer.Row>
-                            </ReportsTableContainer.Head>
-                            <ReportsTableContainer.Body>
-                                {earnings.length === 0 && (
-                                    <ReportsTableContainer.Row>
-                                        <ReportsTableContainer.Cell colSpan={9}>
-                                            <div className="text-center text-gray-500 dark:text-gray-400 py-6">
-                                                {loading ? (isRTL ? 'جاري التحميل...' : 'Loading...') : (isRTL ? 'لا توجد بيانات' : 'No data available')}
-                                            </div>
-                                        </ReportsTableContainer.Cell>
-                                    </ReportsTableContainer.Row>
-                                )}
-                                {earnings.map((row) => (
-                                    <ReportsTableContainer.Row key={row.id}>
-                                        <ReportsTableContainer.Cell>{formatDateTime(row.sessionDate, language)}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>
-                                            {row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName}
-                                        </ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.serviceName || '-'}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{formatMoney(row.baseAmount, language, { code: 'EGP', symbol: 'EGP' })}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.ruleText || '-'}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{formatMoney(row.commissionAmount, language, { code: 'EGP', symbol: 'EGP' })}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.status}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.employeeName || '-'}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>
-                                            <button
-                                                onClick={() => handleOpenDetails(row)}
-                                                className="text-indigo-600 hover:text-indigo-700 text-sm font-semibold"
-                                            >
-                                                {isRTL ? 'عرض' : 'View'}
-                                            </button>
-                                        </ReportsTableContainer.Cell>
-                                    </ReportsTableContainer.Row>
-                                ))}
-                            </ReportsTableContainer.Body>
-                        </ReportsTableContainer.Table>
+                        <VirtualizedTable
+                            columns={earningsColumns}
+                            rows={earnings}
+                            rowHeight={52}
+                            maxHeight={520}
+                            headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
+                            headerCellClassName="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+                            baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                            emptyMessage={loading ? (isRTL ? 'جاري التحميل...' : 'Loading...') : (isRTL ? 'لا توجد بيانات' : 'No data available')}
+                            emptyClassName="py-6 text-center text-gray-500 dark:text-gray-400"
+                            getRowKey={(row) => row.id}
+                        />
                     </ReportsTableContainer>
 
                     <ReportsTableContainer
                         title={isRTL ? 'سجل السدادات' : 'Payouts Log'}
                         subtitle={isRTL ? 'عمليات سداد المدربين' : 'Payout transactions'}
                     >
-                        <ReportsTableContainer.Table>
-                            <ReportsTableContainer.Head>
-                                <ReportsTableContainer.Row>
-                                    <ReportsTableContainer.Header>{isRTL ? 'المبلغ' : 'Amount'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'التاريخ' : 'Date'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'الموظف' : 'Paid By'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'المدرب' : 'Trainer'}</ReportsTableContainer.Header>
-                                    <ReportsTableContainer.Header>{isRTL ? 'ملاحظة' : 'Notes'}</ReportsTableContainer.Header>
-                                </ReportsTableContainer.Row>
-                            </ReportsTableContainer.Head>
-                            <ReportsTableContainer.Body>
-                                {payouts.length === 0 && (
-                                    <ReportsTableContainer.Row>
-                                        <ReportsTableContainer.Cell colSpan={5}>
-                                            <div className="text-center text-gray-500 dark:text-gray-400 py-6">
-                                                {loading ? (isRTL ? 'جاري التحميل...' : 'Loading...') : (isRTL ? 'لا توجد سدادات' : 'No payouts available')}
-                                            </div>
-                                        </ReportsTableContainer.Cell>
-                                    </ReportsTableContainer.Row>
-                                )}
-                                {payouts.map((row) => (
-                                    <ReportsTableContainer.Row key={row.id}>
-                                        <ReportsTableContainer.Cell>{formatMoney(row.totalAmount, language, { code: 'EGP', symbol: 'EGP' })}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{formatDateTime(row.paidAt, language)}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>
-                                            {row.paidByEmployee
-                                                ? `${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()
-                                                : '-'}
-                                        </ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.trainer?.name || selectedTrainer?.name || '-'}</ReportsTableContainer.Cell>
-                                        <ReportsTableContainer.Cell>{row.note || '-'}</ReportsTableContainer.Cell>
-                                    </ReportsTableContainer.Row>
-                                ))}
-                            </ReportsTableContainer.Body>
-                        </ReportsTableContainer.Table>
+                        <VirtualizedTable
+                            columns={payoutsColumns}
+                            rows={payouts}
+                            rowHeight={52}
+                            maxHeight={420}
+                            headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
+                            headerCellClassName="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+                            baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                            emptyMessage={loading ? (isRTL ? 'جاري التحميل...' : 'Loading...') : (isRTL ? 'لا توجد سدادات' : 'No payouts available')}
+                            emptyClassName="py-6 text-center text-gray-500 dark:text-gray-400"
+                            getRowKey={(row) => row.id}
+                        />
                     </ReportsTableContainer>
                 </>
             )}
@@ -775,3 +858,4 @@ const TrainerReportPage = () => {
 };
 
 export default TrainerReportPage;
+

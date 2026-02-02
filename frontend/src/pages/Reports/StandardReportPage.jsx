@@ -7,7 +7,7 @@
  * Modern Tailwind CSS design with gradients and glassmorphism.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import {
@@ -30,10 +30,11 @@ import apiClient from '../../utils/api';
 import { toast } from 'react-hot-toast';
 import { formatCurrency } from '../../utils/numberFormatter';
 import { REPORTS_REGISTRY } from '../../config/reportsRegistry';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import VirtualizedTable from '../../components/Reports/VirtualizedTable';
 
 // KPI Card Component
-const KPICard = ({ label, value, icon: Icon, gradient, isCurrency = false, delay = 0 }) => {
+const KPICard = ({ label, value, icon: Icon, gradient, isCurrency = false, delay = 0, isRevenueReport = false }) => {
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -84,6 +85,8 @@ const StandardReportPage = ({ type }) => {
     const [paymentsLoading, setPaymentsLoading] = useState(false);
     const [paymentsRows, setPaymentsRows] = useState([]);
     const [paymentsSummary, setPaymentsSummary] = useState({ count: 0, total: 0, average: 0 });
+    const [debouncedNameFilter, setDebouncedNameFilter] = useState(nameFilter);
+    const paymentsAbortRef = useRef(null);
 
     const reportTitle = i18n.language === 'ar' ? config?.titleAr : config?.titleEn;
     const reportDesc = i18n.language === 'ar' ? config?.descriptionAr : config?.descriptionEn;
@@ -119,6 +122,11 @@ const StandardReportPage = ({ type }) => {
     };
 
     const fetchPaymentsLedger = async () => {
+        if (paymentsAbortRef.current) {
+            paymentsAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        paymentsAbortRef.current = controller;
         const normalized = normalizeRange(dateRange.startDate, dateRange.endDate);
         if (normalized.swapped) {
             setDateRange({ startDate: normalized.from, endDate: normalized.to });
@@ -135,14 +143,14 @@ const StandardReportPage = ({ type }) => {
             params.append('page', '1');
             params.append('limit', '10000');
 
-            const response = await apiClient.get(`/payments?${params.toString()}`);
+            const response = await apiClient.get(`/payments?${params.toString()}`, { signal: controller.signal });
             const rawData = response.data?.data;
             const payments = Array.isArray(rawData)
                 ? rawData
                 : (rawData?.payments || rawData?.docs || []);
 
             const normalizedMethod = paymentMethod ? paymentMethod.toLowerCase() : '';
-            const normalizedSearch = nameFilter.trim().toLowerCase();
+            const normalizedSearch = debouncedNameFilter.trim().toLowerCase();
             const employeeId = employeeFilter ? String(employeeFilter) : '';
 
             const filtered = payments.filter((payment) => {
@@ -196,12 +204,16 @@ const StandardReportPage = ({ type }) => {
             setPaymentsRows(rows);
             setPaymentsSummary({ count, total, average });
         } catch (err) {
+            if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return;
             console.error('Failed to fetch payments ledger', err);
             toast.error(i18n.language === 'ar' ? 'فشل تحميل دفتر المدفوعات' : 'Failed to load payments ledger');
             setPaymentsRows([]);
             setPaymentsSummary({ count: 0, total: 0, average: 0 });
         } finally {
             setPaymentsLoading(false);
+            if (paymentsAbortRef.current === controller) {
+                paymentsAbortRef.current = null;
+            }
         }
     };
 
@@ -310,8 +322,15 @@ const StandardReportPage = ({ type }) => {
         paymentMethod,
         paymentType,
         employeeFilter,
-        nameFilter
+        debouncedNameFilter
     ]);
+
+    useEffect(() => {
+        const handle = setTimeout(() => {
+            setDebouncedNameFilter(nameFilter);
+        }, 300);
+        return () => clearTimeout(handle);
+    }, [nameFilter]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -379,6 +398,7 @@ const StandardReportPage = ({ type }) => {
                         gradient={gradients[idx % gradients.length]}
                         isCurrency={isCurrency}
                         delay={0.3 + (idx * 0.05)}
+                        isRevenueReport={isRevenueReport}
                     />
                 );
             });
@@ -390,9 +410,46 @@ const StandardReportPage = ({ type }) => {
         );
     };
 
+    const reportRows = useMemo(() => {
+        const rows = reportData?.data?.rows || reportData?.data?.report || [];
+        return Array.isArray(rows) ? rows : [];
+    }, [reportData]);
+
+    const formatCellValue = useCallback((value, columnKey) => {
+        const lowerCol = String(columnKey || '').toLowerCase();
+        const isCurrency = typeof value === 'number' && (lowerCol.includes('amount') || lowerCol.includes('price') || lowerCol.includes('total'));
+        const isDate = typeof value === 'string' && (lowerCol.includes('date') || lowerCol.includes('at') || lowerCol.match(/^\d{4}-\d{2}-\d{2}/));
+
+        if (isCurrency) return formatCurrency(value);
+        if (isDate) {
+            const d = new Date(value);
+            if (!isNaN(d.getTime())) {
+                return d.toLocaleDateString(i18n.language, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            }
+        }
+        return value ?? '-';
+    }, [i18n.language]);
+
+    const reportColumns = useMemo(() => {
+        if (!reportRows.length) return [];
+        return Object.keys(reportRows[0]).map((col) => ({
+            key: col,
+            label: col.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim(),
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => formatCellValue(row[col], col)
+        }));
+    }, [reportRows, formatCellValue]);
+
     // RENDER TABLE
     const renderTable = () => {
-        const rows = reportData?.data?.rows || reportData?.data?.report || [];
+        const rows = reportRows;
 
         if (!loading && (!rows || rows.length === 0)) {
             return (
@@ -412,61 +469,16 @@ const StandardReportPage = ({ type }) => {
             );
         }
 
-        const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
-
         return (
             <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-white/5">
-                            {columns.map(col => (
-                                <th
-                                    key={col}
-                                    className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap"
-                                >
-                                    {col.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                        <AnimatePresence>
-                            {rows.map((row, idx) => (
-                                <motion.tr
-                                    key={idx}
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    transition={{ delay: idx * 0.02 }}
-                                    className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors"
-                                >
-                                    {columns.map(col => (
-                                        <td key={col} className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                            {(() => {
-                                                const val = row[col];
-                                                const lowerCol = col.toLowerCase();
-                                                const isCurrency = typeof val === 'number' && (lowerCol.includes('amount') || lowerCol.includes('price') || lowerCol.includes('total'));
-                                                const isDate = typeof val === 'string' && (lowerCol.includes('date') || lowerCol.includes('at') || lowerCol.match(/^\d{4}-\d{2}-\d{2}/));
-
-                                                if (isCurrency) return formatCurrency(val);
-                                                if (isDate) {
-                                                    const d = new Date(val);
-                                                    if (!isNaN(d.getTime())) {
-                                                        return d.toLocaleDateString(i18n.language, {
-                                                            year: 'numeric',
-                                                            month: 'short',
-                                                            day: 'numeric'
-                                                        });
-                                                    }
-                                                }
-                                                return val ?? '-';
-                                            })()}
-                                        </td>
-                                    ))}
-                                </motion.tr>
-                            ))}
-                        </AnimatePresence>
-                    </tbody>
-                </table>
+                <VirtualizedTable
+                    columns={reportColumns}
+                    rows={rows}
+                    rowHeight={56}
+                    maxHeight={560}
+                    headerClassName="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-white/5"
+                    baseRowClassName="border-b border-gray-100 dark:border-white/5 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors"
+                />
             </div>
         );
     };
@@ -507,6 +519,72 @@ const StandardReportPage = ({ type }) => {
         link.remove();
     };
 
+    const paymentsColumns = useMemo(() => ([
+        {
+            key: 'paidAt',
+            label: i18n.language === 'ar' ? 'التاريخ/الوقت' : 'Date/Time',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => row.paidAt
+        },
+        {
+            key: 'customerLabel',
+            label: i18n.language === 'ar' ? 'العميل' : 'Customer',
+            width: 'minmax(180px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => row.customerLabel || '-'
+        },
+        {
+            key: 'type',
+            label: i18n.language === 'ar' ? 'النوع' : 'Type',
+            width: 'minmax(120px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => row.type
+        },
+        {
+            key: 'amount',
+            label: i18n.language === 'ar' ? 'المبلغ' : 'Amount',
+            width: 'minmax(120px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => formatCurrency(row.amount || 0)
+        },
+        {
+            key: 'method',
+            label: i18n.language === 'ar' ? 'الطريقة' : 'Method',
+            width: 'minmax(120px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => row.method || '-'
+        },
+        {
+            key: 'employee',
+            label: i18n.language === 'ar' ? 'الموظف' : 'Employee',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => row.employee || '-'
+        },
+        {
+            key: 'reference',
+            label: i18n.language === 'ar' ? 'المرجع' : 'Reference',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap',
+            align: 'left',
+            render: (row) => row.reference || '-'
+        }
+    ]), [i18n.language]);
+
     const renderPaymentsTab = () => {
         return (
             <>
@@ -517,6 +595,7 @@ const StandardReportPage = ({ type }) => {
                         icon={CreditCard}
                         gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
                         delay={0.2}
+                        isRevenueReport={isRevenueReport}
                     />
                     <KPICard
                         label={i18n.language === 'ar' ? 'إجمالي المدفوعات' : 'Total Amount'}
@@ -525,6 +604,7 @@ const StandardReportPage = ({ type }) => {
                         gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
                         isCurrency
                         delay={0.25}
+                        isRevenueReport={isRevenueReport}
                     />
                     <KPICard
                         label={i18n.language === 'ar' ? 'متوسط الدفع' : 'Average Payment'}
@@ -533,6 +613,7 @@ const StandardReportPage = ({ type }) => {
                         gradient="bg-gradient-to-br from-purple-500 to-pink-600"
                         isCurrency
                         delay={0.3}
+                        isRevenueReport={isRevenueReport}
                     />
                 </div>
 
@@ -560,67 +641,17 @@ const StandardReportPage = ({ type }) => {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-white/5">
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'التاريخ/الوقت' : 'Date/Time'}
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'العميل' : 'Customer'}
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'النوع' : 'Type'}
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'المبلغ' : 'Amount'}
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'الطريقة' : 'Method'}
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'الموظف' : 'Employee'}
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                                            {i18n.language === 'ar' ? 'المرجع' : 'Reference'}
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                                    {paymentsRows.length === 0 && (
-                                        <tr>
-                                            <td colSpan={7} className="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
-                                                {i18n.language === 'ar' ? 'لا توجد مدفوعات في هذه الفترة' : 'No payments in this period'}
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {paymentsRows.map((row) => (
-                                        <tr key={row.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors">
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {row.paidAt}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {row.customerLabel || '-'}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {row.type}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {formatCurrency(row.amount || 0)}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {row.method || '-'}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {row.employee || '-'}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
-                                                {row.reference || '-'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <VirtualizedTable
+                                columns={paymentsColumns}
+                                rows={paymentsRows}
+                                rowHeight={52}
+                                maxHeight={520}
+                                headerClassName="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-white/5"
+                                baseRowClassName="border-b border-gray-100 dark:border-white/5 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors"
+                                emptyMessage={i18n.language === 'ar' ? 'لا توجد مدفوعات في هذه الفترة' : 'No payments in this period'}
+                                emptyClassName="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                                getRowKey={(row) => row.id}
+                            />
                         </div>
                     )}
                 </div>
@@ -877,39 +908,40 @@ const StandardReportPage = ({ type }) => {
                     </motion.div>
                 )}
 
-                {(!showRevenueReport || activeTab === "overview") && (
-                    <>
-                        {/* KPI Cards */}
-                        {!loading && reportData && renderKPICards()}
+                <div className={`space-y-6 ${showRevenueReport && activeTab !== "overview" ? 'hidden' : ''}`}>
+                    {/* KPI Cards */}
+                    {!loading && reportData && renderKPICards()}
 
-                        {/* Data Table */}
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.35 }}
-                            className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl overflow-hidden"
-                        >
-                            {loading ? (
-                                <div className="py-20 text-center">
-                                    <Loader2 size={64} className="mx-auto text-indigo-500 animate-spin mb-4" />
-                                    <p className="text-gray-500 dark:text-gray-400 font-medium">
-                                        {i18n.language === "ar" ? "جاري تحميل التقرير..." : "Loading report..."}
-                                    </p>
-                                </div>
-                            ) : (
-                                renderTable()
-                            )}
-                        </motion.div>
-                    </>
-                )}
+                    {/* Data Table */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.35 }}
+                        className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl overflow-hidden"
+                    >
+                        {loading ? (
+                            <div className="py-20 text-center">
+                                <Loader2 size={64} className="mx-auto text-indigo-500 animate-spin mb-4" />
+                                <p className="text-gray-500 dark:text-gray-400 font-medium">
+                                    {i18n.language === "ar" ? "جاري تحميل التقرير..." : "Loading report..."}
+                                </p>
+                            </div>
+                        ) : (
+                            renderTable()
+                        )}
+                    </motion.div>
+                </div>
 
-                {showRevenueReport && activeTab === "payments" && renderPaymentsTab()}
+                <div className={`${showRevenueReport && activeTab === "payments" ? '' : 'hidden'}`}>
+                    {showRevenueReport && renderPaymentsTab()}
+                </div>
             </div>
         </div>
     );
 };
 
 export default StandardReportPage;
+
 
 
 
