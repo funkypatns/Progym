@@ -282,7 +282,21 @@
     },
     "reports": {
         "title": "Reports",
+        "subtitle": "Access detailed analytics and operational intelligence",
+        "viewReport": "View Report",
+        "categories": "Categories",
         "paymentsSummary": "Payments Summary",
+        "descriptions": {
+            "revenue": "Analyze income streams, payment trends, and financial health",
+            "attendance": "Track visits, peak hours, and member engagement metrics",
+            "productSales": "Inventory performance, best selling items, and stock analysis",
+            "subscriptions": "Monitor new signups, renewals, expirations, and retention",
+            "trainers": "Trainer commissions, payouts, and session earnings",
+            "pendingCompletion": "Sessions ended but not completed yet",
+            "gymIncomeSessions": "Paid session revenue with filters and totals",
+            "members": "Insights into member demographics and distribution",
+            "cashClosing": "Daily register closures, staff shifts, and cash reconciliation"
+        },
         "receipts": {
             "alreadyIssued": "Receipt already issued for this transaction",
             "title": "Receipts",
@@ -854,5 +868,9 @@
         "thisMonth": "This Month",
         "count": "Count",
         "notAvailable": "Not available"
+    },
+    "reports": {
+        "pendingCompletion": "Pending Completion",
+        "pendingCompletionSubtitle": "Sessions ended but not completed"
     }
 }

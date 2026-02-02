@@ -1292,7 +1292,7 @@ router.get('/members', async (req, res) => {
  */
 router.get('/attendance', async (req, res) => {
     try {
-        const { startDate, endDate, from, to, search } = req.query;
+        const { startDate, endDate, from, to, search, visitType: visitTypeParam } = req.query;
         const { startDate: start, endDate: end, error } = parseDateRange(startDate || from, endDate || to);
 
         if (error) return res.status(400).json({ success: false, message: error });
@@ -1303,7 +1303,7 @@ router.get('/attendance', async (req, res) => {
                 lte: end
             }
         };
-        const normalizedType = (visitType || '').trim().toUpperCase();
+        const normalizedType = (visitTypeParam || '').trim().toUpperCase();
         if (normalizedType) {
             if (normalizedType === 'SESSION') {
                 where.notes = { contains: '"visitType":"SESSION"' };

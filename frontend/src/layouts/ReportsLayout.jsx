@@ -24,10 +24,8 @@ const ReportsLayout = () => {
 
     // Robust Safe Translation Helper
     const safeT = (key, fallback) => {
-        const val = t(key);
-        if (!val || val === key || val.startsWith('reports.') || val.startsWith('nav.') || val.startsWith('cashClosing.') || val.startsWith('payments.')) {
-            return fallback;
-        }
+        const val = t(key, { defaultValue: fallback });
+        if (!val || val === key) return fallback;
         return val;
     };
 

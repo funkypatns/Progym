@@ -78,12 +78,9 @@ const MainLayout = () => {
 
     // Safe Label Helper with Fallbacks
     const safeT = (key, fallback) => {
-        const val = t(key);
+        const val = t(key, { defaultValue: fallback });
         const normalized = typeof val === 'string' ? val : String(val || '');
-        // If i18next returns key/empty or still looks like a key
-        if (!normalized || normalized === key || normalized.startsWith('nav.') || normalized.startsWith('reports.')) {
-            return fallback;
-        }
+        if (!normalized || normalized === key) return fallback;
         return normalized;
     };
 

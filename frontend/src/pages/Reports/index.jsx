@@ -48,7 +48,7 @@ const ReportCard = ({ title, desc, icon: Icon, gradient, to, delay = 0 }) => (
 
                 {/* CTA */}
                 <div className="flex items-center gap-2 text-sm font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent group-hover:gap-4 transition-all">
-                    View Report
+                    {t('reports.viewReport', 'View Report')}
                     <ArrowRight size={16} className="text-indigo-600 group-hover:translate-x-1 transition-transform" />
                 </div>
             </div>
@@ -64,64 +64,64 @@ const ReportsDashboard = () => {
 
     const reports = [
         {
-            title: t('reports.revenueReport') || "Revenue Report",
-            desc: "Analyze income streams, payment trends, and financial health",
+            title: t('reports.revenueReport', 'Revenue Report'),
+            desc: t('reports.descriptions.revenue', 'Analyze income streams, payment trends, and financial health'),
             icon: DollarSign,
             gradient: "bg-gradient-to-br from-emerald-500 to-teal-600",
             to: "/reports/revenue"
         },
         {
-            title: t('reports.attendanceReport') || "Attendance Report",
-            desc: "Track visits, peak hours, and member engagement metrics",
+            title: t('reports.attendanceReport', 'Attendance Report'),
+            desc: t('reports.descriptions.attendance', 'Track visits, peak hours, and member engagement metrics'),
             icon: Activity,
             gradient: "bg-gradient-to-br from-blue-500 to-indigo-600",
             to: "/reports/attendance"
         },
         {
-            title: t('nav.products') || "Product Sales",
-            desc: "Inventory performance, best selling items, and stock analysis",
+            title: t('nav.products', 'Product Sales'),
+            desc: t('reports.descriptions.productSales', 'Inventory performance, best selling items, and stock analysis'),
             icon: Package,
             gradient: "bg-gradient-to-br from-purple-500 to-pink-600",
             to: "/reports/product-sales"
         },
         {
-            title: t('reports.subscriptionReport') || "Subscriptions",
-            desc: "Monitor new signups, renewals, expirations, and retention",
+            title: t('reports.subscriptionReport', 'Subscriptions'),
+            desc: t('reports.descriptions.subscriptions', 'Monitor new signups, renewals, expirations, and retention'),
             icon: CreditCard,
             gradient: "bg-gradient-to-br from-orange-500 to-red-600",
             to: "/reports/subscriptions"
         },
         {
-            title: t('reports.trainersReport') || "Trainer Report",
-            desc: "Trainer commissions, payouts, and session earnings",
+            title: t('reports.trainersReport', 'Trainer Report'),
+            desc: t('reports.descriptions.trainers', 'Trainer commissions, payouts, and session earnings'),
             icon: Users,
             gradient: "bg-gradient-to-br from-indigo-500 to-blue-600",
             to: "/reports/trainers"
         },
         {
-            title: t('reports.pendingCompletion') || "Pending Completion",
-            desc: "Sessions ended but not completed yet",
+            title: t('reports.pendingCompletion', 'Pending Completion'),
+            desc: t('reports.descriptions.pendingCompletion', 'Sessions ended but not completed yet'),
             icon: Clock,
             gradient: "bg-gradient-to-br from-amber-500 to-orange-600",
             to: "/reports/pending-completion"
         },
         {
-            title: t('reports.gymIncomeSessions') || "Gym Income - Sessions",
-            desc: "Paid session revenue with filters and totals",
+            title: t('reports.gymIncomeSessions', 'Gym Income - Sessions'),
+            desc: t('reports.descriptions.gymIncomeSessions', 'Paid session revenue with filters and totals'),
             icon: DollarSign,
             gradient: "bg-gradient-to-br from-emerald-500 to-teal-600",
             to: "/reports/gym-income-sessions"
         },
         {
-            title: t('reports.memberReport') || "Members Analytics",
-            desc: "Insights into member demographics and distribution",
+            title: t('reports.memberReport', 'Members Analytics'),
+            desc: t('reports.descriptions.members', 'Insights into member demographics and distribution'),
             icon: Users,
             gradient: "bg-gradient-to-br from-cyan-500 to-blue-600",
             to: "/reports/members"
         },
         {
-            title: t('cashClosing.title') || "Cash Closing",
-            desc: "Daily register closures, staff shifts, and cash reconciliation",
+            title: t('cashClosing.title', 'Cash Closing'),
+            desc: t('reports.descriptions.cashClosing', 'Daily register closures, staff shifts, and cash reconciliation'),
             icon: Clipboard,
             gradient: "bg-gradient-to-br from-slate-500 to-gray-700",
             to: "/reports/cash-closing"
@@ -145,10 +145,10 @@ const ReportsDashboard = () => {
                             </div>
                             <div>
                                 <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-indigo-600 dark:from-white dark:to-indigo-400 leading-tight">
-                                    {t('reports.title') || 'Reports & Analytics'}
+                                    {t('reports.title', 'Reports & Analytics')}
                                 </h1>
                                 <p className="text-gray-600 dark:text-gray-400 font-medium mt-2 text-lg">
-                                    Access detailed analytics and operational intelligence
+                                    {t('reports.subtitle', 'Access detailed analytics and operational intelligence')}
                                 </p>
                             </div>
                         </div>
@@ -178,7 +178,9 @@ const ReportsDashboard = () => {
                                 <FileText className="text-blue-600 dark:text-blue-400" size={24} />
                             </div>
                             <div>
-                                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reports</p>
+                                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                    {t('reports.title', 'Reports')}
+                                </p>
                                 <p className="text-2xl font-black text-gray-900 dark:text-white">{reports.length}</p>
                             </div>
                         </div>
@@ -195,7 +197,9 @@ const ReportsDashboard = () => {
                                 <PieChart className="text-purple-600 dark:text-purple-400" size={24} />
                             </div>
                             <div>
-                                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Categories</p>
+                                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                    {t('reports.categories', 'Categories')}
+                                </p>
                                 <p className="text-2xl font-black text-gray-900 dark:text-white">6</p>
                             </div>
                         </div>
