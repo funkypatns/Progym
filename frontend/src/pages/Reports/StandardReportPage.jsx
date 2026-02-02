@@ -90,6 +90,16 @@ const StandardReportPage = ({ type }) => {
 
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
+    const normalizeRange = (from, to) => {
+        if (!from || !to) return { from, to, swapped: false };
+        const start = new Date(from);
+        const end = new Date(to);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return { from, to, swapped: false };
+        }
+        if (start > end) return { from: to, to: from, swapped: true };
+        return { from, to, swapped: false };
+    };
 
     const normalizePaymentsSummary = (payload) => {
         const reportData = payload?.data || {};
@@ -109,11 +119,16 @@ const StandardReportPage = ({ type }) => {
     };
 
     const fetchPaymentsLedger = async () => {
+        const normalized = normalizeRange(dateRange.startDate, dateRange.endDate);
+        if (normalized.swapped) {
+            setDateRange({ startDate: normalized.from, endDate: normalized.to });
+            return;
+        }
         setPaymentsLoading(true);
         try {
             const params = new URLSearchParams();
-            const startDate = toStartOfDay(dateRange.startDate);
-            const endDate = toEndOfDay(dateRange.endDate);
+            const startDate = toStartOfDay(normalized.from);
+            const endDate = toEndOfDay(normalized.to);
             if (startDate) params.append('startDate', startDate);
             if (endDate) params.append('endDate', endDate);
             if (paymentType) params.append('type', paymentType);
@@ -196,13 +211,18 @@ const StandardReportPage = ({ type }) => {
             return;
         }
 
+        const normalized = normalizeRange(dateRange.startDate, dateRange.endDate);
+        if (normalized.swapped) {
+            setDateRange({ startDate: normalized.from, endDate: normalized.to });
+            return;
+        }
         setLoading(true);
         setError(null);
 
         try {
             const params = new URLSearchParams();
-            params.append('from', dateRange.startDate);
-            params.append('to', dateRange.endDate);
+            params.append('from', normalized.from);
+            params.append('to', normalized.to);
             if (paymentMethod) params.append('method', paymentMethod);
             if (config?.id === 'payments-summary') params.append('_ts', Date.now().toString());
 
@@ -229,8 +249,13 @@ const StandardReportPage = ({ type }) => {
         if (!config?.endpoint) return;
         try {
             const params = new URLSearchParams();
-            params.append('from', dateRange.startDate);
-            params.append('to', dateRange.endDate);
+            const normalized = normalizeRange(dateRange.startDate, dateRange.endDate);
+            if (normalized.swapped) {
+                setDateRange({ startDate: normalized.from, endDate: normalized.to });
+                return;
+            }
+            params.append('from', normalized.from);
+            params.append('to', normalized.to);
             params.append('format', 'excel');
 
             const response = await apiClient.get(`/reports${config.endpoint}?${params}`, { responseType: 'blob' });

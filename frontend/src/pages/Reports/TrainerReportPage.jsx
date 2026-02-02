@@ -331,6 +331,16 @@ const TrainerReportPage = () => {
 
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
+    const normalizeRange = (from, to) => {
+        if (!from || !to) return { from, to, swapped: false };
+        const start = new Date(from);
+        const end = new Date(to);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return { from, to, swapped: false };
+        }
+        if (start > end) return { from: to, to: from, swapped: true };
+        return { from, to, swapped: false };
+    };
 
     useEffect(() => {
         const loadInitial = async () => {
@@ -362,8 +372,13 @@ const TrainerReportPage = () => {
         }
 
         const params = new URLSearchParams();
-        const startDate = toStartOfDay(dateRange.from);
-        const endDate = toEndOfDay(dateRange.to);
+        const normalized = normalizeRange(dateRange.from, dateRange.to);
+        if (normalized.swapped) {
+            setDateRange({ from: normalized.from, to: normalized.to });
+            return;
+        }
+        const startDate = toStartOfDay(normalized.from);
+        const endDate = toEndOfDay(normalized.to);
         params.append('startDate', startDate);
         params.append('endDate', endDate);
         if (statusFilter && statusFilter !== 'ALL') params.append('status', statusFilter);

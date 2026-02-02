@@ -33,6 +33,16 @@ const PendingCompletionReportPage = () => {
 
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
+    const normalizeRange = (from, to) => {
+        if (!from || !to) return { from, to, swapped: false };
+        const start = new Date(from);
+        const end = new Date(to);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return { from, to, swapped: false };
+        }
+        if (start > end) return { from: to, to: from, swapped: true };
+        return { from, to, swapped: false };
+    };
 
     useEffect(() => {
         const loadFilters = async () => {
@@ -59,10 +69,15 @@ const PendingCompletionReportPage = () => {
     }, []);
 
     const fetchPendingCompletion = async () => {
+        const normalized = normalizeRange(filters.from, filters.to);
+        if (normalized.swapped) {
+            setFilters((prev) => ({ ...prev, from: normalized.from, to: normalized.to }));
+            return;
+        }
         setLoading(true);
         try {
-            const startDate = toStartOfDay(filters.from);
-            const endDate = toEndOfDay(filters.to);
+            const startDate = toStartOfDay(normalized.from);
+            const endDate = toEndOfDay(normalized.to);
             const params = new URLSearchParams();
             if (startDate) params.append('startDate', startDate);
             if (endDate) params.append('endDate', endDate);

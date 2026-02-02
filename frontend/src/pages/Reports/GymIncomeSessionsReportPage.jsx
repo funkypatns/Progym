@@ -59,6 +59,16 @@ const GymIncomeSessionsReportPage = () => {
     const currency = { code: 'EGP', symbol: 'EGP' };
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
+    const normalizeRange = (from, to) => {
+        if (!from || !to) return { from, to, swapped: false };
+        const start = new Date(from);
+        const end = new Date(to);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return { from, to, swapped: false };
+        }
+        if (start > end) return { from: to, to: from, swapped: true };
+        return { from, to, swapped: false };
+    };
 
     useEffect(() => {
         const loadFilters = async () => {
@@ -87,10 +97,15 @@ const GymIncomeSessionsReportPage = () => {
     }, []);
 
     const fetchReport = async () => {
+        const normalized = normalizeRange(filters.from, filters.to);
+        if (normalized.swapped) {
+            setFilters((prev) => ({ ...prev, from: normalized.from, to: normalized.to }));
+            return;
+        }
         setLoading(true);
         try {
-            const startDate = toStartOfDay(filters.from);
-            const endDate = toEndOfDay(filters.to);
+            const startDate = toStartOfDay(normalized.from);
+            const endDate = toEndOfDay(normalized.to);
             const params = new URLSearchParams({
                 type: 'SESSION',
                 startDate,
@@ -98,14 +113,6 @@ const GymIncomeSessionsReportPage = () => {
                 page: '1',
                 limit: '10000'
             });
-
-            if (import.meta.env.DEV) {
-                console.log('[REPORTS][gym-income-sessions] request', {
-                    startDate,
-                    endDate,
-                    type: 'SESSION'
-                });
-            }
 
             const response = await apiClient.get(`/payments?${params.toString()}`);
             const rawData = response.data?.data;
@@ -202,14 +209,6 @@ const GymIncomeSessionsReportPage = () => {
                 byMethod
             });
             setRows(rows);
-
-            if (import.meta.env.DEV) {
-                console.log('[REPORTS][gym-income-sessions] response', {
-                    paymentsCount: payments.length,
-                    rowsCount: rows.length,
-                    totalRevenue
-                });
-            }
         } catch (error) {
             toast.error(isRTL ? 'فشل تحميل تقرير دخل الجلسات' : 'Failed to load sessions income report');
             setSummary({ totalRevenue: 0, sessionsCount: 0, averagePrice: 0, byMethod: { CASH: 0, CARD: 0, TRANSFER: 0 } });
