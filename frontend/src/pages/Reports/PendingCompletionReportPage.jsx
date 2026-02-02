@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Calendar, ClipboardList, Download, Filter, Users } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
@@ -339,3 +339,7 @@ const PendingCompletionReportPage = () => {
 };
 
 export default PendingCompletionReportPage;
+
+
+
+
