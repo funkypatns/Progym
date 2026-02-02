@@ -348,11 +348,11 @@ const StandardReportPage = ({ type }) => {
 
     const isRevenueReport = config?.id === 'revenue';
     const nameFilterLabel = isRevenueReport && activeTab === 'payments'
-        ? (i18n.language === 'ar' ? 'Ø¨Ø­Ø«' : 'Search')
-                                {nameFilterLabel}
+        ? (i18n.language === 'ar' ? 'بحث' : 'Search')
+        : (i18n.language === 'ar' ? 'فلتر بالاسم' : 'Filter by Name');
     const nameFilterPlaceholder = isRevenueReport && activeTab === 'payments'
-        ? (i18n.language === 'ar' ? 'Ø§Ø³Ù… / ÙƒÙˆØ¯ / ØªÙ„ÙŠÙÙˆÙ†' : 'Name / code / phone')
-                                placeholder={nameFilterPlaceholder}
+        ? (i18n.language === 'ar' ? 'اسم / كود / تليفون' : 'Name / code / phone')
+        : (i18n.language === 'ar' ? 'بحث بالاسم...' : 'Search by name...');
 
     // RENDER KPI CARDS
     const renderKPICards = () => {
