@@ -124,3 +124,7 @@
 [PROGRESS]
 - 2026-02-02T02:31:50.7291164+02:00 [CODE] Fixed Revenue report guard (showRevenueReport) and replaced mojibake Arabic strings in reports UI with proper UTF-8 text.
 
+
+[PROGRESS]
+- 2026-02-02T03:29:52.7923374+02:00 [CODE] Normalized report date ranges across trainer, gym income, pending completion, and revenue payments tab; removed dev logging to avoid noisy zeros.
+
