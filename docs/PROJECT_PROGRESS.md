@@ -149,3 +149,4 @@ Phase 4 - Receipts system
 | 2026-02-02 | 803fd3c | Fix i18n key leakage and stabilize attendance report. |
 | 2026-02-02 | 5d1b20f | Fix ReportCard crash by defining translation hook. |
 | 2026-02-02 | 5715573 | Fix reports page header translation keys and remove duplicate i18n entries. |
+| 2026-02-02 | 18e5fb3 | Restore Arabic UTF-8 translations for reports and sidebar labels. |
