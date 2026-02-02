@@ -1,4 +1,4 @@
-﻿{
+{
     "app": {
         "name": "Gym Management System",
         "tagline": "Professional Gym Management"
@@ -284,6 +284,10 @@
         "title": "Reports",
         "subtitle": "Access detailed analytics and operational intelligence",
         "viewReport": "View Report",
+        "searchByName": "Search by Name",
+        "searchNamePlaceholder": "Search by member name...",
+        "searchByEmail": "Search by Email",
+        "searchPlaceholder": "Search by email...",
         "categories": "Categories",
         "paymentsSummary": "Payments Summary",
         "descriptions": {
@@ -329,6 +333,10 @@
         "subscriptionReport": "Subscriptions Report",
         "trainersReport": "Trainer Report",
         "pendingCompletion": "Pending Completion",
+        "pendingCompletionSubtitle": "Sessions ended but not completed",
+        "outstanding": "Outstanding Balance",
+        "employeeCollections": "Employee Collections",
+        "shifts": "Shifts",
         "export": "Export",
         "exportExcel": "Export to Excel",
         "exportPdf": "Export to PDF",
@@ -785,72 +793,6 @@
         "shiftRequired": "Open a shift before selling",
         "cashierRequired": "Login required to complete sale"
     },
-    "reports": {
-        "title": "Reports",
-        "searchByName": "Search by Name",
-        "searchNamePlaceholder": "Search by member name...",
-        "searchByEmail": "Search by Email",
-        "searchPlaceholder": "Search by email...",
-        "summary": "Summary",
-        "revenueReport": "Revenue Report",
-        "memberReport": "Member Report",
-        "subscriptionReport": "Subscription Report",
-        "trainersReport": "Trainer Report",
-        "gymIncomeSessions": "Gym Income - Sessions",
-        "attendanceReport": "Attendance Report",
-        "coachEarnings": "Coach Earnings",
-        "outstanding": "Outstanding Balance",
-        "receipts": "Receipt Lookup",
-        "employeeCollections": "Employee Collections",
-        "shifts": "Shifts",
-        "gymIncome": {
-            "title": "Gym Income Report",
-            "subtitle": "Net income from sessions after commissions",
-            "tabs": {
-                "overview": "Overview",
-                "byCoach": "By Coach",
-                "byPeriod": "By Period"
-            },
-            "member": "Member Name",
-            "coach": "Coach Name",
-            "service": "Service",
-            "sessionPrice": "Session Price",
-            "commission": "Coach Commission",
-            "net": "Gym Net Income",
-            "grossRevenue": "Total Gross Revenue",
-            "totalCommissions": "Total Coach Commissions",
-            "netIncome": "Net Gym Income",
-            "totalSessions": "Total Completed Sessions",
-            "warnings": {
-                "commissionExceeds": "Commission exceeds session price"
-            },
-            "period": {
-                "day": "Daily",
-                "month": "Monthly",
-                "date": "Period",
-                "totalRevenue": "Revenue",
-                "totalProfit": "Profit"
-            }
-        },
-        "cancellations": {
-            "title": "Cancellations",
-            "subtitle": "Monthly cancellation report"
-        },
-        "fields": {
-            "cancellations": {
-                "totalCancellations": "Total Cancellations",
-                "totalRefunded": "Total Refunded",
-                "netRevenueImpact": "Net Revenue Impact"
-            },
-            "member": "Member",
-            "email": "Email",
-            "cancelledAt": "Cancelled At",
-            "refundedAmount": "Refunded Amount",
-            "reason": "Reason"
-        },
-        "noData": "No data found",
-        "noCancellations": "No cancellations found"
-    },
     "refunds": {
         "title": "Refunds Log",
         "subtitle": "Track refund transactions and recovery",
@@ -868,9 +810,5 @@
         "thisMonth": "This Month",
         "count": "Count",
         "notAvailable": "Not available"
-    },
-    "reports": {
-        "pendingCompletion": "Pending Completion",
-        "pendingCompletionSubtitle": "Sessions ended but not completed"
     }
 }
