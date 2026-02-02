@@ -54,27 +54,29 @@ const ReportsTableContainer = ({
             {/* Table Content */}
             {!loading && !isReallyEmpty && (
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        {safeHeaders.length > 0 && (
-                            <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-                                <tr>
-                                    {safeHeaders.map((header, idx) => (
-                                        <th
-                                            key={idx}
-                                            className="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
-                                        >
-                                            {header}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                        )}
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {children ? children : (
-                                safeRows.map((row, idx) => renderRow ? renderRow(row, idx) : null)
+                    {children ? (
+                        children
+                    ) : (
+                        <table className="w-full text-sm">
+                            {safeHeaders.length > 0 && (
+                                <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                                    <tr>
+                                        {safeHeaders.map((header, idx) => (
+                                            <th
+                                                key={idx}
+                                                className="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+                                            >
+                                                {header}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
                             )}
-                        </tbody>
-                    </table>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                {safeRows.map((row, idx) => renderRow ? renderRow(row, idx) : null)}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             )}
         </div>
