@@ -146,3 +146,4 @@ Phase 4 - Receipts system
 | 2026-02-02 | 5b3c190 | Restore trainer report table helpers and show pending completion rows when API returns data. |
 | 2026-02-02 | 5fed571 | Allow Trainer Report custom table sections without invalid nesting errors. |
 | 2026-02-02 | 4157a42 | Pending completion list now includes future/in-progress sessions (no end-time cutoff). |
+| 2026-02-02 | 803fd3c | Fix i18n key leakage and stabilize attendance report. |
