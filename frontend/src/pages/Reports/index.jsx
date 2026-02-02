@@ -19,45 +19,49 @@ import {
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
-const ReportCard = ({ title, desc, icon: Icon, gradient, to, delay = 0 }) => (
-    <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay, duration: 0.4 }}
-    >
-        <Link
-            to={to}
-            className="group relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-lg hover:shadow-2xl border border-gray-200/50 dark:border-white/10 transition-all duration-300 flex flex-col overflow-hidden h-full hover:-translate-y-2"
+const ReportCard = ({ title, desc, icon: Icon, gradient, to, delay = 0 }) => {
+    const { t } = useTranslation();
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay, duration: 0.4 }}
         >
-            {/* Gradient Background Blob */}
-            <div className={`absolute -right-20 -top-20 w-64 h-64 ${gradient} opacity-10 dark:opacity-5 rounded-full blur-3xl group-hover:opacity-20 dark:group-hover:opacity-10 transition-opacity duration-500`}></div>
+            <Link
+                to={to}
+                className="group relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl shadow-lg hover:shadow-2xl border border-gray-200/50 dark:border-white/10 transition-all duration-300 flex flex-col overflow-hidden h-full hover:-translate-y-2"
+            >
+                {/* Gradient Background Blob */}
+                <div className={`absolute -right-20 -top-20 w-64 h-64 ${gradient} opacity-10 dark:opacity-5 rounded-full blur-3xl group-hover:opacity-20 dark:group-hover:opacity-10 transition-opacity duration-500`}></div>
 
-            {/* Icon */}
-            <div className={`relative p-4 rounded-2xl ${gradient} mb-6 inline-flex w-fit shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                <Icon size={32} className="text-white" strokeWidth={2.5} />
-            </div>
-
-            {/* Content */}
-            <div className="relative z-10 flex-1 flex flex-col">
-                <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 leading-tight">
-                    {title}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed flex-1 mb-6">
-                    {desc}
-                </p>
-
-                {/* CTA */}
-                <div className="flex items-center gap-2 text-sm font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent group-hover:gap-4 transition-all">
-                    {t('reports.viewReport', 'View Report')}
-                    <ArrowRight size={16} className="text-indigo-600 group-hover:translate-x-1 transition-transform" />
+                {/* Icon */}
+                <div className={`relative p-4 rounded-2xl ${gradient} mb-6 inline-flex w-fit shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                    <Icon size={32} className="text-white" strokeWidth={2.5} />
                 </div>
-            </div>
 
-            {/* Hover Border Effect */}
-            <div className={`absolute inset-0 rounded-3xl ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl -z-10`}></div>
-        </Link>
-    </motion.div>
-);
+                {/* Content */}
+                <div className="relative z-10 flex-1 flex flex-col">
+                    <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 leading-tight">
+                        {title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed flex-1 mb-6">
+                        {desc}
+                    </p>
+
+                    {/* CTA */}
+                    <div className="flex items-center gap-2 text-sm font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent group-hover:gap-4 transition-all">
+                        {t('reports.viewReport', 'View Report')}
+                        <ArrowRight size={16} className="text-indigo-600 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                </div>
+
+                {/* Hover Border Effect */}
+                <div className={`absolute inset-0 rounded-3xl ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl -z-10`}></div>
+            </Link>
+        </motion.div>
+    );
+};
 
 const ReportsDashboard = () => {
     const { t } = useTranslation();
