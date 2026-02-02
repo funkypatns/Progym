@@ -96,7 +96,7 @@ const PendingCompletionReportPage = () => {
             const items = Array.isArray(response.data?.data) ? response.data.data : [];
 
             // Filter out any that might be returned as completed (safety net)
-            const activeItems = items.filter((i) => !i.isCompleted && i.status !== 'completed');
+            const activeItems = items.filter((i) => !i.isCompleted);
 
             const serviceName = filters.serviceId
                 ? (services.find((service) => String(service.id) === String(filters.serviceId))?.name || '').toLowerCase()
