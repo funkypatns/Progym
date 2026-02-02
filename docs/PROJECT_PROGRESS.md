@@ -140,3 +140,4 @@ Phase 4 - Receipts system
 | 2026-02-02 | f066717 | Stabilize reports date ranges and filters; remove debug logs and prevent zeroed data on swapped ranges. |
 | 2026-02-02 | b69695d | Harden pending completion report backend date parsing to avoid 500s on invalid ranges. |
 | 2026-02-02 | 93e575c | Stabilize pending completion report nav label render, i18n key, and error toast guard. |
+| 2026-02-02 | 8979f24 | Guard revenue report flag to prevent runtime ReferenceError and restore UTF-8 Arabic translations. |

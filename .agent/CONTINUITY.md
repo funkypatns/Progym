@@ -136,3 +136,7 @@
 [PROGRESS]
 - 2026-02-02T04:08:47.7603818+02:00 [CODE] Fixed pending completion report nav rendering guard, added i18n key, and prevented repeated error toast.
 
+
+[PROGRESS]
+- 2026-02-02T06:26:33.3478523+02:00 [CODE] Added isRevenueReport guard in StandardReportPage and restored Arabic translations to valid UTF-8 without BOM; i18n encoding check passes.
+
