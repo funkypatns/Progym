@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================
  * STANDARD REPORT PAGE - Premium Redesign
  * ============================================
@@ -23,7 +23,8 @@ import {
     Download,
     CreditCard,
     Package,
-    Search
+    Search,
+    Filter
 } from 'lucide-react';
 import apiClient from '../../utils/api';
 import { toast } from 'react-hot-toast';
@@ -53,6 +54,44 @@ const KPICard = ({ label, value, icon: Icon, gradient, isCurrency = false, delay
                     </p>
                 </div>
             </div>
+
+                    {isRevenueReport && activeTab === "payments" && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <Filter size={16} />
+                                    {i18n.language === "ar" ? "نوع الدفع" : "Payment Type"}
+                                </label>
+                                <select
+                                    value={paymentType}
+                                    onChange={(e) => setPaymentType(e.target.value)}
+                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
+                                >
+                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
+                                    <option value="SESSION">{i18n.language === "ar" ? "جلسة" : "Session"}</option>
+                                    <option value="SUBSCRIPTION">{i18n.language === "ar" ? "اشتراك" : "Membership"}</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <Users size={16} />
+                                    {i18n.language === "ar" ? "الموظف" : "Employee"}
+                                </label>
+                                <select
+                                    value={employeeFilter}
+                                    onChange={(e) => setEmployeeFilter(e.target.value)}
+                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
+                                >
+                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
+                                    {employees.map((employee) => (
+                                        <option key={employee.id} value={employee.id}>
+                                            {`${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.username || employee.email}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
         </motion.div>
     );
 };
@@ -76,9 +115,19 @@ const StandardReportPage = ({ type }) => {
     });
     const [paymentMethod, setPaymentMethod] = useState('');
     const [nameFilter, setNameFilter] = useState('');
+    const [activeTab, setActiveTab] = useState('overview');
+    const [employees, setEmployees] = useState([]);
+    const [paymentType, setPaymentType] = useState('');
+    const [employeeFilter, setEmployeeFilter] = useState('');
+    const [paymentsLoading, setPaymentsLoading] = useState(false);
+    const [paymentsRows, setPaymentsRows] = useState([]);
+    const [paymentsSummary, setPaymentsSummary] = useState({ count: 0, total: 0, average: 0 });
 
     const reportTitle = i18n.language === 'ar' ? config?.titleAr : config?.titleEn;
     const reportDesc = i18n.language === 'ar' ? config?.descriptionAr : config?.descriptionEn;
+
+    const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
+    const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
 
     const normalizePaymentsSummary = (payload) => {
         const reportData = payload?.data || {};
@@ -95,6 +144,88 @@ const StandardReportPage = ({ type }) => {
         }));
 
         return { data: { summary, rows } };
+    };
+
+    const fetchPaymentsLedger = async () => {
+        setPaymentsLoading(true);
+        try {
+            const params = new URLSearchParams();
+            const startDate = toStartOfDay(dateRange.startDate);
+            const endDate = toEndOfDay(dateRange.endDate);
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (paymentType) params.append('type', paymentType);
+            params.append('page', '1');
+            params.append('limit', '10000');
+
+            const response = await apiClient.get(`/payments?${params.toString()}`);
+            const rawData = response.data?.data;
+            const payments = Array.isArray(rawData)
+                ? rawData
+                : (rawData?.payments || rawData?.docs || []);
+
+            const normalizedMethod = paymentMethod ? paymentMethod.toLowerCase() : '';
+            const normalizedSearch = nameFilter.trim().toLowerCase();
+            const employeeId = employeeFilter ? String(employeeFilter) : '';
+
+            const filtered = payments.filter((payment) => {
+                if (normalizedMethod && String(payment.method || '').toLowerCase() !== normalizedMethod) {
+                    return false;
+                }
+                if (employeeId) {
+                    const creatorId = payment.creator?.id ? String(payment.creator.id) : (payment.createdBy ? String(payment.createdBy) : '');
+                    const completedId = payment.appointment?.completedByEmployee?.id ? String(payment.appointment.completedByEmployee.id) : '';
+                    if (creatorId !== employeeId && completedId !== employeeId) return false;
+                }
+                if (normalizedSearch) {
+                    const member = payment.member || {};
+                    const haystack = `${member.firstName || ''} ${member.lastName || ''} ${member.memberId || ''} ${member.phone || ''}`.toLowerCase();
+                    if (!haystack.includes(normalizedSearch)) return false;
+                }
+                return true;
+            });
+
+            const rows = filtered.map((payment) => {
+                const member = payment.member || {};
+                const customerName = `${member.firstName || ''} ${member.lastName || ''}`.trim();
+                const creatorName = payment.creator
+                    ? `${payment.creator.firstName || ''} ${payment.creator.lastName || ''}`.trim()
+                    : '';
+                const completedByName = payment.appointment?.completedByEmployee
+                    ? `${payment.appointment.completedByEmployee.firstName || ''} ${payment.appointment.completedByEmployee.lastName || ''}`.trim()
+                    : '';
+                const typeLabel = payment.appointmentId
+                    ? (i18n.language === 'ar' ? 'Ø¬Ù„Ø³Ø©' : 'Session')
+                    : payment.subscriptionId
+                        ? (i18n.language === 'ar' ? 'Ø§Ø´ØªØ±Ø§Ùƒ' : 'Membership')
+                        : (i18n.language === 'ar' ? 'Ø£Ø®Ø±Ù‰' : 'Other');
+
+                return {
+                    id: payment.id,
+                    paidAt: payment.paidAt,
+                    customerLabel: member.memberId ? `${customerName} (${member.memberId})` : customerName,
+                    type: typeLabel,
+                    amount: payment.amount || 0,
+                    method: payment.method || '',
+                    employee: creatorName || completedByName || '-',
+                    reference: payment.appointmentId || payment.receiptNumber || payment.id
+                };
+            });
+
+            const total = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
+            const count = rows.length;
+            const average = count ? total / count : 0;
+
+            setPaymentsRows(rows);
+            setPaymentsSummary({ count, total, average });
+        } catch (err) {
+            console.error('Failed to fetch payments ledger', err);
+            toast.error(i18n.language === 'ar' ? 'ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ Ø¯ÙØªØ± Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Failed to load payments ledger');
+            setPaymentsRows([]);
+            setPaymentsSummary({ count: 0, total: 0, average: 0 });
+        } finally {
+            setPaymentsLoading(false);
+        }
     };
 
     const fetchReport = async () => {
@@ -122,11 +253,11 @@ const StandardReportPage = ({ type }) => {
             } else {
                 setReportData(response.data);
             }
-            toast.success(i18n.language === 'ar' ? 'تم إنشاء التقرير' : 'Report generated');
+            toast.success(i18n.language === 'ar' ? 'ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØªÙ‚Ø±ÙŠØ±' : 'Report generated');
         } catch (err) {
             console.error(`Failed to fetch report:`, err);
             setError(err.response?.data?.message || 'Failed to generate report');
-            toast.error(i18n.language === 'ar' ? 'فشل إنشاء التقرير' : 'Failed to generate report');
+            toast.error(i18n.language === 'ar' ? 'ÙØ´Ù„ Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØªÙ‚Ø±ÙŠØ±' : 'Failed to generate report');
         } finally {
             setLoading(false);
         }
@@ -149,15 +280,51 @@ const StandardReportPage = ({ type }) => {
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success(i18n.language === 'ar' ? 'تم التصدير بنجاح' : 'Exported successfully');
+            toast.success(i18n.language === 'ar' ? 'ØªÙ… Ø§Ù„ØªØµØ¯ÙŠØ± Ø¨Ù†Ø¬Ø§Ø­' : 'Exported successfully');
         } catch (err) {
-            toast.error(i18n.language === 'ar' ? 'فشل التصدير' : 'Export failed');
+            toast.error(i18n.language === 'ar' ? 'ÙØ´Ù„ Ø§Ù„ØªØµØ¯ÙŠØ±' : 'Export failed');
         }
     };
 
     useEffect(() => {
         if (config) fetchReport();
     }, [config?.id]);
+
+    useEffect(() => {
+        if (config?.id === 'revenue') {
+            setActiveTab('overview');
+        }
+    }, [config?.id]);
+
+    useEffect(() => {
+        if (config?.id !== 'revenue') return;
+        const loadEmployees = async () => {
+            try {
+                const res = await apiClient.get('/users/list');
+                if (res.data?.data) {
+                    setEmployees(res.data.data || []);
+                }
+            } catch (error) {
+                console.warn('Failed to load employees', error);
+            }
+        };
+        loadEmployees();
+    }, [config?.id]);
+
+    useEffect(() => {
+        if (config?.id !== 'revenue') return;
+        if (activeTab !== 'payments') return;
+        fetchPaymentsLedger();
+    }, [
+        config?.id,
+        activeTab,
+        dateRange.startDate,
+        dateRange.endDate,
+        paymentMethod,
+        paymentType,
+        employeeFilter,
+        nameFilter
+    ]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -178,6 +345,14 @@ const StandardReportPage = ({ type }) => {
             </div>
         );
     }
+
+    const isRevenueReport = config?.id === 'revenue';
+    const nameFilterLabel = isRevenueReport && activeTab === 'payments'
+        ? (i18n.language === 'ar' ? 'Ø¨Ø­Ø«' : 'Search')
+                                {nameFilterLabel}
+    const nameFilterPlaceholder = isRevenueReport && activeTab === 'payments'
+        ? (i18n.language === 'ar' ? 'Ø§Ø³Ù… / ÙƒÙˆØ¯ / ØªÙ„ÙŠÙÙˆÙ†' : 'Name / code / phone')
+                                placeholder={nameFilterPlaceholder}
 
     // RENDER KPI CARDS
     const renderKPICards = () => {
@@ -237,10 +412,10 @@ const StandardReportPage = ({ type }) => {
                 >
                     <Calendar size={80} className="mx-auto text-gray-300 dark:text-gray-600 mb-4 opacity-50" />
                     <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                        {i18n.language === 'ar' ? 'لا توجد بيانات لهذه الفترة' : 'No data available for this period'}
+                        {i18n.language === 'ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ù„Ù‡Ø°Ù‡ Ø§Ù„ÙØªØ±Ø©' : 'No data available for this period'}
                     </h3>
                     <p className="text-gray-500 dark:text-gray-400">
-                        {i18n.language === 'ar' ? 'حاول تغيير نطاق التاريخ' : 'Try adjusting the date range'}
+                        {i18n.language === 'ar' ? 'Ø­Ø§ÙˆÙ„ ØªØºÙŠÙŠØ± Ù†Ø·Ø§Ù‚ Ø§Ù„ØªØ§Ø±ÙŠØ®' : 'Try adjusting the date range'}
                     </p>
                 </motion.div>
             );
@@ -305,6 +480,170 @@ const StandardReportPage = ({ type }) => {
         );
     };
 
+    const exportPaymentsCsv = () => {
+        if (!paymentsRows.length) {
+            toast.error(i18n.language === 'ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ù„Ù„ØªØµØ¯ÙŠØ±' : 'No data to export');
+            return;
+        }
+        const headers = [
+            i18n.language === 'ar' ? 'Ø§Ù„ØªØ§Ø±ÙŠØ®/Ø§Ù„ÙˆÙ‚Øª' : 'Date/Time',
+            i18n.language === 'ar' ? 'Ø§Ù„Ø¹Ù…ÙŠÙ„' : 'Customer',
+            i18n.language === 'ar' ? 'Ø§Ù„Ù†ÙˆØ¹' : 'Type',
+            i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø¨Ù„Øº' : 'Amount',
+            i18n.language === 'ar' ? 'Ø§Ù„Ø·Ø±ÙŠÙ‚Ø©' : 'Method',
+            i18n.language === 'ar' ? 'Ø§Ù„Ù…ÙˆØ¸Ù' : 'Employee',
+            i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø±Ø¬Ø¹' : 'Reference'
+        ];
+        const csvRows = [headers.join(',')];
+        paymentsRows.forEach((row) => {
+            const line = [
+                row.paidAt,
+                row.customerLabel || '',
+                row.type || '',
+                row.amount ?? 0,
+                row.method || '',
+                row.employee || '',
+                row.reference || ''
+            ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',');
+            csvRows.push(line);
+        });
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', 'payments-ledger.csv');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    };
+
+    const renderPaymentsTab = () => {
+        return (
+            <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <KPICard
+                        label={i18n.language === 'ar' ? 'Ø¹Ø¯Ø¯ Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Payments Count'}
+                        value={paymentsSummary.count}
+                        icon={CreditCard}
+                        gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
+                        delay={0.2}
+                    />
+                    <KPICard
+                        label={i18n.language === 'ar' ? 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª' : 'Total Amount'}
+                        value={paymentsSummary.total}
+                        icon={DollarSign}
+                        gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
+                        isCurrency
+                        delay={0.25}
+                    />
+                    <KPICard
+                        label={i18n.language === 'ar' ? 'Ù…ØªÙˆØ³Ø· Ø§Ù„Ø¯ÙØ¹' : 'Average Payment'}
+                        value={paymentsSummary.average}
+                        icon={TrendingUp}
+                        gradient="bg-gradient-to-br from-purple-500 to-pink-600"
+                        isCurrency
+                        delay={0.3}
+                    />
+                </div>
+
+                <div className="flex items-center justify-end mb-4">
+                    <button
+                        onClick={exportPaymentsCsv}
+                        disabled={!paymentsRows.length}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all ${paymentsRows.length
+                            ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-indigo-500/30'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                            }`}
+                    >
+                        <Download size={18} />
+                        {i18n.language === 'ar' ? 'ØªØµØ¯ÙŠØ± CSV' : 'Export CSV'}
+                    </button>
+                </div>
+
+                <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl overflow-hidden">
+                    {paymentsLoading ? (
+                        <div className="py-20 text-center">
+                            <Loader2 size={64} className="mx-auto text-indigo-500 animate-spin mb-4" />
+                            <p className="text-gray-500 dark:text-gray-400 font-medium">
+                                {i18n.language === 'ar' ? 'Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ Ø¯ÙØªØ± Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª...' : 'Loading payments ledger...'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-white/5">
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„ØªØ§Ø±ÙŠØ®/Ø§Ù„ÙˆÙ‚Øª' : 'Date/Time'}
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„Ø¹Ù…ÙŠÙ„' : 'Customer'}
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù†ÙˆØ¹' : 'Type'}
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø¨Ù„Øº' : 'Amount'}
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„Ø·Ø±ÙŠÙ‚Ø©' : 'Method'}
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù…ÙˆØ¸Ù' : 'Employee'}
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                            {i18n.language === 'ar' ? 'Ø§Ù„Ù…Ø±Ø¬Ø¹' : 'Reference'}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                    {paymentsRows.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
+                                                {i18n.language === 'ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø¯ÙÙˆØ¹Ø§Øª ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„ÙØªØ±Ø©' : 'No payments in this period'}
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {paymentsRows.map((row) => (
+                                        <tr key={row.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors">
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {row.paidAt}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {row.customerLabel || '-'}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {row.type}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {formatCurrency(row.amount || 0)}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {row.method || '-'}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {row.employee || '-'}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                                                {row.reference || '-'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </>
+        );
+    };
+
+    const handleGenerate = () => {
+        fetchReport();
+        if (config?.id === 'revenue' && activeTab === 'payments') {
+            fetchPaymentsLedger();
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 p-4 lg:p-8">
             <div className="w-full space-y-6">
@@ -339,9 +678,47 @@ const StandardReportPage = ({ type }) => {
                                 }`}
                         >
                             <Download size={20} />
-                            {i18n.language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+                            {i18n.language === 'ar' ? 'ØªØµØ¯ÙŠØ± Excel' : 'Export Excel'}
                         </button>
                     </div>
+
+                    {isRevenueReport && activeTab === "payments" && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <Filter size={16} />
+                                    {i18n.language === "ar" ? "نوع الدفع" : "Payment Type"}
+                                </label>
+                                <select
+                                    value={paymentType}
+                                    onChange={(e) => setPaymentType(e.target.value)}
+                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
+                                >
+                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
+                                    <option value="SESSION">{i18n.language === "ar" ? "جلسة" : "Session"}</option>
+                                    <option value="SUBSCRIPTION">{i18n.language === "ar" ? "اشتراك" : "Membership"}</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <Users size={16} />
+                                    {i18n.language === "ar" ? "الموظف" : "Employee"}
+                                </label>
+                                <select
+                                    value={employeeFilter}
+                                    onChange={(e) => setEmployeeFilter(e.target.value)}
+                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
+                                >
+                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
+                                    {employees.map((employee) => (
+                                        <option key={employee.id} value={employee.id}>
+                                            {`${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.username || employee.email}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </motion.div>
 
                 {/* Filters */}
@@ -356,7 +733,7 @@ const StandardReportPage = ({ type }) => {
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                 <Calendar size={16} />
-                                {i18n.language === 'ar' ? 'من' : 'From'}
+                                {i18n.language === 'ar' ? 'Ù…Ù†' : 'From'}
                             </label>
                             <input
                                 type="date"
@@ -370,7 +747,7 @@ const StandardReportPage = ({ type }) => {
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                 <Calendar size={16} />
-                                {i18n.language === 'ar' ? 'إلى' : 'To'}
+                                {i18n.language === 'ar' ? 'Ø¥Ù„Ù‰' : 'To'}
                             </label>
                             <input
                                 type="date"
@@ -384,11 +761,11 @@ const StandardReportPage = ({ type }) => {
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                 <Search size={16} />
-                                {i18n.language === 'ar' ? 'فلتر بالاسم' : 'Filter by Name'}
+                                {nameFilterLabel}
                             </label>
                             <input
                                 type="text"
-                                placeholder={i18n.language === 'ar' ? 'بحث بالاسم...' : 'Search by name...'}
+                                placeholder={nameFilterPlaceholder}
                                 value={nameFilter}
                                 onChange={(e) => setNameFilter(e.target.value)}
                                 className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white placeholder:text-gray-400"
@@ -400,17 +777,17 @@ const StandardReportPage = ({ type }) => {
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                     <CreditCard size={16} />
-                                    {i18n.language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}
+                                    {i18n.language === 'ar' ? 'Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹' : 'Payment Method'}
                                 </label>
                                 <select
                                     value={paymentMethod}
                                     onChange={(e) => setPaymentMethod(e.target.value)}
                                     className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
                                 >
-                                    <option value="">{i18n.language === 'ar' ? 'الكل' : 'All'}</option>
-                                    <option value="cash">{i18n.language === 'ar' ? 'نقدي' : 'Cash'}</option>
-                                    <option value="card">{i18n.language === 'ar' ? 'بطاقة' : 'Card'}</option>
-                                    <option value="transfer">{i18n.language === 'ar' ? 'تحويل' : 'Transfer'}</option>
+                                    <option value="">{i18n.language === 'ar' ? 'Ø§Ù„ÙƒÙ„' : 'All'}</option>
+                                    <option value="cash">{i18n.language === 'ar' ? 'Ù†Ù‚Ø¯ÙŠ' : 'Cash'}</option>
+                                    <option value="card">{i18n.language === 'ar' ? 'Ø¨Ø·Ø§Ù‚Ø©' : 'Card'}</option>
+                                    <option value="transfer">{i18n.language === 'ar' ? 'ØªØ­ÙˆÙŠÙ„' : 'Transfer'}</option>
                                 </select>
                             </div>
                         )}
@@ -419,7 +796,7 @@ const StandardReportPage = ({ type }) => {
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 opacity-0">Action</label>
                             <button
-                                onClick={fetchReport}
+                                onClick={handleGenerate}
                                 disabled={loading}
                                 className={`w-full h-12 rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 ${loading
                                     ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-wait'
@@ -429,19 +806,75 @@ const StandardReportPage = ({ type }) => {
                                 {loading ? (
                                     <>
                                         <Loader2 size={20} className="animate-spin" />
-                                        {i18n.language === 'ar' ? 'جاري التحميل...' : 'Loading...'}
+                                        {i18n.language === 'ar' ? 'Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ù…ÙŠÙ„...' : 'Loading...'}
                                     </>
                                 ) : (
                                     <>
                                         <RefreshCw size={20} />
-                                        {i18n.language === 'ar' ? 'تحديث' : 'Generate'}
+                                        {i18n.language === 'ar' ? 'ØªØ­Ø¯ÙŠØ«' : 'Generate'}
                                     </>
                                 )}
                             </button>
                         </div>
                     </div>
+
+                    {isRevenueReport && activeTab === "payments" && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <Filter size={16} />
+                                    {i18n.language === "ar" ? "نوع الدفع" : "Payment Type"}
+                                </label>
+                                <select
+                                    value={paymentType}
+                                    onChange={(e) => setPaymentType(e.target.value)}
+                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
+                                >
+                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
+                                    <option value="SESSION">{i18n.language === "ar" ? "جلسة" : "Session"}</option>
+                                    <option value="SUBSCRIPTION">{i18n.language === "ar" ? "اشتراك" : "Membership"}</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <Users size={16} />
+                                    {i18n.language === "ar" ? "الموظف" : "Employee"}
+                                </label>
+                                <select
+                                    value={employeeFilter}
+                                    onChange={(e) => setEmployeeFilter(e.target.value)}
+                                    className="w-full h-12 px-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-gray-900 dark:text-white"
+                                >
+                                    <option value="">{i18n.language === "ar" ? "الكل" : "All"}</option>
+                                    {employees.map((employee) => (
+                                        <option key={employee.id} value={employee.id}>
+                                            {`${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.username || employee.email}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </motion.div>
 
+
+                {isRevenueReport && (
+                    <div className="flex justify-start">
+                        <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl inline-flex gap-1">
+                            {[{ id: "overview", label: i18n.language === "ar" ? "ملخص" : "Overview" }, { id: "payments", label: i18n.language === "ar" ? "دفتر المدفوعات" : "Payments" }].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === tab.id
+                                        ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-700/50"}`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {/* Error Alert */}
                 {error && (
                     <motion.div
@@ -453,30 +886,41 @@ const StandardReportPage = ({ type }) => {
                     </motion.div>
                 )}
 
-                {/* KPI Cards */}
-                {!loading && reportData && renderKPICards()}
+                {(!isRevenueReport || activeTab === "overview") && (
+                    <>
+                        {/* KPI Cards */}
+                        {!loading && reportData && renderKPICards()}
 
-                {/* Data Table */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.35 }}
-                    className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl overflow-hidden"
-                >
-                    {loading ? (
-                        <div className="py-20 text-center">
-                            <Loader2 size={64} className="mx-auto text-indigo-500 animate-spin mb-4" />
-                            <p className="text-gray-500 dark:text-gray-400 font-medium">
-                                {i18n.language === 'ar' ? 'جاري تحميل التقرير...' : 'Loading report...'}
-                            </p>
-                        </div>
-                    ) : (
-                        renderTable()
-                    )}
-                </motion.div>
+                        {/* Data Table */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.35 }}
+                            className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-white/10 shadow-xl overflow-hidden"
+                        >
+                            {loading ? (
+                                <div className="py-20 text-center">
+                                    <Loader2 size={64} className="mx-auto text-indigo-500 animate-spin mb-4" />
+                                    <p className="text-gray-500 dark:text-gray-400 font-medium">
+                                        {i18n.language === "ar" ? "جاري تحميل التقرير..." : "Loading report..."}
+                                    </p>
+                                </div>
+                            ) : (
+                                renderTable()
+                            )}
+                        </motion.div>
+                    </>
+                )}
+
+                {isRevenueReport && activeTab === "payments" && renderPaymentsTab()}
             </div>
         </div>
     );
 };
 
 export default StandardReportPage;
+
+
+
+
+
