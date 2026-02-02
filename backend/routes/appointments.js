@@ -2,6 +2,7 @@
 const router = express.Router();
 const AppointmentService = require('../services/appointmentService');
 const { authenticate } = require('../middleware/auth');
+const { parseDateRange } = require('../utils/dateParams');
 
 // Create
 router.post('/', authenticate, async (req, res) => {
@@ -63,17 +64,21 @@ router.get('/pending-completion', authenticate, async (req, res) => {
                 now = override;
             }
         }
-        const { startDate, endDate } = req.query;
+        const { startDate: startDateParam, endDate: endDateParam } = req.query;
         const where = {
             end: { lt: now },
             isCompleted: false,
             status: { notIn: ['cancelled', 'no_show'] }
         };
-        if (startDate && endDate) {
+        if (startDateParam && endDateParam) {
+            const { startDate, endDate, error } = parseDateRange(startDateParam, endDateParam);
+            if (error) {
+                return res.json({ success: true, data: [] });
+            }
             where.end = {
                 lt: now,
-                gte: new Date(startDate),
-                lte: new Date(endDate)
+                gte: startDate,
+                lte: endDate
             };
         }
         const appointments = await req.prisma.appointment.findMany({
