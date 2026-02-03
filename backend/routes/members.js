@@ -655,6 +655,7 @@ router.put('/:id', requirePermission(PERMISSIONS.MEMBERS_EDIT), upload.single('p
                 const suggestions = await buildDisplayNameSuggestions(req.prisma, nextDisplayName);
                 return res.status(409).json({
                     success: false,
+                    ok: false,
                     reason: 'NAME_EXISTS',
                     suggestions
                 });
@@ -662,6 +663,7 @@ router.put('/:id', requirePermission(PERMISSIONS.MEMBERS_EDIT), upload.single('p
             if (target.includes('phoneNorm')) {
                 return res.status(409).json({
                     success: false,
+                    ok: false,
                     reason: 'PHONE_EXISTS'
                 });
             }
