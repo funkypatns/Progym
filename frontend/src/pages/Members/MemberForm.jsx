@@ -31,7 +31,7 @@ const MemberForm = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [photoPreview, setPhotoPreview] = useState(null);
 
-    const [formData, setFormData] = useState({
+    const initialFormData = {
         firstName: '',
         lastName: '',
         phone: '',
@@ -44,11 +44,11 @@ const MemberForm = () => {
         emergencyContactPhone: '',
         notes: '',
         photo: null,
-    });
+    };
 
     // Subscription State (only for new members or if we want to allow adding sub here)
     // For now, focusing on the "Add Member" flow requiring these fields
-    const [subData, setSubData] = useState({
+    const initialSubData = {
         planId: '',
         startDate: new Date().toISOString().split('T')[0],
         startTime: '09:00',
@@ -58,7 +58,12 @@ const MemberForm = () => {
         paidAmount: '',
         method: 'cash',
         transactionRef: '',
-    });
+    };
+
+    const [formData, setFormData] = useState(initialFormData);
+    const [subData, setSubData] = useState(initialSubData);
+    const [nextAction, setNextAction] = useState('membership');
+    const [createdMemberId, setCreatedMemberId] = useState(null);
 
     useEffect(() => {
         fetchPlans(true); // Fetch active plans
@@ -188,51 +193,11 @@ const MemberForm = () => {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
                 memberIdResponse = res.data.data.id;
+                setCreatedMemberId(memberIdResponse);
                 toast.success(t('members.memberCreated'));
             }
 
-            // 2. Store subscription draft and redirect to Subscriptions for finalization
-            if (!isEdit && subData.planId && memberIdResponse) {
-                const selectedPlan = plans.find(p => p.id === parseInt(subData.planId));
-                const priceInput = parseFloat(subData.price);
-                const total = Number.isFinite(priceInput) ? priceInput : selectedPlan?.price;
-                if (!Number.isFinite(total)) {
-                    toast.error('Invalid plan price');
-                    setIsSaving(false);
-                    return;
-                }
-
-                const paidInput = parseFloat(subData.paidAmount);
-                const paid = Number.isFinite(paidInput) ? paidInput : null;
-                if (Number.isFinite(paid) && paid > total) {
-                    toast.error('Paid amount cannot exceed total price');
-                    setIsSaving(false);
-                    return;
-                }
-
-                const allowedMethods = ['cash', 'card', 'transfer', 'other'];
-                const normalizedMethod = allowedMethods.includes(subData.method) ? subData.method : 'cash';
-
-                localStorage.setItem(`gym:memberPlanPref:${memberIdResponse}`, String(subData.planId));
-                localStorage.setItem(
-                    `gym:memberPaymentPref:${memberIdResponse}`,
-                    JSON.stringify({
-                        paidAmount: Number.isFinite(paid) ? paid : null,
-                        method: normalizedMethod,
-                        transactionRef: subData.transactionRef ? subData.transactionRef.trim() : null
-                    })
-                );
-
-                navigate('/subscriptions', {
-                    state: {
-                        memberId: memberIdResponse,
-                        planId: subData.planId
-                    }
-                });
-                return;
-            }
-
-            navigate('/members');
+            return;
         } catch (error) {
             const message = error.response?.data?.message
                 || error.response?.data?.errors?.[0]?.msg
@@ -241,6 +206,55 @@ const MemberForm = () => {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleNextStep = () => {
+        if (!createdMemberId) return;
+
+        if (nextAction === 'membership') {
+            if (subData.planId) {
+                const selectedPlan = plans.find(p => p.id === parseInt(subData.planId));
+                const priceInput = parseFloat(subData.price);
+                const total = Number.isFinite(priceInput) ? priceInput : selectedPlan?.price;
+                if (!Number.isFinite(total)) {
+                    toast.error('Invalid plan price');
+                    return;
+                }
+
+                const paidInput = parseFloat(subData.paidAmount);
+                const paid = Number.isFinite(paidInput) ? paidInput : null;
+                if (Number.isFinite(paid) && paid > total) {
+                    toast.error('Paid amount cannot exceed total price');
+                    return;
+                }
+
+                const allowedMethods = ['cash', 'card', 'transfer', 'other'];
+                const normalizedMethod = allowedMethods.includes(subData.method) ? subData.method : 'cash';
+
+                localStorage.setItem(`gym:memberPlanPref:${createdMemberId}`, String(subData.planId));
+                localStorage.setItem(
+                    `gym:memberPaymentPref:${createdMemberId}`,
+                    JSON.stringify({
+                        paidAmount: Number.isFinite(paid) ? paid : null,
+                        method: normalizedMethod,
+                        transactionRef: subData.transactionRef ? subData.transactionRef.trim() : null
+                    })
+                );
+            }
+
+            navigate(`/subscriptions?memberId=${encodeURIComponent(createdMemberId)}`);
+            return;
+        }
+
+        navigate(`/appointments?memberId=${encodeURIComponent(createdMemberId)}`);
+    };
+
+    const handleAddAnother = () => {
+        setFormData(initialFormData);
+        setSubData(initialSubData);
+        setPhotoPreview(null);
+        setCreatedMemberId(null);
+        setNextAction('membership');
     };
 
     if (isLoading) {
@@ -567,6 +581,54 @@ const MemberForm = () => {
                 </div>
 
                 {/* Actions */}
+                {!isEdit && (
+                    <div className="flex flex-col gap-3 pt-4 border-t border-gray-200 dark:border-dark-700">
+                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            بعد إنشاء الحساب:
+                        </span>
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                <input
+                                    type="radio"
+                                    name="nextAction"
+                                    value="membership"
+                                    checked={nextAction === 'membership'}
+                                    onChange={() => setNextAction('membership')}
+                                    className="accent-primary-600"
+                                />
+                                اشتراك (Membership)
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                <input
+                                    type="radio"
+                                    name="nextAction"
+                                    value="session"
+                                    checked={nextAction === 'session'}
+                                    onChange={() => setNextAction('session')}
+                                    className="accent-primary-600"
+                                />
+                                حجز جلسة (Session)
+                            </label>
+                        </div>
+                    </div>
+                )}
+
+                {createdMemberId && !isEdit && (
+                    <div className="mt-4 p-4 rounded-2xl border border-emerald-200/60 dark:border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-900/20">
+                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-3">
+                            تم إنشاء العضو بنجاح
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <button type="button" className="btn-primary" onClick={handleNextStep}>
+                                {nextAction === 'membership' ? 'اذهب للاشتراك' : 'اذهب لحجز جلسة'}
+                            </button>
+                            <button type="button" className="btn-secondary" onClick={handleAddAnother}>
+                                إضافة عضو آخر
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-dark-700">
                     <button
                         type="button"
@@ -575,7 +637,7 @@ const MemberForm = () => {
                     >
                         {t('common.cancel')}
                     </button>
-                    <button type="submit" disabled={isSaving} className="btn-primary">
+                    <button type="submit" disabled={isSaving || (!isEdit && Boolean(createdMemberId))} className="btn-primary">
                         {isSaving ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                         ) : (
