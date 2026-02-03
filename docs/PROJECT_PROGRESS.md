@@ -153,3 +153,4 @@ Phase 4 - Receipts system
 | 2026-02-03 | 3859521 | Silence canceled request offline toasts and add missing report i18n keys. |
 | 2026-02-03 | 2646b35 | Enforce unique member display name and phone with normalization and suggestions. |
 | 2026-02-03 | e402859 | Return ok flag for member duplicate update responses. |
+| 2026-02-03 | 039d940 | Return Arabic messages and ok flag for member duplicate conflicts. |
