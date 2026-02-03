@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================
  * GYM MANAGEMENT SYSTEM - Express Server
  * ============================================
@@ -54,7 +54,7 @@ function setupDataDirectories() {
     directories.forEach(dir => {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
-            console.log(`📁 Created directory: ${dir}`);
+            console.log(`ðŸ“ Created directory: ${dir}`);
         }
     });
 }
@@ -82,7 +82,7 @@ app.use('/uploads', express.static(path.join(USER_DATA_PATH, 'uploads')));
 // Request logging middleware (development only)
 if (isDev) {
     app.use((req, res, next) => {
-        console.log(`📨 ${req.method} ${req.path}`);
+        console.log(`ðŸ“¨ ${req.method} ${req.path}`);
         next();
     });
 }
@@ -177,7 +177,14 @@ app.use((req, res, next) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error('❌ Error:', err);
+    console.error('âŒ Error:', {
+        method: req.method,
+        path: req.path,
+        message: err?.message,
+        code: err?.code,
+        name: err?.name,
+        meta: err?.meta
+    });
 
     // Prisma errors
     if (err.code?.startsWith('P')) {
@@ -187,7 +194,8 @@ app.use((err, req, res, next) => {
         if (err.code === 'P2025') message = 'Record not found';
 
         return res.status(400).json({
-            success: false,
+            ok: false,
+            reason: 'PRISMA_ERROR',
             message: message,
             code: err.code,
             error: isDev ? err.message : undefined
@@ -197,7 +205,8 @@ app.use((err, req, res, next) => {
     // Validation errors
     if (err.name === 'ValidationError') {
         return res.status(400).json({
-            success: false,
+            ok: false,
+            reason: 'VALIDATION_ERROR',
             message: 'Validation error',
             errors: err.errors
         });
@@ -206,21 +215,24 @@ app.use((err, req, res, next) => {
     // JWT errors
     if (err.name === 'JsonWebTokenError') {
         return res.status(401).json({
-            success: false,
+            ok: false,
+            reason: 'INVALID_TOKEN',
             message: 'Invalid token'
         });
     }
 
     if (err.name === 'TokenExpiredError') {
         return res.status(401).json({
-            success: false,
+            ok: false,
+            reason: 'TOKEN_EXPIRED',
             message: 'Token expired'
         });
     }
 
     // Generic error
     res.status(err.status || 500).json({
-        success: false,
+        ok: false,
+        reason: 'SERVER_ERROR',
         message: err.message || 'Internal server error',
         error: isDev ? err.stack : undefined
     });
@@ -238,7 +250,7 @@ async function startServer() {
 
         // Test database connection
         await prisma.$connect();
-        console.log('✅ Database connected');
+        console.log('âœ… Database connected');
 
         // Start session scanner
         SessionJobs.startScanner();
@@ -246,30 +258,30 @@ async function startServer() {
         // Start listening
         app.listen(PORT, () => {
             console.log('');
-            console.log('🏋️ Gym Management System Backend');
+            console.log('ðŸ‹ï¸ Gym Management System Backend');
             console.log('================================');
-            console.log(`🚀 Server running on http://localhost:${PORT}`);
-            console.log(`🔗 API Base: http://localhost:${PORT}/api`);
-            console.log(`📁 Data path: ${USER_DATA_PATH}`);
-            console.log(`🔧 Environment: ${isDev ? 'development' : 'production'}`);
+            console.log(`ðŸš€ Server running on http://localhost:${PORT}`);
+            console.log(`ðŸ”— API Base: http://localhost:${PORT}/api`);
+            console.log(`ðŸ“ Data path: ${USER_DATA_PATH}`);
+            console.log(`ðŸ”§ Environment: ${isDev ? 'development' : 'production'}`);
             console.log('');
         });
 
     } catch (error) {
-        console.error('❌ Failed to start server:', error);
+        console.error('âŒ Failed to start server:', error);
         process.exit(1);
     }
 }
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-    console.log('\n👋 Shutting down gracefully...');
+    console.log('\nðŸ‘‹ Shutting down gracefully...');
     await prisma.$disconnect();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-    console.log('\n👋 Shutting down gracefully...');
+    console.log('\nðŸ‘‹ Shutting down gracefully...');
     await prisma.$disconnect();
     process.exit(0);
 });
@@ -278,3 +290,4 @@ process.on('SIGTERM', async () => {
 startServer();
 
 module.exports = app;
+

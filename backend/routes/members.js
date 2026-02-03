@@ -24,6 +24,8 @@ const {
     buildDisplayNameSuggestions
 } = require('../utils/memberNormalization');
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 // ============================================
 // FILE UPLOAD CONFIGURATION
 // ============================================
@@ -354,9 +356,10 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
         if (!errors.isEmpty()) {
             const firstError = errors.array()[0];
             return res.status(400).json({
-                success: false,
+                ok: false,
+                reason: 'VALIDATION_ERROR',
                 message: firstError?.msg || 'Validation error',
-                errors: errors.array()
+                fields: errors.array()
             });
         }
 
@@ -376,13 +379,13 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
         const displayNameInput = req.body.displayName || `${firstName} ${lastName}`;
         const fullNameInput = req.body.fullName || null;
 
-        if (process.env.NODE_ENV !== 'production') {
+        if (isDev) {
             console.info('[MEMBERS][CREATE]', {
                 userId: req.user?.id,
                 firstName,
                 lastName,
                 displayName: displayNameInput,
-                phone,
+                phoneLast4: phone ? String(phone).replace(/\D/g, '').slice(-4) : null,
                 email,
                 gender,
                 hasPhoto: Boolean(req.file)
@@ -500,6 +503,15 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
         }
 
         console.error('Create member error:', error);
+        console.error('[MEMBERS][CREATE][DETAILS]', {
+            name: error?.name,
+            code: error?.code,
+            message: error?.message,
+            meta: error?.meta
+        });
+        if (error?.stack) {
+            console.error('[MEMBERS][CREATE][STACK]', error.stack);
+        }
 
         if (error.code === 'P2002') {
             const target = String(error.meta?.target || '');
@@ -526,10 +538,28 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
                 message: 'A member with this ID already exists. Please try again.'
             });
         }
+        if (error.code === 'P2022') {
+            return res.status(500).json({
+                ok: false,
+                reason: 'SCHEMA_MISMATCH',
+                message: 'Database schema is out of sync. Apply migrations.',
+                details: isDev ? { code: error.code, meta: error.meta } : undefined
+            });
+        }
+        if (error.name === 'PrismaClientValidationError') {
+            return res.status(400).json({
+                ok: false,
+                reason: 'VALIDATION_ERROR',
+                message: error.message,
+                details: isDev ? { name: error.name } : undefined
+            });
+        }
 
         res.status(500).json({
-            success: false,
-            message: 'Failed to create member'
+            ok: false,
+            reason: 'SERVER_ERROR',
+            message: isDev ? error.message : 'Failed to create member',
+            details: isDev ? { code: error.code, meta: error.meta } : undefined
         });
     }
 });
