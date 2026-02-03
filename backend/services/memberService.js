@@ -11,13 +11,15 @@ const resolveUniqueConflict = async (prisma, displayName, displayNameNorm, phone
         return {
             ok: false,
             reason: 'NAME_EXISTS',
+            message: 'الاسم موجود بالفعل. اختر Nickname مختلف.',
             suggestions
         };
     }
     if (target.includes('phoneNorm')) {
         return {
             ok: false,
-            reason: 'PHONE_EXISTS'
+            reason: 'PHONE_EXISTS',
+            message: 'رقم الهاتف مسجل بالفعل.'
         };
     }
     return null;
@@ -32,14 +34,16 @@ const createMemberWithUniqueness = async (prisma, data) => {
     if (!displayNameNorm) {
         return {
             ok: false,
-            reason: 'NAME_INVALID'
+            reason: 'NAME_INVALID',
+            message: 'الاسم غير صالح.'
         };
     }
 
     if (!phoneNorm) {
         return {
             ok: false,
-            reason: 'PHONE_INVALID'
+            reason: 'PHONE_INVALID',
+            message: 'رقم الهاتف غير صالح.'
         };
     }
 
@@ -61,6 +65,7 @@ const createMemberWithUniqueness = async (prisma, data) => {
         return {
             ok: false,
             reason: 'NAME_EXISTS',
+            message: 'الاسم موجود بالفعل. اختر Nickname مختلف.',
             suggestions
         };
     }
@@ -68,7 +73,8 @@ const createMemberWithUniqueness = async (prisma, data) => {
     if (existing?.phoneNorm === phoneNorm) {
         return {
             ok: false,
-            reason: 'PHONE_EXISTS'
+            reason: 'PHONE_EXISTS',
+            message: 'رقم الهاتف مسجل بالفعل.'
         };
     }
 

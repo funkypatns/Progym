@@ -507,14 +507,18 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
                 const suggestions = await buildDisplayNameSuggestions(req.prisma, displayNameInput);
                 return res.status(409).json({
                     success: false,
+                    ok: false,
                     reason: 'NAME_EXISTS',
+                    message: 'الاسم موجود بالفعل. اختر Nickname مختلف.',
                     suggestions
                 });
             }
             if (target.includes('phoneNorm')) {
                 return res.status(409).json({
                     success: false,
-                    reason: 'PHONE_EXISTS'
+                    ok: false,
+                    reason: 'PHONE_EXISTS',
+                    message: 'رقم الهاتف مسجل بالفعل.'
                 });
             }
             return res.status(409).json({
