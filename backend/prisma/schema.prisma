@@ -95,8 +95,12 @@ model Member {
   memberId     String   @unique // Custom member ID (e.g., GYM-001)
   firstName    String
   lastName     String
+  fullName     String?
+  displayName  String
+  displayNameNorm String @unique
   email        String?
   phone        String
+  phoneNorm    String   @unique
   address      String?
   dateOfBirth  DateTime?
   gender       String?  // male, female, other

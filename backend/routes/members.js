@@ -16,6 +16,13 @@ const QRCode = require('qrcode');
 const { body, validationResult, query } = require('express-validator');
 const { authenticate, authorize, requireActiveShift, requirePermission } = require('../middleware/auth');
 const { PERMISSIONS } = require('../utils/permissions');
+const { createMemberWithUniqueness } = require('../services/memberService');
+const {
+    formatDisplayName,
+    normalizeDisplayName,
+    normalizePhone,
+    buildDisplayNameSuggestions
+} = require('../utils/memberNormalization');
 
 // ============================================
 // FILE UPLOAD CONFIGURATION
@@ -366,11 +373,15 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
             notes
         } = req.body;
 
+        const displayNameInput = req.body.displayName || `${firstName} ${lastName}`;
+        const fullNameInput = req.body.fullName || null;
+
         if (process.env.NODE_ENV !== 'production') {
             console.info('[MEMBERS][CREATE]', {
                 userId: req.user?.id,
                 firstName,
                 lastName,
+                displayName: displayNameInput,
                 phone,
                 email,
                 gender,
@@ -396,6 +407,8 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
             photo: photoPath,
             emergencyContactName: emergencyContactName || null,
             emergencyContactPhone: emergencyContactPhone || null,
+            fullName: fullNameInput || displayNameInput || null,
+            displayName: displayNameInput,
             notes: notes || null,
             isActive: true
         };
@@ -408,13 +421,29 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
             const memberId = await generateMemberId(req.prisma, attempt);
             const qrCodePath = await generateQRCode(memberId, req.userDataPath);
             try {
-                member = await req.prisma.member.create({
-                    data: {
-                        memberId,
-                        qrCode: qrCodePath,
-                        ...baseMemberData
-                    }
+                const createResult = await createMemberWithUniqueness(req.prisma, {
+                    memberId,
+                    qrCode: qrCodePath,
+                    ...baseMemberData
                 });
+
+                if (!createResult.ok) {
+                    try {
+                        const qrFilePath = path.join(req.userDataPath, 'uploads', 'qrcodes', `${memberId}.png`);
+                        if (fs.existsSync(qrFilePath)) {
+                            fs.unlinkSync(qrFilePath);
+                        }
+                    } catch (cleanupError) {
+                        console.warn('[MEMBERS][CREATE] Failed to cleanup QR file:', cleanupError.message);
+                    }
+                    const statusCode = createResult.reason === 'PHONE_INVALID' || createResult.reason === 'NAME_INVALID' ? 400 : 409;
+                    return res.status(statusCode).json({
+                        success: false,
+                        ...createResult
+                    });
+                }
+
+                member = createResult.member;
                 break;
             } catch (err) {
                 if (err.code === 'P2002' && String(err.meta?.target || '').includes('memberId')) {
@@ -473,6 +502,21 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
         console.error('Create member error:', error);
 
         if (error.code === 'P2002') {
+            const target = String(error.meta?.target || '');
+            if (target.includes('displayNameNorm')) {
+                const suggestions = await buildDisplayNameSuggestions(req.prisma, displayNameInput);
+                return res.status(409).json({
+                    success: false,
+                    reason: 'NAME_EXISTS',
+                    suggestions
+                });
+            }
+            if (target.includes('phoneNorm')) {
+                return res.status(409).json({
+                    success: false,
+                    reason: 'PHONE_EXISTS'
+                });
+            }
             return res.status(409).json({
                 success: false,
                 message: 'A member with this ID already exists. Please try again.'
@@ -522,6 +566,34 @@ router.put('/:id', requirePermission(PERMISSIONS.MEMBERS_EDIT), upload.single('p
             isActive
         } = req.body;
 
+        let nextDisplayName = existingMember.displayName;
+        if (req.body.displayName || firstName || lastName) {
+            const resolvedFirstName = firstName || existingMember.firstName;
+            const resolvedLastName = lastName || existingMember.lastName;
+            const displayNameInput = req.body.displayName || `${resolvedFirstName} ${resolvedLastName}`;
+            nextDisplayName = formatDisplayName(displayNameInput);
+        }
+
+        const nextDisplayNameNorm = nextDisplayName
+            ? normalizeDisplayName(nextDisplayName)
+            : existingMember.displayNameNorm;
+
+        const nextPhoneNorm = phone ? normalizePhone(phone) : existingMember.phoneNorm;
+
+        if (phone && !nextPhoneNorm) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid phone number'
+            });
+        }
+
+        if (nextDisplayName && !nextDisplayNameNorm) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid display name'
+            });
+        }
+
         // Handle photo upload
         let photoPath = existingMember.photo;
         if (req.file) {
@@ -542,8 +614,12 @@ router.put('/:id', requirePermission(PERMISSIONS.MEMBERS_EDIT), upload.single('p
             data: {
                 ...(firstName && { firstName }),
                 ...(lastName && { lastName }),
+                ...(nextDisplayName && {
+                    displayName: nextDisplayName,
+                    displayNameNorm: nextDisplayNameNorm
+                }),
                 email: email || null,
-                ...(phone && { phone }),
+                ...(phone && { phone, phoneNorm: nextPhoneNorm }),
                 address: address || null,
                 dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
                 gender: gender || null,
@@ -573,6 +649,23 @@ router.put('/:id', requirePermission(PERMISSIONS.MEMBERS_EDIT), upload.single('p
 
     } catch (error) {
         console.error('Update member error:', error);
+        if (error.code === 'P2002') {
+            const target = String(error.meta?.target || '');
+            if (target.includes('displayNameNorm')) {
+                const suggestions = await buildDisplayNameSuggestions(req.prisma, nextDisplayName);
+                return res.status(409).json({
+                    success: false,
+                    reason: 'NAME_EXISTS',
+                    suggestions
+                });
+            }
+            if (target.includes('phoneNorm')) {
+                return res.status(409).json({
+                    success: false,
+                    reason: 'PHONE_EXISTS'
+                });
+            }
+        }
         res.status(500).json({
             success: false,
             message: 'Failed to update member'
