@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================
  * AXIOS API CONFIGURATION
  * ============================================
@@ -44,6 +44,15 @@ const debouncedToast = (message, options = {}) => {
     }
 };
 
+const isCanceledRequest = (error) => {
+    if (!error) return false;
+    if (typeof axios.isCancel === 'function' && axios.isCancel(error)) return true;
+    if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return true;
+    if (error?.config?.signal?.aborted) return true;
+    if (typeof error.message === 'string' && error.message.toLowerCase().includes('canceled')) return true;
+    return false;
+};
+
 // Request interceptor
 api.interceptors.request.use(
     (config) => {
@@ -78,20 +87,24 @@ api.interceptors.response.use(
         // If we get a response, backend is online
         if (isBackendOffline) {
             isBackendOffline = false;
-            console.log('✅ Backend is back online');
+            console.log('âœ… Backend is back online');
+            toast.dismiss('offline-toast');
         }
         return response;
     },
     (error) => {
+        if (isCanceledRequest(error)) {
+            return Promise.reject(error);
+        }
         // Handle network errors (backend down / CORS)
         if (!error.response) {
-            console.error('🌐 Network Error / Backend unreachable:', error);
+            console.error('ðŸŒ Network Error / Backend unreachable:', error);
 
             if (!isBackendOffline) {
                 isBackendOffline = true;
-                toast.error('Cannot connect to server. Retrying...', { id: 'offline-toast' });
-
-                setTimeout(() => { isBackendOffline = false; }, 10000);
+                if (!toast.isActive('offline-toast')) {
+                    toast.error('Cannot connect to server. Retrying...', { id: 'offline-toast' });
+                }
             }
 
             error.message = 'Backend offline or unreachable.';
@@ -129,7 +142,7 @@ api.interceptors.response.use(
         }
         // 500+: Server Errors
         else if (status >= 500) {
-            console.error('🔥 Server Error:', error.response.data);
+            console.error('ðŸ”¥ Server Error:', error.response.data);
             debouncedToast('Server error. The developers have been notified.');
             error.message = 'Internal server error.';
         }
@@ -142,3 +155,6 @@ api.interceptors.response.use(
 
 export const getStaffTrainers = () => api.get('/staff-trainers');
 export default api;
+
+
+

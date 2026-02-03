@@ -278,7 +278,8 @@
         "paidBy": "Paid By",
         "paidAt": "Paid At",
         "paymentMethod": "Method",
-        "unknown": "Unknown"
+        "unknown": "Unknown",
+        "other": "Other"
     },
     "reports": {
         "title": "Reports",
@@ -327,6 +328,8 @@
             "settleFailed": "Settlement failed"
         },
         "filterByEmployee": "Filter by Employee",
+        "filterByName": "Filter by Name",
+        "searchStaff": "Search by staff...",
         "memberReport": "Members Report",
         "revenueReport": "Revenue Report",
         "attendanceReport": "Attendance Report",
@@ -336,12 +339,23 @@
         "pendingCompletionSubtitle": "Sessions ended but not completed",
         "outstanding": "Outstanding Balance",
         "employeeCollections": "Employee Collections",
-        "shifts": "Shifts",
+        "shiftReport": {
+            "title": "Shift Report",
+            "subtitle": "Cashier shift salary and balance"
+        },
+        "shifts": {
+            "title": "Shifts",
+            "total": "Total Shifts",
+            "active": "Active Shifts",
+            "needsReview": "Needs Review"
+        },
         "export": "Export",
         "exportExcel": "Export to Excel",
         "exportPdf": "Export to PDF",
         "exportFailed": "Export failed",
         "dateRange": "Date Range",
+        "startDate": "Start Date",
+        "endDate": "End Date",
         "from": "From",
         "to": "To",
         "generate": "Generate",
@@ -350,6 +364,7 @@
         "fields": {
             "totalRevenue": "Total Revenue",
             "paymentCount": "Payment Count",
+            "count": "Count",
             "totalCheckIns": "Total Check-ins",
             "total": "Total",
             "active": "Active",
@@ -632,6 +647,7 @@
     },
     "cashClosing": {
         "title": "Cash Closing",
+        "subtitle": "Daily cash reconciliation and handover logs",
         "createClosing": "Create Closing",
         "viewClosings": "View Closings",
         "totalClosings": "Total Closings",
@@ -727,7 +743,10 @@
         "notes": "Notes",
         "confirm": "Confirm",
         "employee": "Employee",
-        "date": "Date"
+        "date": "Date",
+        "totalIn": "Total Pay In",
+        "totalOut": "Total Pay Out",
+        "net": "Net"
     },
     "step": {
         "member": "Step 1: Member",

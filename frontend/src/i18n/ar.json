@@ -266,7 +266,8 @@
         "paidBy": "تم الدفع بواسطة",
         "paidAt": "تاريخ الدفع",
         "paymentMethod": "طريقة الدفع",
-        "unknown": "غير معروف"
+        "unknown": "غير معروف",
+        "other": "أخرى"
     },
     "reports": {
         "title": "التقارير",
@@ -306,18 +307,31 @@
         },
         "receiptsLookup": "البحث عن الإيصالات",
         "employeeCollections": "تحصيلات الموظفين",
-        "shifts": "الورديات",
+        "shiftReport": {
+            "title": "تقرير الوردية",
+            "subtitle": "رواتب الورديات ورصيد الصندوق"
+        },
+        "shifts": {
+            "title": "الورديات",
+            "total": "إجمالي الورديات",
+            "active": "الورديات النشطة",
+            "needsReview": "تحتاج مراجعة"
+        },
         "errors": {
             "serverError": "فشل تحميل بيانات التقرير",
             "selectCoach": "يرجى اختيار مدرب محدد للتسوية",
             "settleFailed": "فشلت التسوية"
         },
         "filterByEmployee": "فلتر بواسطة الموظف",
+        "filterByName": "تصفية بالاسم",
+        "searchStaff": "ابحث عن الموظف...",
         "export": "تصدير",
         "exportExcel": "تصدير إلى Excel",
         "exportPdf": "تصدير إلى PDF",
         "exportFailed": "فشل التصدير",
         "dateRange": "نطاق التاريخ",
+        "startDate": "تاريخ البدء",
+        "endDate": "تاريخ الانتهاء",
         "from": "من تاريخ ووقت",
         "to": "إلى تاريخ ووقت",
         "generate": "إنشاء التقرير",
@@ -371,6 +385,7 @@
             "reason": "السبب",
             "totalRevenue": "إجمالي الإيرادات",
             "paymentCount": "عدد المدفوعات",
+            "count": "عدد العمليات",
             "totalCheckIns": "إجمالي الحضور",
             "total": "الإجمالي",
             "active": "نشط",
@@ -602,6 +617,9 @@
         "employee": "الموظف",
         "amount": "المبلغ",
         "date": "التاريخ",
+        "totalIn": "إجمالي الوارد",
+        "totalOut": "إجمالي الصادر",
+        "net": "الصافي",
         "success": "تم تسجيل الحركة بنجاح",
         "error": "فشل التسجيل"
     },
@@ -671,6 +689,7 @@
     },
     "cashClosing": {
         "title": "تقفيل الكاش",
+        "subtitle": "سجلات إغلاق النقد اليومية وتسليم العهدة",
         "createClosing": "إنشاء تقفيل",
         "viewClosings": "عرض التقفيلات",
         "totalClosings": "إجمالي التقفيلات",

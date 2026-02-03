@@ -43,7 +43,7 @@ const ReportsLayout = () => {
 
         // Complex Reports
         { path: '/reports/employee-collections', label: safeT('reports.employeeCollections', isRTL ? 'تحصيلات الموظفين' : 'Employee Collections'), icon: Users },
-        { path: '/reports/shifts', label: safeT('reports.shifts', isRTL ? 'الورديات' : 'Shifts'), icon: Clock },
+        { path: '/reports/shifts', label: safeT('reports.shifts.title', isRTL ? 'الورديات' : 'Shifts'), icon: Clock },
         { path: '/reports/receipts', label: safeT('reports.receiptsLookup', isRTL ? 'البحث عن الإيصالات' : 'Receipt Lookup'), icon: FileText },
         { path: '/reports/pay-in-out', label: safeT('payInOut.title', isRTL ? 'صادر / وارد' : 'Pay In/Out'), icon: ArrowRightLeft },
         { path: '/reports/refunds', label: safeT('reports.fields.refunds.title', isRTL ? 'الاسترجاع' : 'Refunds'), icon: ArrowRightLeft },
