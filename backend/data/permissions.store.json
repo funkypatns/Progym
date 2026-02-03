@@ -1,0 +1,32 @@
+{
+  "3": {
+    "permissions": [
+      "pos.shift_open",
+      "pos.shift_close",
+      "dashboard.view_basic",
+      "members.view",
+      "members.edit",
+      "members.create",
+      "subscriptions.view",
+      "subscriptions.renew"
+    ],
+    "updatedAt": "2026-01-10T05:40:15.236Z"
+  },
+  "4": {
+    "permissions": [
+      "payments.view",
+      "payments.refund",
+      "payments.create",
+      "plans.view",
+      "pos.shift_open",
+      "pos.shift_close",
+      "subscriptions.view",
+      "members.view",
+      "checkins.view",
+      "checkins.manage",
+      "subscriptions.create",
+      "dashboard.view_financials"
+    ],
+    "updatedAt": "2026-01-10T03:41:46.029Z"
+  }
+}

@@ -1,14 +1,4 @@
-node_modules/
-.env
-.env.local
+﻿node_modules/
 dist/
-build/
-*.log
+.env
 .DS_Store
-*.sqlite
-*.sqlite-journal
-data/
-uploads/
-backups/
-faces/
-temp_backup.json
