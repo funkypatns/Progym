@@ -151,3 +151,4 @@ Phase 4 - Receipts system
 | 2026-02-02 | 5715573 | Fix reports page header translation keys and remove duplicate i18n entries. |
 | 2026-02-02 | 18e5fb3 | Restore Arabic UTF-8 translations for reports and sidebar labels. |
 | 2026-02-03 | 3859521 | Silence canceled request offline toasts and add missing report i18n keys. |
+| 2026-02-03 | 2646b35 | Enforce unique member display name and phone with normalization and suggestions. |
