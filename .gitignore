@@ -2,3 +2,12 @@
 dist/
 .env
 .DS_Store
+*.log
+# Runtime data
+data/uploads/
+data/backups/
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
