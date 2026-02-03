@@ -154,3 +154,4 @@ Phase 4 - Receipts system
 | 2026-02-03 | 2646b35 | Enforce unique member display name and phone with normalization and suggestions. |
 | 2026-02-03 | e402859 | Return ok flag for member duplicate update responses. |
 | 2026-02-03 | 039d940 | Return Arabic messages and ok flag for member duplicate conflicts. |
+| 2026-02-03 | 1a4ba2d | Add member create debug errors and migration for normalized name/phone. |
