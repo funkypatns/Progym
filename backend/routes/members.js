@@ -20,8 +20,7 @@ const { createMemberWithUniqueness } = require('../services/memberService');
 const {
     formatDisplayName,
     normalizeDisplayName,
-    normalizePhone,
-    buildDisplayNameSuggestions
+    normalizePhone
 } = require('../utils/memberNormalization');
 
 const isDev = process.env.NODE_ENV !== 'production';
@@ -515,16 +514,6 @@ router.post('/', requirePermission('members.create'), upload.single('photo'), [
 
         if (error.code === 'P2002') {
             const target = String(error.meta?.target || '');
-            if (target.includes('displayNameNorm')) {
-                const suggestions = await buildDisplayNameSuggestions(req.prisma, displayNameInput);
-                return res.status(409).json({
-                    success: false,
-                    ok: false,
-                    reason: 'NAME_EXISTS',
-                    message: 'الاسم موجود بالفعل. اختر Nickname مختلف.',
-                    suggestions
-                });
-            }
             if (target.includes('phoneNorm')) {
                 return res.status(409).json({
                     success: false,
@@ -685,15 +674,6 @@ router.put('/:id', requirePermission(PERMISSIONS.MEMBERS_EDIT), upload.single('p
         console.error('Update member error:', error);
         if (error.code === 'P2002') {
             const target = String(error.meta?.target || '');
-            if (target.includes('displayNameNorm')) {
-                const suggestions = await buildDisplayNameSuggestions(req.prisma, nextDisplayName);
-                return res.status(409).json({
-                    success: false,
-                    ok: false,
-                    reason: 'NAME_EXISTS',
-                    suggestions
-                });
-            }
             if (target.includes('phoneNorm')) {
                 return res.status(409).json({
                     success: false,

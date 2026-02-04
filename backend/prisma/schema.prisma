@@ -97,7 +97,7 @@ model Member {
   lastName     String
   fullName     String?
   displayName  String
-  displayNameNorm String @unique
+  displayNameNorm String
   email        String?
   phone        String
   phoneNorm    String   @unique

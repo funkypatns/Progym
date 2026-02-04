@@ -1,20 +1,10 @@
 const {
     formatDisplayName,
     normalizeDisplayName,
-    normalizePhone,
-    buildDisplayNameSuggestions
+    normalizePhone
 } = require('../utils/memberNormalization');
 
-const resolveUniqueConflict = async (prisma, displayName, displayNameNorm, phoneNorm, target) => {
-    if (target.includes('displayNameNorm')) {
-        const suggestions = await buildDisplayNameSuggestions(prisma, displayName);
-        return {
-            ok: false,
-            reason: 'NAME_EXISTS',
-            message: 'الاسم موجود بالفعل. اختر Nickname مختلف.',
-            suggestions
-        };
-    }
+const resolveUniqueConflict = (target) => {
     if (target.includes('phoneNorm')) {
         return {
             ok: false,
@@ -49,26 +39,12 @@ const createMemberWithUniqueness = async (prisma, data) => {
 
     const existing = await prisma.member.findFirst({
         where: {
-            OR: [
-                { displayNameNorm },
-                { phoneNorm }
-            ]
+            phoneNorm
         },
         select: {
-            displayNameNorm: true,
             phoneNorm: true
         }
     });
-
-    if (existing?.displayNameNorm === displayNameNorm) {
-        const suggestions = await buildDisplayNameSuggestions(prisma, displayName);
-        return {
-            ok: false,
-            reason: 'NAME_EXISTS',
-            message: 'الاسم موجود بالفعل. اختر Nickname مختلف.',
-            suggestions
-        };
-    }
 
     if (existing?.phoneNorm === phoneNorm) {
         return {
@@ -95,7 +71,7 @@ const createMemberWithUniqueness = async (prisma, data) => {
     } catch (error) {
         if (error?.code === 'P2002') {
             const target = String(error.meta?.target || '');
-            const conflict = await resolveUniqueConflict(prisma, displayName, displayNameNorm, phoneNorm, target);
+            const conflict = resolveUniqueConflict(target);
             if (conflict) {
                 return conflict;
             }
