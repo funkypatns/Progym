@@ -181,3 +181,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 8033026 | Force Trainer Report to default to current month unless user-set filters exist; add reset action. |
 | 2026-02-04 | dca9c78 | Stabilize Trainer Report date defaults and ignore stale stored ranges outside current month. |
 | 2026-02-04 | a068e39 | Enforce current-month defaults and refresh trigger for Trainer Report date filters. |
+| 2026-02-04 | 8720e29 | Fix Trainer Report build error caused by invalid escape sequence. |
