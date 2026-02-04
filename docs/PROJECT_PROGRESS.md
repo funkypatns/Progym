@@ -161,3 +161,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | dc1e707 | Compute session commissions from global percent and store on payments. |
 | 2026-02-04 | 759681d | Stabilize session completion (price validation, payment creation, pending visibility). |
 | 2026-02-04 | 0228f2b | Fix mojibake Arabic strings in appointment completion modal and past-date validation. |
+| 2026-02-04 | bacd539 | Make appointment completion idempotent and refresh pending list after completion. |
