@@ -172,3 +172,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 103fe56 | Repair Arabic UTF-8 translations and default i18n language to Arabic. |
 | 2026-02-04 | 46c778b | Force LTR table direction to stabilize report column order in RTL. |
 | 2026-02-04 | 8d12a86 | Guard commission preview when appointment coach record is missing. |
+| 2026-02-04 | 7fbdff7 | Persist trainer commission percent on completion and fix preview fallback. |
