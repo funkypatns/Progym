@@ -176,3 +176,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 3cb9bd2 | Use staff trainer for completion preview and fix coach label in modal. |
 | 2026-02-04 | b2db339 | Fix settings reset delete order and date filters. |
 | 2026-02-04 | 5cd4516 | Separate staff from trainer in appointments and payments display. |
+| 2026-02-04 | 6a614f1 | Default Trainer Report to last 30 days and auto-select trainer; add empty-state i18n. |
