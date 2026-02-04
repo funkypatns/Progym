@@ -183,7 +183,8 @@ app.use((err, req, res, next) => {
         message: err?.message,
         code: err?.code,
         name: err?.name,
-        meta: err?.meta
+        meta: err?.meta,
+        stack: err?.stack
     });
 
     // Prisma errors

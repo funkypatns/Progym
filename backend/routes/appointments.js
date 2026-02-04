@@ -3,6 +3,7 @@ const router = express.Router();
 const AppointmentService = require('../services/appointmentService');
 const { authenticate } = require('../middleware/auth');
 const { parseDateRange } = require('../utils/dateParams');
+const isDev = process.env.NODE_ENV !== 'production';
 
 // Create
 router.post('/', authenticate, async (req, res) => {
@@ -161,6 +162,27 @@ router.post('/:id/complete', authenticate, async (req, res) => {
                 message: 'Duplicate session payment detected'
             });
         }
+        // Handle missing coach/trainer errors
+        if (error?.message?.includes('no longer exists') || error?.message?.includes('not found')) {
+            return res.status(400).json({
+                success: false,
+                ok: false,
+                reason: 'VALIDATION_ERROR',
+                message_ar: 'المدرب المحدد غير موجود في النظام',
+                message_en: error.message || 'Coach or trainer not found'
+            });
+        }
+        // Handle foreign key constraint failures (P2003)
+        if (error?.code === 'P2003') {
+            console.error('Foreign key constraint failed:', error?.meta);
+            return res.status(400).json({
+                success: false,
+                ok: false,
+                reason: 'VALIDATION_ERROR',
+                message_ar: 'بيانات مفقودة أو غير صحيحة',
+                message_en: 'Referenced data not found (invalid foreign key)'
+            });
+        }
         console.error('Complete appointment error:', {
             message: error?.message,
             code: error?.code,
@@ -172,7 +194,15 @@ router.post('/:id/complete', authenticate, async (req, res) => {
             success: false,
             ok: false,
             reason: 'SERVER_ERROR',
-            message: 'Failed to complete session'
+            message: 'Failed to complete session',
+            ...(isDev ? {
+                debug: {
+                    name: error?.name,
+                    code: error?.code,
+                    message: error?.message,
+                    meta: error?.meta
+                }
+            } : {})
         });
     }
 });
@@ -273,4 +303,3 @@ router.get('/availability', authenticate, async (req, res) => {
 });
 
 module.exports = router;
-
