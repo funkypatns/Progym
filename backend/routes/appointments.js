@@ -118,7 +118,8 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         const result = await AppointmentService.completeAppointment(req.params.id, paymentPayload, req.user);
         const appointment = result?.appointment ?? result;
         const sessionPayment = result?.sessionPayment ?? null;
-        res.json({ success: true, ok: true, appointment, sessionPayment });
+        const alreadyCompleted = Boolean(result?.alreadyCompleted);
+        res.json({ success: true, ok: true, appointment, sessionPayment, alreadyCompleted });
     } catch (error) {
         if (error?.code === 'SESSION_PRICE_INVALID' || error?.message === 'Session price must be greater than 0') {
             return res.status(400).json({

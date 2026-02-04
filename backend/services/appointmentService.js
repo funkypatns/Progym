@@ -214,30 +214,23 @@ const AppointmentService = {
                     status: true,
                     price: true,
                     paidAmount: true,
-                    isCompleted: true
+                    isCompleted: true,
+                    completedAt: true
                 }
             });
 
             if (!existing) throw new Error('Appointment not found');
-            if (existing.isCompleted || existing.status === 'completed') {
-                const existingPending = await tx.payment.findFirst({
-                    where: { appointmentId: parseInt(id), status: 'pending' }
+            const alreadyCompleted = Boolean(existing.isCompleted || existing.status === 'completed' || existing.completedAt);
+            if (alreadyCompleted) {
+                const existingPayment = await tx.payment.findFirst({
+                    where: { appointmentId: parseInt(id), status: { in: ['completed', 'pending'] } },
+                    orderBy: { createdAt: 'desc' }
                 });
-                const remainingDue = Math.max(0, (existing.price || 0) - (existing.paidAmount || 0));
-                if (!existingPending && remainingDue > 0) {
-                    await recordPaymentTransaction(tx, {
-                        memberId: existing.memberId,
-                        appointmentId: parseInt(id),
-                        amount: remainingDue,
-                        method: 'other',
-                        status: 'pending',
-                        notes: 'Remaining balance for session'
-                    }, { receiptSuffix: '-INV' });
-                }
-                return await tx.appointment.findUnique({
+                const appointmentDetails = await tx.appointment.findUnique({
                     where: { id: parseInt(id) },
                     include: { member: true, coach: true, payments: true }
                 });
+                return { appointment: appointmentDetails, sessionPayment: existingPayment || null, alreadyCompleted: true };
             }
 
             const buildSessionPriceError = () => {
@@ -268,10 +261,14 @@ const AppointmentService = {
             const isSession = true;
             const sessionCommission = await CommissionService.getSessionCommissionBreakdown(sessionPrice, tx);
             let sessionPayment = null;
+            const existingCompletedPayment = await tx.payment.findFirst({
+                where: { appointmentId: parseInt(id), status: 'completed' },
+                orderBy: { createdAt: 'desc' }
+            });
 
             // 2. process Payment if provided
             let addedPaymentAmount = 0;
-            if (paymentData && Number(paymentData.amount) > 0) {
+            if (paymentData && Number(paymentData.amount) > 0 && !existingCompletedPayment) {
                 // SESSION RULE
                 if (isSession) {
                     if (sessionPrice <= 0) {
@@ -313,6 +310,8 @@ const AppointmentService = {
                 });
                 addedPaymentAmount = payment.amount;
                 sessionPayment = payment;
+            } else if (existingCompletedPayment) {
+                sessionPayment = existingCompletedPayment;
             }
 
             // 2.5 Recalculate Payment Status
@@ -368,6 +367,8 @@ const AppointmentService = {
                         gymShare: sessionCommission?.gymShare
                     }, { receiptSuffix: '-INV' });
                     sessionPayment = sessionPayment || payment;
+                } else {
+                    sessionPayment = sessionPayment || existingPending;
                 }
             }
 
@@ -393,7 +394,7 @@ const AppointmentService = {
                 }
             }
 
-            return { appointment: updated, sessionPayment };
+            return { appointment: updated, sessionPayment, alreadyCompleted: false };
         });
     },
 

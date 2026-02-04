@@ -363,7 +363,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const handleCompletionClick = async () => {
-        if (!appointment || appointment?.isCompleted) return;
+        if (!appointment || isAlreadyCompleted) return;
         const ended = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
         if (!ended) {
             const confirmMessage = isRtl
@@ -401,7 +401,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [receiptData, setReceiptData] = useState(null);
 
     const confirmCompletion = async (payload) => {
-        if (!appointment || appointment?.isCompleted) {
+        if (!appointment || isAlreadyCompleted) {
             return;
         }
         setCompletionLoading(true);
@@ -422,6 +422,13 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             };
             const res = await apiClient.post(`/appointments/${appointment.id}/complete`, normalizedPayload);
             const responseData = res.data?.data || res.data;
+
+            if (responseData?.alreadyCompleted) {
+                toast.success(t('appointments.completed'));
+                onSuccess();
+                onClose();
+                return;
+            }
 
             // Check for payment receipt
             if (responseData?.receipt) {
@@ -468,8 +475,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const hasEnded = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
-    const isCompletableStatus = appointment && !['cancelled', 'no_show'].includes(appointment.status);
-    const canComplete = appointment && !appointment.isCompleted && isCompletableStatus;
+    const isCompletableStatus = appointment && !['cancelled', 'no_show', 'completed', 'auto_completed'].includes(appointment.status);
+    const isAlreadyCompleted = Boolean(appointment && (appointment.isCompleted || appointment.status === 'completed' || appointment.status === 'auto_completed' || appointment.completedAt));
+    const canComplete = appointment && !isAlreadyCompleted && isCompletableStatus;
     const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError;
 
     return (
@@ -489,7 +497,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                         {t('appointments.readOnly', 'Read only')}
                                     </div>
                                 )}
-                                {appointment && !appointment.isCompleted && hasEnded && (
+                                {appointment && isAlreadyCompleted && (
+                                    <div className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                                        {appointment.status === 'auto_completed' ? t('appointments.autoCompleted') : t('appointments.completed')}
+                                    </div>
+                                )}
+                                {appointment && !isAlreadyCompleted && hasEnded && (
                                     <div className="text-xs font-bold uppercase tracking-widest text-amber-400">
                                         {t('appointments.pendingCompletion', 'Pending Completion')}
                                     </div>

@@ -53,6 +53,10 @@ const Appointments = () => {
         return fallback;
     };
 
+    const isAppointmentCompleted = (apt) => Boolean(
+        apt && (apt.isCompleted || apt.status === 'completed' || apt.status === 'auto_completed' || apt.completedAt)
+    );
+
     const parseNumber = (value, fallback) => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
         const parsed = parseFloat(value);
@@ -296,7 +300,7 @@ const Appointments = () => {
         const aptEnd = apt?.end ? parseISO(apt.end) : null;
         const hasEnded = aptEnd ? isBefore(aptEnd, new Date()) : false;
         if (status === 'completed') {
-            if (apt?.isCompleted) {
+            if (isAppointmentCompleted(apt)) {
                 return;
             }
             if (!hasEnded) {
@@ -319,6 +323,7 @@ const Appointments = () => {
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(new Event('payments:updated'));
                 }
+                fetchPendingCompletion({ allowAlerts: false });
                 fetchAppointments();
             } catch (error) {
                 toast.error('Failed to complete session');
@@ -366,6 +371,9 @@ const Appointments = () => {
     const handleCompletePending = async (apt) => {
         const appointmentId = apt?.id;
         if (!appointmentId) return;
+        if (isAppointmentCompleted(apt)) {
+            return;
+        }
         try {
             const priceValue = Number(apt?.price);
             if (!Number.isFinite(priceValue) || priceValue <= 0) {
@@ -542,7 +550,7 @@ const Appointments = () => {
                                 <div className="space-y-1.5">
                                     {dayApts.slice(0, PREVIEW_LIMIT).map(apt => {
                                         const hasEnded = apt?.end ? isBefore(parseISO(apt.end), new Date()) : false;
-                                        const isOverdue = hasEnded && !apt.isCompleted && !['cancelled', 'no_show'].includes(apt.status);
+                                        const isOverdue = hasEnded && !isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status);
                                         return (
                                         <div
                                             key={apt.id}
@@ -658,7 +666,7 @@ const Appointments = () => {
         <div className="space-y-2">
             {appointments.map(apt => {
                 const hasEnded = apt?.end ? isBefore(parseISO(apt.end), new Date()) : false;
-                const isOverdue = hasEnded && !apt.isCompleted && !['cancelled', 'no_show'].includes(apt.status);
+                const isOverdue = hasEnded && !isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status);
                 return (
                 <div key={apt.id} className={`flex items-center justify-between p-4 bg-slate-800/50 border rounded-2xl hover:bg-slate-800 transition-all group ${isOverdue ? 'border-amber-500/40 bg-amber-500/5' : 'border-white/5'}`}>
                     <div className="flex items-center gap-4">
@@ -693,7 +701,7 @@ const Appointments = () => {
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Quick Actions for Scheduled Items */}
-                        {!apt.isCompleted && !['cancelled', 'no_show'].includes(apt.status) && (
+                        {!isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status) && (
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                     onClick={(e) => handleQuickStatus(e, apt, 'completed')}
@@ -860,7 +868,10 @@ const Appointments = () => {
                         setPendingCompletionId(null);
                         setAppointmentReadOnly(false);
                     }}
-                    onSuccess={fetchAppointments}
+                    onSuccess={() => {
+                        fetchAppointments();
+                        fetchPendingCompletion({ allowAlerts: false });
+                    }}
                     appointment={selectedAppointment}
                     initialDate={preSelectedDate}
                     readOnly={appointmentReadOnly}
