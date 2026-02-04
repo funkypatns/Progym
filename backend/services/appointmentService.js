@@ -249,21 +249,19 @@ const AppointmentService = {
                 throw buildSessionPriceError();
             }
 
-            const rawCommissionPercent = paymentData?.commissionPercent;
-            const hasCommissionInput = rawCommissionPercent !== undefined && rawCommissionPercent !== null && rawCommissionPercent !== '';
-            const parsedCommissionPercent = hasCommissionInput ? Number(rawCommissionPercent) : null;
-            if (hasCommissionInput && (!Number.isFinite(parsedCommissionPercent) || parsedCommissionPercent < 0 || parsedCommissionPercent > 100)) {
-                const err = new Error('Commission percent must be between 0 and 100');
-                err.code = 'COMMISSION_PERCENT_INVALID';
-                err.message_ar = 'نسبة العمولة يجب أن تكون بين 0 و 100';
-                err.message_en = 'Commission percent must be between 0 and 100';
-                throw err;
-            }
-
             const sessionPrice = roundMoney(parsedSessionPrice);
-            const commissionPercentUsed = hasCommissionInput
-                ? parsedCommissionPercent
-                : await CommissionService.getDefaultSessionCommissionPercent(tx);
+            let trainerCommissionPercent = null;
+            if (existing?.trainerId) {
+                const trainer = await tx.staffTrainer.findUnique({
+                    where: { id: existing.trainerId },
+                    select: { commissionPercent: true }
+                });
+                const parsedTrainerPercent = Number(trainer?.commissionPercent);
+                if (Number.isFinite(parsedTrainerPercent) && parsedTrainerPercent >= 0 && parsedTrainerPercent <= 100) {
+                    trainerCommissionPercent = parsedTrainerPercent;
+                }
+            }
+            const commissionPercentUsed = trainerCommissionPercent ?? await CommissionService.getDefaultSessionCommissionPercent(tx);
             const trainerPayout = roundMoney((sessionPrice * commissionPercentUsed) / 100);
             const gymShare = roundMoney(sessionPrice - trainerPayout);
 

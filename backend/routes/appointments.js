@@ -3,6 +3,7 @@ const router = express.Router();
 const AppointmentService = require('../services/appointmentService');
 const { authenticate } = require('../middleware/auth');
 const { parseDateRange } = require('../utils/dateParams');
+const { roundMoney } = require('../utils/money');
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Create
@@ -222,6 +223,13 @@ router.post('/:id/settle', authenticate, async (req, res) => {
 router.get('/:id/preview-completion', authenticate, async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
+        const appointment = await req.prisma.appointment.findUnique({
+            where: { id: parseInt(req.params.id) },
+            select: {
+                trainerId: true,
+                trainer: { select: { commissionPercent: true } }
+            }
+        });
         const rawSessionPrice = req.query.sessionPrice;
         const sessionPrice = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== ''
             ? Number(rawSessionPrice)
@@ -230,6 +238,21 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
             allowZero: true,
             sessionPrice: Number.isFinite(sessionPrice) ? sessionPrice : undefined
         });
+        const trainerPercentRaw = appointment?.trainer?.commissionPercent;
+        const trainerPercent = Number(trainerPercentRaw);
+        if (Number.isFinite(trainerPercent) && trainerPercent >= 0 && trainerPercent <= 100) {
+            const priceValue = Number(preview?.sessionPrice || 0);
+            const trainerPayout = roundMoney((priceValue * trainerPercent) / 100);
+            const gymShare = roundMoney(priceValue - trainerPayout);
+            preview.commissionPercentUsed = trainerPercent;
+            preview.commissionValue = trainerPercent;
+            preview.commissionType = 'percentage';
+            preview.trainerPayout = trainerPayout;
+            preview.commissionAmount = trainerPayout;
+            preview.gymShare = gymShare;
+            preview.gymNetIncome = gymShare;
+            preview.basisAmount = priceValue;
+        }
         res.json({ success: true, data: preview });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
