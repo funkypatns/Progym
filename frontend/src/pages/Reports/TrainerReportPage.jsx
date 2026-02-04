@@ -346,21 +346,7 @@ const normalizeRangeForInput = (range) => {
         to: formatDateInput(end)
     };
 };
-
-const isRangeInCurrentMonth = (range) => {
-    if (!range) return false;
-    const normalized = normalizeRangeForInput(range);
-    if (!normalized) return false;
-    const start = new Date(normalized.from);
-    const end = new Date(normalized.to);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
-    return start >= monthStart && end <= todayEnd;
-};
-};
+\r\n};
 
 const getRangeFromQuery = (search) => {
     if (!search) return null;
@@ -403,7 +389,7 @@ const resolveInitialRange = (search) => {
     const userSet = localStorage.getItem(TRAINER_REPORT_FILTERS_USER_SET_KEY) === 'true';
     if (userSet) {
         const stored = getStoredRange();
-        if (isValidRange(stored) && isRangeInCurrentMonth(stored)) {
+        if (isValidRange(stored)) {
             return { range: normalizeRangeForInput(stored), source: 'storage' };
         }
         clearStoredRange();
@@ -428,6 +414,7 @@ const TrainerReportPage = () => {
     const defaultRange = useMemo(() => buildDefaultRange(), []);
     const [dateRange, setDateRange] = useState({ from: '', to: '' });
     const [filtersReady, setFiltersReady] = useState(false);
+    const [refreshSeed, setRefreshSeed] = useState(0);
 
     const [summary, setSummary] = useState({ unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 });
     const [earnings, setEarnings] = useState([]);
@@ -602,7 +589,7 @@ const TrainerReportPage = () => {
 
     useEffect(() => {
         fetchReport();
-    }, [filtersReady, selectedTrainerId, statusFilter, serviceFilter, search, dateRange.from, dateRange.to]);
+    }, [filtersReady, refreshSeed, selectedTrainerId, statusFilter, serviceFilter, search, dateRange.from, dateRange.to]);
 
     const exportCsv = (filename, rows) => {
         if (!rows.length) {
@@ -835,6 +822,7 @@ const TrainerReportPage = () => {
         const nextRange = buildDefaultRange();
         setDateRange(nextRange);
         persistDateRange(nextRange);
+        setRefreshSeed((prev) => prev + 1);
     }, [persistDateRange]);
 
     return (
@@ -1029,6 +1017,8 @@ const TrainerReportPage = () => {
 };
 
 export default TrainerReportPage;
+
+
 
 
 
