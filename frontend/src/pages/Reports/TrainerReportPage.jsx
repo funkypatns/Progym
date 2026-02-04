@@ -346,7 +346,7 @@ const normalizeRangeForInput = (range) => {
         to: formatDateInput(end)
     };
 };
-\r\n};
+
 
 const getRangeFromQuery = (search) => {
     if (!search) return null;
@@ -1017,6 +1017,8 @@ const TrainerReportPage = () => {
 };
 
 export default TrainerReportPage;
+
+
 
 
 
