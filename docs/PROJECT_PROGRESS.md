@@ -168,3 +168,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 35cd241 | Compute session commission from trainer percent with global fallback. |
 | 2026-02-04 | 7c2e953 | Restore completion preview modal flow and enrich preview data. |
 | 2026-02-04 | d72cea6 | Mark session payment as completed when collected and update appointment paid status. |
+| 2026-02-04 | 8dc2105 | Allow editable commission percent in completion modal and persist trainer default. |
