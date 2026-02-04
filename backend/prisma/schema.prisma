@@ -274,8 +274,8 @@ model Payment {
   refunds      Refund[]
   
   earnings     CoachEarning[] // Linked commission earning
-  appointmentId Int?
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+    appointmentId Int? @unique
+    appointment   Appointment? @relation(fields: [appointmentId], references: [id])
   
   @@index([transactionRef])
 }

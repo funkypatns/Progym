@@ -134,6 +134,8 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
         if (sessionPriceInvalid) return;
         const payload = {
             sessionPrice: isSession ? resolvedSessionPrice : undefined,
+            commissionPercent: commissionPercentUsed,
+            applyToTrainerDefault: true,
             payment: needsPayment ? {
                 amount: Number(paymentAmount),
                 method: paymentMethod,

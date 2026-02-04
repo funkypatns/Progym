@@ -211,6 +211,7 @@ const AppointmentService = {
                 select: {
                     memberId: true,
                     trainerId: true,
+                    coachId: true,
                     status: true,
                     price: true,
                     paidAmount: true,
@@ -243,102 +244,74 @@ const AppointmentService = {
 
             const rawSessionPrice = paymentData?.sessionPrice;
             const hasSessionPriceInput = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== '';
-            const parsedSessionPrice = hasSessionPriceInput ? Number(rawSessionPrice) : null;
-            if (hasSessionPriceInput && (!Number.isFinite(parsedSessionPrice) || parsedSessionPrice <= 0)) {
+            const parsedSessionPrice = hasSessionPriceInput ? Number(rawSessionPrice) : NaN;
+            if (!hasSessionPriceInput || !Number.isFinite(parsedSessionPrice) || parsedSessionPrice <= 0) {
                 throw buildSessionPriceError();
             }
 
-            const resolvedSessionPrice = Number.isFinite(parsedSessionPrice) && parsedSessionPrice > 0
-                ? parsedSessionPrice
-                : Number(existing.price) || 0;
-            if (!Number.isFinite(resolvedSessionPrice) || resolvedSessionPrice <= 0) {
-                throw buildSessionPriceError();
+            const rawCommissionPercent = paymentData?.commissionPercent;
+            const hasCommissionInput = rawCommissionPercent !== undefined && rawCommissionPercent !== null && rawCommissionPercent !== '';
+            const parsedCommissionPercent = hasCommissionInput ? Number(rawCommissionPercent) : null;
+            if (hasCommissionInput && (!Number.isFinite(parsedCommissionPercent) || parsedCommissionPercent < 0 || parsedCommissionPercent > 100)) {
+                const err = new Error('Commission percent must be between 0 and 100');
+                err.code = 'COMMISSION_PERCENT_INVALID';
+                err.message_ar = 'نسبة العمولة يجب أن تكون بين 0 و 100';
+                err.message_en = 'Commission percent must be between 0 and 100';
+                throw err;
             }
 
-            const sessionPrice = resolvedSessionPrice;
-            const paidSoFar = existing.paidAmount || 0;
-            const remainingDue = Math.max(0, sessionPrice - paidSoFar);
-            const isSession = true;
-            const sessionCommission = await CommissionService.getSessionCommissionBreakdown(sessionPrice, tx);
+            const sessionPrice = roundMoney(parsedSessionPrice);
+            const commissionPercentUsed = hasCommissionInput
+                ? parsedCommissionPercent
+                : await CommissionService.getDefaultSessionCommissionPercent(tx);
+            const trainerPayout = roundMoney((sessionPrice * commissionPercentUsed) / 100);
+            const gymShare = roundMoney(sessionPrice - trainerPayout);
+
             let sessionPayment = null;
-            const existingCompletedPayment = await tx.payment.findFirst({
-                where: { appointmentId: parseInt(id), status: 'completed' },
+            const existingPayment = await tx.payment.findFirst({
+                where: { appointmentId: parseInt(id) },
                 orderBy: { createdAt: 'desc' }
             });
-            const existingPendingPayment = await tx.payment.findFirst({
-                where: { appointmentId: parseInt(id), status: 'pending' },
-                orderBy: { createdAt: 'desc' }
-            });
+            const paymentMethod = normalizePaymentMethod(paymentData?.method || existingPayment?.method || 'other').toUpperCase();
+            const paymentNotes = paymentData?.notes ? String(paymentData.notes).trim() : undefined;
 
-            // 2. process Payment if provided
-            let addedPaymentAmount = 0;
-            if (paymentData && Number(paymentData.amount) > 0 && !existingCompletedPayment) {
-                // SESSION RULE
-                if (isSession) {
-                    if (sessionPrice <= 0) {
-                        throw new Error('Session price must be defined to collect payment.');
+            if (existingPayment) {
+                const updateData = {
+                    sessionPrice,
+                    commissionPercentUsed,
+                    trainerPayout,
+                    gymShare
+                };
+                if (existingPayment.status !== 'completed') {
+                    updateData.amount = sessionPrice;
+                    updateData.method = paymentMethod;
+                    updateData.status = 'pending';
+                    if (paymentNotes) updateData.notes = paymentNotes;
+                    updateData.createdBy = userContext?.id ?? existingPayment.createdBy;
+                    if (userContext) {
+                        updateData.collectorName = `${userContext.firstName} ${userContext.lastName}`;
                     }
-                    if (remainingDue <= 0) {
-                        throw new Error('Session already settled.');
-                    }
-                    const requestedAmount = roundMoney(paymentData.amount);
-                    if (Math.abs(requestedAmount - remainingDue) > 0.01) {
-                        throw new Error('Individual sessions require full payment (no partial).');
-                    }
-                    paymentData.amount = remainingDue;
                 }
-                // Find open shift for the user to link payment
-                let shiftId = null;
-                if (userContext?.id) {
-                    const openShift = await tx.pOSShift.findFirst({
-                        where: {
-                            openedBy: userContext.id,
-                            closedAt: null
-                        }
-                    });
-                    if (openShift) shiftId = openShift.id;
-                }
-
-                if (existingPendingPayment) {
-                    const method = normalizePaymentMethod(paymentData.method).toUpperCase();
-                    const updatedPayment = await tx.payment.update({
-                        where: { id: existingPendingPayment.id },
-                        data: {
-                            amount: remainingDue,
-                            method,
-                            status: 'completed',
-                            paidAt: new Date(),
-                            notes: paymentData.notes ? String(paymentData.notes).trim() : existingPendingPayment.notes,
-                            shiftId, // Link to shift
-                            createdBy: userContext?.id,
-                            collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
-                            sessionPrice: sessionCommission?.sessionPrice,
-                            commissionPercentUsed: sessionCommission?.commissionPercentUsed,
-                            trainerPayout: sessionCommission?.trainerPayout,
-                            gymShare: sessionCommission?.gymShare
-                        }
-                    });
-                    addedPaymentAmount = updatedPayment.amount;
-                    sessionPayment = updatedPayment;
-                } else {
-                    const { payment } = await recordPaymentTransaction(tx, {
-                        ...paymentData,
-                        appointmentId: parseInt(id),
-                        memberId: existing.memberId,
-                        status: 'completed',
-                        shiftId, // Link to shift
-                        createdBy: userContext?.id,
-                        collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
-                        sessionPrice: sessionCommission?.sessionPrice,
-                        commissionPercentUsed: sessionCommission?.commissionPercentUsed,
-                        trainerPayout: sessionCommission?.trainerPayout,
-                        gymShare: sessionCommission?.gymShare
-                    });
-                    addedPaymentAmount = payment.amount;
-                    sessionPayment = payment;
-                }
-            } else if (existingCompletedPayment) {
-                sessionPayment = existingCompletedPayment;
+                sessionPayment = await tx.payment.update({
+                    where: { id: existingPayment.id },
+                    data: updateData
+                });
+            } else {
+                const { payment } = await recordPaymentTransaction(tx, {
+                    appointmentId: parseInt(id),
+                    memberId: existing.memberId,
+                    amount: sessionPrice,
+                    method: paymentMethod,
+                    status: 'pending',
+                    notes: paymentNotes,
+                    createdBy: userContext?.id,
+                    collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
+                    sessionPrice,
+                    commissionPercentUsed,
+                    trainerPayout,
+                    gymShare
+                }, { receiptSuffix: '-INV' });
+                sessionPayment = payment;
             }
 
             // 2.5 Recalculate Payment Status
@@ -351,12 +324,8 @@ const AppointmentService = {
             const sessionRemaining = Math.max(0, sessionPrice - totalPaid);
 
             let paymentStatus = 'unpaid';
-            if (isSession) {
-                paymentStatus = sessionRemaining <= 0 ? 'paid' : 'partial';
-            } else {
-                if (totalPaid >= sessionPrice - 0.01) paymentStatus = 'paid';
-                else if (totalPaid > 0) paymentStatus = 'partial';
-            }
+            if (totalPaid >= sessionPrice - 0.01) paymentStatus = 'paid';
+            else if (totalPaid > 0) paymentStatus = 'partial';
 
             // 3. Update status
             const updated = await tx.appointment.update({
@@ -366,40 +335,38 @@ const AppointmentService = {
                     paidAmount: totalPaid,
                     paymentStatus,
                     isCompleted: true,
-                    price: hasSessionPriceInput ? sessionPrice : undefined,
+                    price: sessionPrice,
                     completedByEmployeeId: userContext?.id ?? undefined,
                     completedAt: new Date()
                 },
                 include: { member: true, coach: true, payments: true }
             });
 
-            // 4. Create pending invoice if unpaid balance remains
-            if (sessionRemaining > 0) {
-                if (!existingPendingPayment) {
-                    const { payment } = await recordPaymentTransaction(tx, {
-                        memberId: existing.memberId,
-                        appointmentId: parseInt(id),
-                        amount: sessionRemaining,
-                        method: 'other',
-                        status: 'pending',
-                        notes: 'Remaining balance for session',
-                        createdBy: userContext?.id,
-                        collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
-                        sessionPrice: sessionCommission?.sessionPrice,
-                        commissionPercentUsed: sessionCommission?.commissionPercentUsed,
-                        trainerPayout: sessionCommission?.trainerPayout,
-                        gymShare: sessionCommission?.gymShare
-                    }, { receiptSuffix: '-INV' });
-                    sessionPayment = sessionPayment || payment;
-                } else {
-                    sessionPayment = sessionPayment || existingPendingPayment;
-                }
-            }
-
             // 5. Process commission
             await CommissionService.processSessionCommission(updated.id, tx);
 
-            // 6. Create trainer earning (StaffTrainer) if applicable
+            // 6. Create coach earning (User) if applicable
+            if (existing?.coachId) {
+                const existingCoachEarning = await tx.coachEarning.findFirst({
+                    where: { appointmentId: updated.id }
+                });
+                if (!existingCoachEarning) {
+                    await tx.coachEarning.create({
+                        data: {
+                            coachId: existing.coachId,
+                            memberId: existing.memberId,
+                            appointmentId: updated.id,
+                            amount: trainerPayout,
+                            basisAmount: sessionPrice,
+                            commissionType: 'percentage',
+                            commissionValue: commissionPercentUsed,
+                            status: 'pending'
+                        }
+                    });
+                }
+            }
+
+            // 7. Create trainer earning (StaffTrainer) if applicable
             if (existing?.trainerId) {
                 const existingEarning = await tx.trainerEarning.findUnique({
                     where: { appointmentId: updated.id }
@@ -409,9 +376,9 @@ const AppointmentService = {
                         data: {
                             trainerId: existing.trainerId,
                             appointmentId: updated.id,
-                            baseAmount: Number(sessionCommission.sessionPrice) || 0,
-                            commissionPercent: sessionCommission.commissionPercentUsed,
-                            commissionAmount: Number(sessionCommission.trainerPayout) || 0,
+                            baseAmount: sessionPrice,
+                            commissionPercent: commissionPercentUsed,
+                            commissionAmount: trainerPayout,
                             status: 'UNPAID'
                         }
                     });

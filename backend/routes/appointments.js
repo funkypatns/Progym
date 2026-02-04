@@ -116,17 +116,20 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         const { payment, sessionPrice, commissionPercent } = req.body || {};
         const rawSessionPrice = sessionPrice ?? payment?.sessionPrice;
         const parsedSessionPrice = Number(rawSessionPrice);
-        if (!Number.isFinite(parsedSessionPrice) || parsedSessionPrice <= 0) {
-            return res.status(400).json({
-                ok: false,
-                reason: 'VALIDATION_ERROR',
-                message: 'Session price must be greater than 0',
-                message_ar: 'سعر الجلسة يجب أن يكون أكبر من صفر'
-            });
-        }
+        const rawCommission = commissionPercent ?? payment?.commissionPercent;
+        const parsedCommission = rawCommission !== undefined && rawCommission !== null && rawCommission !== ''
+            ? Number(rawCommission)
+            : undefined;
         const paymentPayload = payment
-            ? { ...payment, sessionPrice: parsedSessionPrice, commissionPercent }
-            : { sessionPrice: parsedSessionPrice, commissionPercent };
+            ? {
+                ...payment,
+                sessionPrice: Number.isFinite(parsedSessionPrice) ? parsedSessionPrice : undefined,
+                commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined
+            }
+            : {
+                sessionPrice: Number.isFinite(parsedSessionPrice) ? parsedSessionPrice : undefined,
+                commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined
+            };
         const result = await AppointmentService.completeAppointment(req.params.id, paymentPayload, req.user);
         const appointment = result?.appointment ?? result;
         const sessionPayment = result?.sessionPayment ?? null;
@@ -140,6 +143,15 @@ router.post('/:id/complete', authenticate, async (req, res) => {
                 reason: 'VALIDATION_ERROR',
                 message_ar: 'سعر الجلسة يجب أن يكون أكبر من صفر',
                 message_en: 'Session price must be greater than 0'
+            });
+        }
+        if (error?.code === 'COMMISSION_PERCENT_INVALID') {
+            return res.status(400).json({
+                success: false,
+                ok: false,
+                reason: 'VALIDATION_ERROR',
+                message_ar: 'نسبة العمولة يجب أن تكون بين 0 و 100',
+                message_en: 'Commission percent must be between 0 and 100'
             });
         }
         if (error?.code === 'P2002') {
