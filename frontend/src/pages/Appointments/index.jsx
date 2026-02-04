@@ -297,37 +297,15 @@ const Appointments = () => {
 
     const handleQuickStatus = async (e, apt, status) => {
         e.stopPropagation();
-        const aptEnd = apt?.end ? parseISO(apt.end) : null;
-        const hasEnded = aptEnd ? isBefore(aptEnd, new Date()) : false;
         if (status === 'completed') {
             if (isAppointmentCompleted(apt)) {
                 return;
             }
-            if (!hasEnded) {
-                const confirmMessage = isRtl
-                    ? 'الجلسة لم تنتهِ بعد، هل أنت متأكد من الإكمال؟'
-                    : 'Session has not ended yet. Are you sure you want to complete it?';
-                if (!window.confirm(confirmMessage)) return;
-            }
-            try {
-                const priceValue = Number(apt?.price);
-                if (!Number.isFinite(priceValue) || priceValue <= 0) {
-                    setAppointmentReadOnly(false);
-                    setSelectedAppointment(apt);
-                    setPendingCompletionId(apt.id);
-                    setShowModal(true);
-                    return;
-                }
-                await apiClient.post(`/appointments/${apt.id}/complete`, { sessionPrice: priceValue });
-                toast.success(isRtl ? 'تم إكمال الجلسة بنجاح' : 'Session completed');
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new Event('payments:updated'));
-                }
-                fetchPendingCompletion({ allowAlerts: false });
-                fetchAppointments();
-            } catch (error) {
-                toast.error('Failed to complete session');
-            }
+            const isPast = apt?.start ? isPastDate(parseISO(apt.start)) : false;
+            setAppointmentReadOnly(isPast);
+            setSelectedAppointment(apt);
+            setPendingCompletionId(apt.id);
+            setShowModal(true);
             return;
         }
         if (apt?.start && isPastDate(parseISO(apt.start))) {
@@ -343,13 +321,6 @@ const Appointments = () => {
             } catch (error) {
                 toast.error(error.response?.data?.message || 'Failed to settle');
             }
-            return;
-        }
-
-        if (status === 'completed') {
-            setSelectedAppointment(apt);
-            setPendingCompletionId(apt.id);
-            setShowModal(true);
             return;
         }
 
@@ -374,27 +345,11 @@ const Appointments = () => {
         if (isAppointmentCompleted(apt)) {
             return;
         }
-        try {
-            const priceValue = Number(apt?.price);
-            if (!Number.isFinite(priceValue) || priceValue <= 0) {
-                setAppointmentReadOnly(false);
-                setSelectedAppointment(apt);
-                setPendingCompletionId(appointmentId);
-                setShowModal(true);
-                return;
-            }
-            await apiClient.post(`/appointments/${appointmentId}/complete`, { sessionPrice: priceValue });
-            toast.success(isRtl ? 'تم إكمال الجلسة بنجاح' : 'Session completed');
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('payments:updated'));
-            }
-            pendingAlertStateRef.current.delete(String(appointmentId));
-            persistPendingAlertState();
-            await fetchPendingCompletion({ allowAlerts: false });
-            fetchAppointments();
-        } catch (error) {
-            toast.error('Failed to complete session');
-        }
+        const isPast = apt?.start ? isPastDate(parseISO(apt.start)) : false;
+        setAppointmentReadOnly(isPast);
+        setSelectedAppointment(apt);
+        setPendingCompletionId(appointmentId);
+        setShowModal(true);
     };
 
     const renderPendingCompletion = () => (

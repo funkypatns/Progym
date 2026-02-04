@@ -227,7 +227,8 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
             where: { id: parseInt(req.params.id) },
             select: {
                 trainerId: true,
-                trainer: { select: { commissionPercent: true } }
+                title: true,
+                trainer: { select: { commissionPercent: true, name: true } }
             }
         });
         const rawSessionPrice = req.query.sessionPrice;
@@ -253,7 +254,12 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
             preview.gymNetIncome = gymShare;
             preview.basisAmount = priceValue;
         }
-        res.json({ success: true, data: preview });
+        const responseData = {
+            ...preview,
+            trainerName: appointment?.trainer?.name || preview?.coachName || '',
+            serviceName: appointment?.title || ''
+        };
+        res.json({ success: true, data: responseData });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
     }
