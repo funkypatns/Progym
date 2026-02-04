@@ -165,3 +165,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | f4c687c | Enforce session price validation on completion and reuse pending payment on finalize. |
 | 2026-02-04 | 0eb2fd2 | Harden appointment completion validation, pending payment creation, and coach earning. |
 | 2026-02-04 | c18fcf4 | Add dev debug visibility for appointment completion errors. |
+| 2026-02-04 | 35cd241 | Compute session commission from trainer percent with global fallback. |
