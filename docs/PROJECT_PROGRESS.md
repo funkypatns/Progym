@@ -163,3 +163,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 0228f2b | Fix mojibake Arabic strings in appointment completion modal and past-date validation. |
 | 2026-02-04 | bacd539 | Make appointment completion idempotent and refresh pending list after completion. |
 | 2026-02-04 | f4c687c | Enforce session price validation on completion and reuse pending payment on finalize. |
+| 2026-02-04 | 0eb2fd2 | Harden appointment completion validation, pending payment creation, and coach earning. |
