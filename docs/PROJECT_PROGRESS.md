@@ -175,3 +175,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 7fbdff7 | Persist trainer commission percent on completion and fix preview fallback. |
 | 2026-02-04 | 3cb9bd2 | Use staff trainer for completion preview and fix coach label in modal. |
 | 2026-02-04 | b2db339 | Fix settings reset delete order and date filters. |
+| 2026-02-04 | 5cd4516 | Separate staff from trainer in appointments and payments display. |
