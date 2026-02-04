@@ -378,6 +378,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             const params = Number.isFinite(rawSessionPrice) && rawSessionPrice > 0
                 ? { sessionPrice: rawSessionPrice }
                 : {};
+            const trainerIdValue = selectedTrainerId ? Number(selectedTrainerId) : undefined;
+            if (Number.isFinite(trainerIdValue) && trainerIdValue > 0) {
+                params.trainerId = trainerIdValue;
+            }
             const res = await apiClient.get(`/appointments/${appointment.id}/preview-completion`, { params });
             if (res.data.success) {
                 setCompletionData(res.data.data);

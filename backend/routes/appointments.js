@@ -235,6 +235,17 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
                 trainer: { select: { commissionPercent: true, name: true } }
             }
         });
+        const rawTrainerId = req.query.trainerId;
+        const trainerId = rawTrainerId !== undefined && rawTrainerId !== null && rawTrainerId !== ''
+            ? Number(rawTrainerId)
+            : null;
+        let trainerOverride = null;
+        if (Number.isFinite(trainerId) && trainerId > 0 && trainerId !== appointment?.trainerId) {
+            trainerOverride = await req.prisma.staffTrainer.findUnique({
+                where: { id: trainerId },
+                select: { commissionPercent: true, name: true }
+            });
+        }
         const rawSessionPrice = req.query.sessionPrice;
         const sessionPrice = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== ''
             ? Number(rawSessionPrice)
@@ -250,7 +261,8 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
             allowZero: true,
             sessionPrice: Number.isFinite(sessionPrice) ? sessionPrice : undefined
         });
-        const trainerPercentRaw = appointment?.trainer?.commissionPercent;
+        const trainerForPreview = trainerOverride || appointment?.trainer;
+        const trainerPercentRaw = trainerForPreview?.commissionPercent;
         const trainerPercent = Number(trainerPercentRaw);
         const defaultCommissionPercent = await CommissionService.getDefaultSessionCommissionPercent(req.prisma);
         const resolvedCommissionPercent = hasCommissionOverride
@@ -272,7 +284,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const responseData = {
             ...preview,
             defaultCommissionPercent,
-            trainerName: appointment?.trainer?.name || preview?.coachName || '',
+            trainerName: trainerForPreview?.name || preview?.coachName || '',
             serviceName: appointment?.title || ''
         };
         res.json({ success: true, data: responseData });

@@ -180,8 +180,8 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                         <span className="text-white font-bold">{data.sessionPrice > 0 ? t('appointments.paidSession', texts[lang].paidSession) : t('appointments.freeSession', texts[lang].freeSession)}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">{t('appointments.coach', texts[lang].coach)}</span>
-                                        <span className="text-white font-bold">{data.coachName}</span>
+                                        <span className="text-slate-400">{t('appointments.trainer', texts[lang].coach)}</span>
+                                        <span className="text-white font-bold">{data.trainerName || data.coachName || ''}</span>
                                     </div>
                                 </div>
 
