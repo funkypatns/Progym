@@ -96,7 +96,7 @@ const VirtualizedTable = ({
     }
 
     return (
-        <div className={`w-full ${className}`}>
+        <div className={`w-full ${className}`} style={{ direction: 'ltr' }}>
             <div role="row" className={`grid ${headerClassName}`} style={{ gridTemplateColumns }}>
                 {columns.map((column, colIndex) => {
                     const alignClass = column.align === 'right'

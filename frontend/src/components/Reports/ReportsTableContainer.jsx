@@ -57,7 +57,7 @@ const ReportsTableContainer = ({
                     {children ? (
                         children
                     ) : (
-                        <table className="w-full text-sm">
+                        <table className="w-full text-sm" dir="ltr">
                             {safeHeaders.length > 0 && (
                                 <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                                     <tr>
@@ -135,7 +135,7 @@ export const ReportsTableHeader = ({ children, className = '' }) => (
 // Lightweight wrappers kept for backward compatibility with legacy report pages
 export const ReportsTable = ({ children, className = '' }) => (
     <div className={`overflow-x-auto ${className}`}>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" dir="ltr">
             {children}
         </table>
     </div>

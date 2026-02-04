@@ -218,6 +218,22 @@
     @apply px-4 py-3.5 border-b border-gray-100 dark:border-dark-700/50 text-gray-800 dark:text-dark-200 text-center;
   }
 
+  /* Force LTR column order for all tables to prevent RTL column flipping */
+  table,
+  .table,
+  [role="table"],
+  .table-container table {
+    direction: ltr;
+  }
+
+  /* Allow cell content to respect page direction for text */
+  table th,
+  table td,
+  .table th,
+  .table td {
+    unicode-bidi: embed;
+  }
+
   .table tr:hover td {
     @apply bg-gray-50 dark:bg-dark-800/30;
   }
@@ -333,8 +349,8 @@
     text-align: center;
   }
 
-  table th > .flex,
-  table td > .flex {
+  table th>.flex,
+  table td>.flex {
     justify-content: center;
   }
 }
