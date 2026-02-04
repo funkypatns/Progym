@@ -59,6 +59,11 @@ const CommissionService = {
             throw new Error('Appointment or Coach not found');
         }
 
+        // Ensure coach (User) still exists in the database
+        if (!appointment.coach) {
+            throw new Error(`Coach with ID ${appointment.coachId} no longer exists`);
+        }
+
         const parsedOverride = overridePrice !== undefined && overridePrice !== null
             ? Number(overridePrice)
             : null;
