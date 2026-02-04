@@ -180,3 +180,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | bad48aa | Default Trainer Report to current month when dates are not provided. |
 | 2026-02-04 | 8033026 | Force Trainer Report to default to current month unless user-set filters exist; add reset action. |
 | 2026-02-04 | dca9c78 | Stabilize Trainer Report date defaults and ignore stale stored ranges outside current month. |
+| 2026-02-04 | a068e39 | Enforce current-month defaults and refresh trigger for Trainer Report date filters. |
