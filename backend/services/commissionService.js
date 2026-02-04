@@ -47,7 +47,9 @@ const CommissionService = {
      * Calculate commission preview (Dry Run)
      * Returns the financials that WOULD be recorded.
      */
-    async calculateCommissionPreview(appointmentId, tx = prisma) {
+    async calculateCommissionPreview(appointmentId, tx = prisma, options = {}) {
+        const allowZero = Boolean(options?.allowZero);
+        const overridePrice = options?.sessionPrice;
         const appointment = await tx.appointment.findUnique({
             where: { id: parseInt(appointmentId) },
             include: { coach: true }
@@ -57,7 +59,26 @@ const CommissionService = {
             throw new Error('Appointment or Coach not found');
         }
 
-        const sessionBreakdown = await getSessionCommissionBreakdown(appointment.price || 0, tx);
+        const parsedOverride = overridePrice !== undefined && overridePrice !== null
+            ? Number(overridePrice)
+            : null;
+        const basePrice = Number.isFinite(parsedOverride) && parsedOverride > 0
+            ? parsedOverride
+            : Number(appointment.price || 0);
+        let sessionBreakdown;
+        if (Number.isFinite(basePrice) && basePrice > 0) {
+            sessionBreakdown = await getSessionCommissionBreakdown(basePrice, tx);
+        } else if (allowZero) {
+            const commissionPercentUsed = await getDefaultSessionCommissionPercent(tx);
+            sessionBreakdown = {
+                sessionPrice: 0,
+                commissionPercentUsed,
+                trainerPayout: 0,
+                gymShare: 0
+            };
+        } else {
+            throw new Error('Session price must be greater than 0');
+        }
         const type = 'percentage';
         const value = sessionBreakdown.commissionPercentUsed;
         const sessionPrice = sessionBreakdown.sessionPrice;

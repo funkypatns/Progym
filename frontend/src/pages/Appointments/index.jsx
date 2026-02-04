@@ -306,8 +306,19 @@ const Appointments = () => {
                 if (!window.confirm(confirmMessage)) return;
             }
             try {
-                await apiClient.post(`/appointments/${apt.id}/complete`, {});
-                toast.success('Session completed');
+                const priceValue = Number(apt?.price);
+                if (!Number.isFinite(priceValue) || priceValue <= 0) {
+                    setAppointmentReadOnly(false);
+                    setSelectedAppointment(apt);
+                    setPendingCompletionId(apt.id);
+                    setShowModal(true);
+                    return;
+                }
+                await apiClient.post(`/appointments/${apt.id}/complete`, { sessionPrice: priceValue });
+                toast.success(isRtl ? 'تم إكمال الجلسة بنجاح' : 'Session completed');
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event('payments:updated'));
+                }
                 fetchAppointments();
             } catch (error) {
                 toast.error('Failed to complete session');
@@ -352,10 +363,23 @@ const Appointments = () => {
         }
     };
 
-    const handleCompletePending = async (appointmentId) => {
+    const handleCompletePending = async (apt) => {
+        const appointmentId = apt?.id;
+        if (!appointmentId) return;
         try {
-            await apiClient.post(`/appointments/${appointmentId}/complete`, {});
-            toast.success('Session completed');
+            const priceValue = Number(apt?.price);
+            if (!Number.isFinite(priceValue) || priceValue <= 0) {
+                setAppointmentReadOnly(false);
+                setSelectedAppointment(apt);
+                setPendingCompletionId(appointmentId);
+                setShowModal(true);
+                return;
+            }
+            await apiClient.post(`/appointments/${appointmentId}/complete`, { sessionPrice: priceValue });
+            toast.success(isRtl ? 'تم إكمال الجلسة بنجاح' : 'Session completed');
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('payments:updated'));
+            }
             pendingAlertStateRef.current.delete(String(appointmentId));
             persistPendingAlertState();
             await fetchPendingCompletion({ allowAlerts: false });
@@ -408,7 +432,7 @@ const Appointments = () => {
                                 {t('common.view', 'View')}
                             </button>
                             <button
-                                onClick={() => handleCompletePending(apt.id)}
+                                onClick={() => handleCompletePending(apt)}
                                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
                             >
                                 {t('appointments.complete', 'Complete')}

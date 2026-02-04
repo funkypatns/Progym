@@ -374,7 +374,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         setCompletionLoading(true);
         try {
             // First, get preview
-            const res = await apiClient.get(`/appointments/${appointment.id}/preview-completion`);
+            const rawSessionPrice = Number(form.price || appointment?.price || 0);
+            const params = Number.isFinite(rawSessionPrice) && rawSessionPrice > 0
+                ? { sessionPrice: rawSessionPrice }
+                : {};
+            const res = await apiClient.get(`/appointments/${appointment.id}/preview-completion`, { params });
             if (res.data.success) {
                 setCompletionData(res.data.data);
                 setShowCompletionPreview(true);
@@ -402,12 +406,27 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         }
         setCompletionLoading(true);
         try {
-            const res = await apiClient.post(`/appointments/${appointment.id}/complete`, payload);
+            const isSessionCompletion = completionData?.isSession ?? !appointment?.subscriptionId;
+            const sessionPriceValue = Number(payload?.sessionPrice);
+            if (isSessionCompletion && (!Number.isFinite(sessionPriceValue) || sessionPriceValue <= 0)) {
+                toast.error(isRtl ? 'سعر الجلسة يجب أن يكون أكبر من صفر' : 'Session price must be greater than 0');
+                return;
+            }
+            const normalizedPayload = {
+                ...payload,
+                sessionPrice: isSessionCompletion ? sessionPriceValue : undefined,
+                payment: payload?.payment ? {
+                    ...payload.payment,
+                    amount: Number(payload.payment.amount)
+                } : null
+            };
+            const res = await apiClient.post(`/appointments/${appointment.id}/complete`, normalizedPayload);
+            const responseData = res.data?.data || res.data;
 
             // Check for payment receipt
-            if (res.data.data?.receipt) {
+            if (responseData?.receipt) {
                 setReceiptData({
-                    ...res.data.data.receipt,
+                    ...responseData.receipt,
                     // Ensure member/user objects are populated if needed by ReceiptModal
                     member: appointment.member,
                     amount: payload.payment ? payload.payment.amount : 0, // Fallback
@@ -417,27 +436,31 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 });
                 // If the backend returns the full payment object structure, even better.
                 // But typically it returns the Payment Record + Receipt.
-                // Let's assume res.data.data includes 'payment' object with receipt.
-                if (res.data.data.payment) {
+                // Let's assume response includes 'payment' object with receipt.
+                if (responseData.payment) {
                     setReceiptData({
-                        ...res.data.data.payment,
+                        ...responseData.payment,
                         member: appointment.member,
                     });
                 }
 
                 setShowCompletionPreview(false);
                 setShowReceipt(true); // Open receipt modal
-                toast.success('Session completed & Payment recorded');
+                toast.success(isRtl ? 'تم إكمال الجلسة وتسجيل الدفعة' : 'Session completed & Payment recorded');
                 onSuccess();
                 // Do NOT Close AppointmentModal yet, let user close Receipt then Appointment
             } else {
-                toast.success('Session completed. Coach earning recorded as PENDING.');
+                toast.success(isRtl ? 'تم إكمال الجلسة بنجاح' : 'Session completed.');
                 onSuccess();
                 onClose();
             }
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('payments:updated'));
+            }
         } catch (e) {
             console.error(e);
-            toast.error('Failed to update');
+            const fallback = isRtl ? 'فشل تحديث الجلسة' : 'Failed to update';
+            toast.error(e.response?.data?.message_ar || e.response?.data?.message_en || fallback);
         } finally {
             setCompletionLoading(false);
             if (!showReceipt) setShowCompletionPreview(false);

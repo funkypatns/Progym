@@ -71,17 +71,28 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const [paymentNotes, setPaymentNotes] = useState('');
     const [paymentType, setPaymentType] = useState('full'); // full, partial
     const [paymentAmount, setPaymentAmount] = useState(0);
+    const [sessionPrice, setSessionPrice] = useState(0);
+    const isSession = Boolean(data?.isSession && !data?.isSubscription);
 
     const defaultAmount = useMemo(() => data ? (data.remainingAmount ?? data.sessionPrice ?? 0) : 0, [data]);
 
     useEffect(() => {
         if (open && data) {
+            const initialSessionPrice = Number(data.sessionPrice ?? data.remainingAmount ?? 0);
             setPaymentMethod('cash');
             setPaymentNotes('');
             setPaymentType('full');
-            setPaymentAmount(defaultAmount);
+            setSessionPrice(Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0);
+            setPaymentAmount(isSession ? (Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0) : defaultAmount);
         }
-    }, [open, data, defaultAmount]);
+    }, [open, data, defaultAmount, isSession]);
+
+    useEffect(() => {
+        if (isSession) {
+            const numericPrice = Number(sessionPrice);
+            setPaymentAmount(Number.isFinite(numericPrice) ? numericPrice : 0);
+        }
+    }, [sessionPrice, isSession]);
 
     const resetState = useCallback(() => {
         setPaymentMethod('cash');
@@ -92,12 +103,26 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
 
     if (!data) return null;
 
-    const needsPayment = !data.isPaid && data.sessionPrice > 0;
-    const isSession = Boolean(data.isSession && !data.isSubscription);
-    const remainingAmount = data.remainingAmount ?? data.sessionPrice ?? 0;
-    const trainerPayout = Number(data.trainerPayout ?? data.commissionAmount ?? data.coachCommission ?? 0) || 0;
-    const gymShare = Number(data.gymShare ?? data.gymNetIncome ?? 0) || 0;
+    const resolvedSessionPrice = Number.isFinite(Number(sessionPrice)) ? Number(sessionPrice) : 0;
+    const paymentBase = isSession ? resolvedSessionPrice : Number(data.remainingAmount ?? data.sessionPrice ?? 0);
+    const totalPaid = Number(data.totalPaid || 0);
+    const isPaidNow = isSession
+        ? (resolvedSessionPrice > 0 && totalPaid >= resolvedSessionPrice - 0.01)
+        : data.isPaid;
+    const needsPayment = !isPaidNow && paymentBase > 0;
+    const remainingAmount = isSession
+        ? Math.max(0, resolvedSessionPrice - totalPaid)
+        : (data.remainingAmount ?? data.sessionPrice ?? 0);
     const commissionPercentUsed = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0) || 0;
+    const trainerPayoutRaw = Number(data.trainerPayout ?? data.commissionAmount ?? data.coachCommission ?? 0) || 0;
+    const gymShareRaw = Number(data.gymShare ?? data.gymNetIncome ?? 0) || 0;
+    const trainerPayout = isSession
+        ? Number(((resolvedSessionPrice * commissionPercentUsed) / 100).toFixed(2))
+        : trainerPayoutRaw;
+    const gymShare = isSession
+        ? Number((resolvedSessionPrice - trainerPayout).toFixed(2))
+        : gymShareRaw;
+    const isConfirmDisabled = loading || (isSession && resolvedSessionPrice <= 0);
 
     const handleClose = () => {
         resetState();
@@ -106,8 +131,9 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
 
     const handleConfirm = () => {
         const payload = {
+            sessionPrice: isSession ? resolvedSessionPrice : undefined,
             payment: needsPayment ? {
-                amount: paymentAmount,
+                amount: Number(paymentAmount),
                 method: paymentMethod,
                 notes: paymentNotes
             } : null
@@ -152,6 +178,20 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                     <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 space-y-3">
                                         <div className="text-xs uppercase tracking-wider text-slate-400 font-bold">
                                             {t('appointments.financialImpact', texts[lang].financialImpact)}
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 font-bold">{texts[lang].sessionPrice}</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={sessionPrice}
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    setSessionPrice(Number.isFinite(value) ? value : 0);
+                                                }}
+                                                className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:border-emerald-500 focus:outline-none"
+                                            />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 text-sm">
                                             <div className="flex flex-col gap-1">
@@ -293,8 +333,8 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                 <button
                                     type="button"
                                     onClick={handleConfirm}
-                                    disabled={loading}
-                                    className="flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition shadow-lg shadow-emerald-900/20 flex justify-center items-center gap-2"
+                                    disabled={isConfirmDisabled}
+                                    className={`flex-[2] px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition shadow-lg shadow-emerald-900/20 flex justify-center items-center gap-2 ${isConfirmDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
                                     {loading ? t('common.processing') : texts[lang].confirm}
                                 </button>

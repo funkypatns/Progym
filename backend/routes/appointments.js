@@ -113,11 +113,29 @@ router.put('/:id', authenticate, async (req, res) => {
 // Complete (Transactional)
 router.post('/:id/complete', authenticate, async (req, res) => {
     try {
-        const { payment } = req.body;
-        const appointment = await AppointmentService.completeAppointment(req.params.id, payment, req.user);
-        res.json({ success: true, data: appointment });
+        const { payment, sessionPrice } = req.body || {};
+        const paymentPayload = payment ? { ...payment, sessionPrice } : { sessionPrice };
+        const result = await AppointmentService.completeAppointment(req.params.id, paymentPayload, req.user);
+        const appointment = result?.appointment ?? result;
+        const sessionPayment = result?.sessionPayment ?? null;
+        res.json({ success: true, ok: true, appointment, sessionPayment });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        if (error?.code === 'SESSION_PRICE_INVALID' || error?.message === 'Session price must be greater than 0') {
+            return res.status(400).json({
+                success: false,
+                ok: false,
+                reason: 'VALIDATION_ERROR',
+                message_ar: 'سعر الجلسة يجب أن يكون أكبر من صفر',
+                message_en: 'Session price must be greater than 0'
+            });
+        }
+        console.error('Complete appointment error:', error);
+        res.status(500).json({
+            success: false,
+            ok: false,
+            reason: 'SERVER_ERROR',
+            message: 'Failed to complete session'
+        });
     }
 });
 
@@ -136,7 +154,14 @@ router.post('/:id/settle', authenticate, async (req, res) => {
 router.get('/:id/preview-completion', authenticate, async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
-        const preview = await CommissionService.calculateCommissionPreview(req.params.id, req.prisma);
+        const rawSessionPrice = req.query.sessionPrice;
+        const sessionPrice = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== ''
+            ? Number(rawSessionPrice)
+            : undefined;
+        const preview = await CommissionService.calculateCommissionPreview(req.params.id, req.prisma, {
+            allowZero: true,
+            sessionPrice: Number.isFinite(sessionPrice) ? sessionPrice : undefined
+        });
         res.json({ success: true, data: preview });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

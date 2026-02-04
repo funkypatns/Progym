@@ -210,6 +210,7 @@ const AppointmentService = {
                 where: { id: parseInt(id) },
                 select: {
                     memberId: true,
+                    trainerId: true,
                     status: true,
                     price: true,
                     paidAmount: true,
@@ -239,14 +240,38 @@ const AppointmentService = {
                 });
             }
 
-            const sessionPrice = existing.price || 0;
+            const buildSessionPriceError = () => {
+                const err = new Error('Session price must be greater than 0');
+                err.code = 'SESSION_PRICE_INVALID';
+                err.message_ar = 'سعر الجلسة يجب أن يكون أكبر من صفر';
+                err.message_en = 'Session price must be greater than 0';
+                return err;
+            };
+
+            const rawSessionPrice = paymentData?.sessionPrice;
+            const hasSessionPriceInput = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== '';
+            const parsedSessionPrice = hasSessionPriceInput ? Number(rawSessionPrice) : null;
+            if (hasSessionPriceInput && (!Number.isFinite(parsedSessionPrice) || parsedSessionPrice <= 0)) {
+                throw buildSessionPriceError();
+            }
+
+            const resolvedSessionPrice = Number.isFinite(parsedSessionPrice) && parsedSessionPrice > 0
+                ? parsedSessionPrice
+                : Number(existing.price) || 0;
+            if (!Number.isFinite(resolvedSessionPrice) || resolvedSessionPrice <= 0) {
+                throw buildSessionPriceError();
+            }
+
+            const sessionPrice = resolvedSessionPrice;
             const paidSoFar = existing.paidAmount || 0;
             const remainingDue = Math.max(0, sessionPrice - paidSoFar);
             const isSession = true;
+            const sessionCommission = await CommissionService.getSessionCommissionBreakdown(sessionPrice, tx);
+            let sessionPayment = null;
 
             // 2. process Payment if provided
             let addedPaymentAmount = 0;
-            if (paymentData && paymentData.amount > 0) {
+            if (paymentData && Number(paymentData.amount) > 0) {
                 // SESSION RULE
                 if (isSession) {
                     if (sessionPrice <= 0) {
@@ -261,9 +286,6 @@ const AppointmentService = {
                     }
                     paymentData.amount = remainingDue;
                 }
-                const sessionCommission = isSession
-                    ? await CommissionService.getSessionCommissionBreakdown(sessionPrice, tx)
-                    : null;
                 // Find open shift for the user to link payment
                 let shiftId = null;
                 if (userContext?.id) {
@@ -290,6 +312,7 @@ const AppointmentService = {
                     gymShare: sessionCommission?.gymShare
                 });
                 addedPaymentAmount = payment.amount;
+                sessionPayment = payment;
             }
 
             // 2.5 Recalculate Payment Status
@@ -299,17 +322,13 @@ const AppointmentService = {
             });
             const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0); // Includes just added one
 
-            // Get price from existing (need to fetch it)
-            const aptDetails = await tx.appointment.findUnique({ where: { id: parseInt(id) } });
-            const price = aptDetails.price || 0;
-
             const sessionRemaining = Math.max(0, sessionPrice - totalPaid);
 
             let paymentStatus = 'unpaid';
             if (isSession) {
                 paymentStatus = sessionRemaining <= 0 ? 'paid' : 'partial';
             } else {
-                if (totalPaid >= price - 0.01) paymentStatus = 'paid';
+                if (totalPaid >= sessionPrice - 0.01) paymentStatus = 'paid';
                 else if (totalPaid > 0) paymentStatus = 'partial';
             }
 
@@ -321,6 +340,7 @@ const AppointmentService = {
                     paidAmount: totalPaid,
                     paymentStatus,
                     isCompleted: true,
+                    price: hasSessionPriceInput ? sessionPrice : undefined,
                     completedByEmployeeId: userContext?.id ?? undefined,
                     completedAt: new Date()
                 },
@@ -333,14 +353,21 @@ const AppointmentService = {
                     where: { appointmentId: parseInt(id), status: 'pending' }
                 });
                 if (!existingPending) {
-                    await recordPaymentTransaction(tx, {
+                    const { payment } = await recordPaymentTransaction(tx, {
                         memberId: existing.memberId,
                         appointmentId: parseInt(id),
                         amount: sessionRemaining,
                         method: 'other',
                         status: 'pending',
-                        notes: 'Remaining balance for session'
+                        notes: 'Remaining balance for session',
+                        createdBy: userContext?.id,
+                        collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
+                        sessionPrice: sessionCommission?.sessionPrice,
+                        commissionPercentUsed: sessionCommission?.commissionPercentUsed,
+                        trainerPayout: sessionCommission?.trainerPayout,
+                        gymShare: sessionCommission?.gymShare
                     }, { receiptSuffix: '-INV' });
+                    sessionPayment = sessionPayment || payment;
                 }
             }
 
@@ -348,15 +375,14 @@ const AppointmentService = {
             await CommissionService.processSessionCommission(updated.id, tx);
 
             // 6. Create trainer earning (StaffTrainer) if applicable
-            if (aptDetails?.trainerId) {
+            if (existing?.trainerId) {
                 const existingEarning = await tx.trainerEarning.findUnique({
                     where: { appointmentId: updated.id }
                 });
                 if (!existingEarning) {
-                    const sessionCommission = await CommissionService.getSessionCommissionBreakdown(price, tx);
                     await tx.trainerEarning.create({
                         data: {
-                            trainerId: aptDetails.trainerId,
+                            trainerId: existing.trainerId,
                             appointmentId: updated.id,
                             baseAmount: Number(sessionCommission.sessionPrice) || 0,
                             commissionPercent: sessionCommission.commissionPercentUsed,
@@ -367,7 +393,7 @@ const AppointmentService = {
                 }
             }
 
-            return updated;
+            return { appointment: updated, sessionPayment };
         });
     },
 
