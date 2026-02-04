@@ -207,7 +207,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
 
             {/* Structured Table UI */}
             <div className="overflow-x-auto">
-                <table className="w-full border-collapse" dir="rtl">
+                <table className="w-full border-collapse">
                     <thead>
                         <tr className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-700">
                             <th className="px-6 py-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest w-[25%]">{t('nav.members')}</th>
@@ -223,10 +223,22 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                             const subscriptionStatus = String(group.subscription?.status || '').toLowerCase();
                             const isCancelled = ['cancelled', 'canceled', 'terminated'].includes(subscriptionStatus);
                             const cancelledAt = group.subscription?.canceledAt ? new Date(group.subscription.canceledAt) : null;
+                            const showBalanceFields = group.type === 'subscription';
                             const coachPayment = group.payments?.find(p => p.appointment && p.appointment.coach) || null;
                             const trainerName = coachPayment?.appointment?.coach
                                 ? `${coachPayment.appointment.coach.firstName} ${coachPayment.appointment.coach.lastName}`.trim()
                                 : null;
+                            const summaryItems = showBalanceFields
+                                ? [
+                                    { label: 'Total', val: group.total, color: 'text-slate-600 dark:text-slate-400' },
+                                    { label: 'Paid', val: group.paid, color: 'text-emerald-600' },
+                                    { label: 'Refunded', val: group.subscription.refundedAmount || 0, color: 'text-rose-500' },
+                                    { label: 'Due', val: group.remaining, color: group.remaining > 0 ? 'text-rose-600' : 'text-slate-400', bold: true, highlight: group.remaining > 0 }
+                                ]
+                                : [
+                                    { label: 'Total', val: group.total, color: 'text-slate-600 dark:text-slate-400' },
+                                    { label: 'Paid', val: group.paid, color: 'text-emerald-600' }
+                                ];
 
                             return (
                                 <React.Fragment key={group.uniqueId}>
@@ -290,13 +302,8 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                 </div>
 
                                                 {/* Financial Grid */}
-                                                <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100/50 dark:bg-slate-900/30 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
-                                                    {[
-                                                        { label: 'Total', val: group.total, color: 'text-slate-600 dark:text-slate-400' },
-                                                        { label: 'Paid', val: group.paid, color: 'text-emerald-600' },
-                                                        { label: 'Refunded', val: group.subscription.refundedAmount || 0, color: 'text-rose-500' },
-                                                        { label: 'Due', val: group.remaining, color: group.remaining > 0 ? 'text-rose-600' : 'text-slate-400', bold: true, highlight: group.remaining > 0 }
-                                                    ].map((item, i) => (
+                                                <div className={`grid ${summaryItems.length === 4 ? 'grid-cols-4' : 'grid-cols-2'} gap-1 p-1 bg-slate-100/50 dark:bg-slate-900/30 rounded-xl border border-slate-200/50 dark:border-slate-700/50`}>
+                                                    {summaryItems.map((item, i) => (
                                                         <div key={i} className={`flex flex-col items-center py-2 px-1 rounded-lg ${item.highlight ? 'bg-white dark:bg-slate-800 shadow-sm' : ''}`}>
                                                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{item.label}</span>
                                                             <span className={`text-sm font-bold ${item.color} ${item.bold ? 'text-base' : ''}`}>
