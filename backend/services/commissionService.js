@@ -13,10 +13,13 @@ const getDefaultSessionCommissionPercent = async (tx = prisma) => {
     const setting = await tx.setting.findUnique({
         where: { key: 'defaultSessionCommissionPercent' }
     });
-    const rawValue = setting?.value ?? DEFAULT_SESSION_COMMISSION_PERCENT;
+    const rawValue = setting?.value;
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+        return DEFAULT_SESSION_COMMISSION_PERCENT;
+    }
     const percent = Number(rawValue);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-        throw new Error('Invalid default session commission percent');
+        return DEFAULT_SESSION_COMMISSION_PERCENT;
     }
     return percent;
 };

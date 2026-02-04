@@ -80,7 +80,9 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     useEffect(() => {
         if (open && data) {
             const initialSessionPrice = Number(data.sessionPrice ?? data.remainingAmount ?? 0);
-            const initialCommissionPercent = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0);
+            const initialCommissionPercent = Number(
+                data.commissionPercentUsed ?? data.commissionValue ?? data.defaultCommissionPercent ?? 0
+            );
             setPaymentMethod('cash');
             setPaymentNotes('');
             setPaymentType('full');
@@ -118,7 +120,9 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const remainingAmount = isSession
         ? Math.max(0, resolvedSessionPrice - totalPaid)
         : (data.remainingAmount ?? data.sessionPrice ?? 0);
-    const commissionPercentDefault = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0) || 0;
+    const commissionPercentDefault = Number(
+        data.commissionPercentUsed ?? data.commissionValue ?? data.defaultCommissionPercent ?? 0
+    ) || 0;
     const commissionPercentValue = Number.isFinite(Number(commissionPercent)) ? Number(commissionPercent) : commissionPercentDefault;
     const trainerPayoutRaw = Number(data.trainerPayout ?? data.commissionAmount ?? data.coachCommission ?? 0) || 0;
     const gymShareRaw = Number(data.gymShare ?? data.gymNetIncome ?? 0) || 0;

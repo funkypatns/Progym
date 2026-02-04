@@ -357,7 +357,11 @@ const AppointmentService = {
             if (hasCommissionOverride && existing?.trainerId) {
                 updatedTrainer = await tx.staffTrainer.update({
                     where: { id: existing.trainerId },
-                    data: { commissionPercent: parsedCommissionPercent }
+                    data: {
+                        commissionPercent: parsedCommissionPercent,
+                        commissionType: 'percentage',
+                        commissionValue: parsedCommissionPercent
+                    }
                 });
             }
 

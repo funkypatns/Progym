@@ -252,24 +252,26 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         });
         const trainerPercentRaw = appointment?.trainer?.commissionPercent;
         const trainerPercent = Number(trainerPercentRaw);
+        const defaultCommissionPercent = await CommissionService.getDefaultSessionCommissionPercent(req.prisma);
         const resolvedCommissionPercent = hasCommissionOverride
             ? commissionPercent
-            : (Number.isFinite(trainerPercent) && trainerPercent >= 0 && trainerPercent <= 100 ? trainerPercent : null);
-        if (resolvedCommissionPercent !== null) {
-            const priceValue = Number(preview?.sessionPrice || 0);
-            const trainerPayout = roundMoney((priceValue * resolvedCommissionPercent) / 100);
-            const gymShare = roundMoney(priceValue - trainerPayout);
-            preview.commissionPercentUsed = resolvedCommissionPercent;
-            preview.commissionValue = resolvedCommissionPercent;
-            preview.commissionType = 'percentage';
-            preview.trainerPayout = trainerPayout;
-            preview.commissionAmount = trainerPayout;
-            preview.gymShare = gymShare;
-            preview.gymNetIncome = gymShare;
-            preview.basisAmount = priceValue;
-        }
+            : (Number.isFinite(trainerPercent) && trainerPercent >= 0 && trainerPercent <= 100
+                ? trainerPercent
+                : defaultCommissionPercent);
+        const priceValue = Number(preview?.sessionPrice || 0);
+        const trainerPayout = roundMoney((priceValue * resolvedCommissionPercent) / 100);
+        const gymShare = roundMoney(priceValue - trainerPayout);
+        preview.commissionPercentUsed = resolvedCommissionPercent;
+        preview.commissionValue = resolvedCommissionPercent;
+        preview.commissionType = 'percentage';
+        preview.trainerPayout = trainerPayout;
+        preview.commissionAmount = trainerPayout;
+        preview.gymShare = gymShare;
+        preview.gymNetIncome = gymShare;
+        preview.basisAmount = priceValue;
         const responseData = {
             ...preview,
+            defaultCommissionPercent,
             trainerName: appointment?.trainer?.name || preview?.coachName || '',
             serviceName: appointment?.title || ''
         };
