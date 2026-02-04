@@ -261,6 +261,9 @@ const AppointmentService = {
                     }
                     paymentData.amount = remainingDue;
                 }
+                const sessionCommission = isSession
+                    ? await CommissionService.getSessionCommissionBreakdown(sessionPrice, tx)
+                    : null;
                 // Find open shift for the user to link payment
                 let shiftId = null;
                 if (userContext?.id) {
@@ -280,7 +283,11 @@ const AppointmentService = {
                     status: 'completed',
                     shiftId, // Link to shift
                     createdBy: userContext?.id,
-                    collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System'
+                    collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
+                    sessionPrice: sessionCommission?.sessionPrice,
+                    commissionPercentUsed: sessionCommission?.commissionPercentUsed,
+                    trainerPayout: sessionCommission?.trainerPayout,
+                    gymShare: sessionCommission?.gymShare
                 });
                 addedPaymentAmount = payment.amount;
             }
@@ -346,35 +353,17 @@ const AppointmentService = {
                     where: { appointmentId: updated.id }
                 });
                 if (!existingEarning) {
-                    const trainer = await tx.staffTrainer.findUnique({
-                        where: { id: aptDetails.trainerId },
-                        select: {
-                            commissionType: true,
-                            commissionValue: true,
-                            commissionPercent: true,
-                            internalSessionValue: true
+                    const sessionCommission = await CommissionService.getSessionCommissionBreakdown(price, tx);
+                    await tx.trainerEarning.create({
+                        data: {
+                            trainerId: aptDetails.trainerId,
+                            appointmentId: updated.id,
+                            baseAmount: Number(sessionCommission.sessionPrice) || 0,
+                            commissionPercent: sessionCommission.commissionPercentUsed,
+                            commissionAmount: Number(sessionCommission.trainerPayout) || 0,
+                            status: 'UNPAID'
                         }
                     });
-                    if (trainer) {
-                        const commissionType = trainer.commissionType || (trainer.commissionPercent !== null ? 'percentage' : 'percentage');
-                        const commissionValue = trainer.commissionValue ?? trainer.commissionPercent ?? 0;
-                        const basisAmount = commissionType === 'fixed'
-                            ? price
-                            : ((trainer.internalSessionValue || 0) > 0 ? trainer.internalSessionValue : price);
-                        const commissionAmount = commissionType === 'fixed'
-                            ? commissionValue
-                            : (basisAmount * commissionValue) / 100;
-                        await tx.trainerEarning.create({
-                            data: {
-                                trainerId: aptDetails.trainerId,
-                                appointmentId: updated.id,
-                                baseAmount: Number(basisAmount) || 0,
-                                commissionPercent: commissionType === 'percentage' ? commissionValue : null,
-                                commissionAmount: Number(commissionAmount) || 0,
-                                status: 'UNPAID'
-                            }
-                        });
-                    }
                 }
             }
 

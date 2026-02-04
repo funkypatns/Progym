@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { Fragment, useState, useEffect, useMemo, useCallback } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, X, DollarSign, Calculator, AlertCircle } from 'lucide-react';
@@ -10,30 +10,32 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
 
     const texts = {
         ar: {
-            confirm: 'تأكيد الإكمال والتحصيل',
-            cancel: 'إلغاء',
-            service: 'الخدمة',
-            paidSession: 'جلسة مدفوعة',
-            freeSession: 'جلسة مجانية',
-            coach: 'المدرب',
-            financialImpact: 'الآثار المالية',
-            sessionPrice: 'سعر الجلسة',
-            commissionRule: 'قاعدة العمولة',
-            fixedRate: 'معدل ثابت',
-            gymNetIncome: 'صافي النادي',
-            completionDisclaimer: 'ستُسجل هذه الجلسة بعد تأكيد الدفع الكامل.',
-            paymentRequired: 'الدفع مطلوب',
-            remaining: 'المتبقي',
-            fullPayment: 'الدفع بالكامل',
-            partialPayment: 'جزئي (غير مسموح للجلسات الفردية)',
-            method: 'طريقة الدفع',
-            methodCash: 'نقداً',
-            methodCard: 'بطاقة',
-            methodTransfer: 'تحويل',
-            amount: 'المبلغ',
-            notes: 'ملاحظات',
-            amountMessage: 'المبلغ المطلوب تحصيله: كامل قيمة الجلسة',
-            paymentHeading: 'الدفع'
+            confirm: 'ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ø¥ÙƒÙ…Ø§Ù„ ÙˆØ§Ù„ØªØ­ØµÙŠÙ„',
+            cancel: 'Ø¥Ù„ØºØ§Ø¡',
+            service: 'Ø§Ù„Ø®Ø¯Ù…Ø©',
+            paidSession: 'Ø¬Ù„Ø³Ø© Ù…Ø¯ÙÙˆØ¹Ø©',
+            freeSession: 'Ø¬Ù„Ø³Ø© Ù…Ø¬Ø§Ù†ÙŠØ©',
+            coach: 'Ø§Ù„Ù…Ø¯Ø±Ø¨',
+            financialImpact: 'Ø§Ù„Ø¢Ø«Ø§Ø± Ø§Ù„Ù…Ø§Ù„ÙŠØ©',
+            sessionPrice: 'Ø³Ø¹Ø± Ø§Ù„Ø¬Ù„Ø³Ø©',
+            commissionRule: 'Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©',
+            fixedRate: 'Ù…Ø¹Ø¯Ù„ Ø«Ø§Ø¨Øª',
+            gymNetIncome: 'ØµØ§ÙÙŠ Ø§Ù„Ù†Ø§Ø¯ÙŠ',
+            trainerGets: 'نصيب المدرب',
+            gymGets: 'نصيب النادي',
+            completionDisclaimer: 'Ø³ØªÙØ³Ø¬Ù„ Ù‡Ø°Ù‡ Ø§Ù„Ø¬Ù„Ø³Ø© Ø¨Ø¹Ø¯ ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„ÙƒØ§Ù…Ù„.',
+            paymentRequired: 'Ø§Ù„Ø¯ÙØ¹ Ù…Ø·Ù„ÙˆØ¨',
+            remaining: 'Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ',
+            fullPayment: 'Ø§Ù„Ø¯ÙØ¹ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„',
+            partialPayment: 'Ø¬Ø²Ø¦ÙŠ (ØºÙŠØ± Ù…Ø³Ù…ÙˆØ­ Ù„Ù„Ø¬Ù„Ø³Ø§Øª Ø§Ù„ÙØ±Ø¯ÙŠØ©)',
+            method: 'Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹',
+            methodCash: 'Ù†Ù‚Ø¯Ø§Ù‹',
+            methodCard: 'Ø¨Ø·Ø§Ù‚Ø©',
+            methodTransfer: 'ØªØ­ÙˆÙŠÙ„',
+            amount: 'Ø§Ù„Ù…Ø¨Ù„Øº',
+            notes: 'Ù…Ù„Ø§Ø­Ø¸Ø§Øª',
+            amountMessage: 'Ø§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ ØªØ­ØµÙŠÙ„Ù‡: ÙƒØ§Ù…Ù„ Ù‚ÙŠÙ…Ø© Ø§Ù„Ø¬Ù„Ø³Ø©',
+            paymentHeading: 'Ø§Ù„Ø¯ÙØ¹'
         },
         en: {
             confirm: 'Confirm completion & collect',
@@ -47,6 +49,8 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
             commissionRule: 'Commission Rule',
             fixedRate: 'Fixed Rate',
             gymNetIncome: 'Gym Net Income',
+            trainerGets: 'Trainer gets',
+            gymGets: 'Gym gets',
             completionDisclaimer: 'This session will be recorded after confirming payment.',
             paymentRequired: 'Payment required',
             remaining: 'Remaining',
@@ -91,6 +95,9 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const needsPayment = !data.isPaid && data.sessionPrice > 0;
     const isSession = Boolean(data.isSession && !data.isSubscription);
     const remainingAmount = data.remainingAmount ?? data.sessionPrice ?? 0;
+    const trainerPayout = Number(data.trainerPayout ?? data.commissionAmount ?? data.coachCommission ?? 0) || 0;
+    const gymShare = Number(data.gymShare ?? data.gymNetIncome ?? 0) || 0;
+    const commissionPercentUsed = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0) || 0;
 
     const handleClose = () => {
         resetState();
@@ -141,6 +148,26 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                     <AlertCircle size={14} className="mt-0.5 shrink-0" />
                                     <p>{t('appointments.completionDisclaimer', texts[lang].completionDisclaimer)}</p>
                                 </div>
+                                {isSession && (
+                                    <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 space-y-3">
+                                        <div className="text-xs uppercase tracking-wider text-slate-400 font-bold">
+                                            {t('appointments.financialImpact', texts[lang].financialImpact)}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-slate-500 text-xs">{texts[lang].trainerGets}</span>
+                                                <span className="text-white font-bold">{trainerPayout.toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-slate-500 text-xs">{texts[lang].gymGets}</span>
+                                                <span className="text-white font-bold">{gymShare.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                                            {texts[lang].commissionRule}: {commissionPercentUsed}%
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {needsPayment && (

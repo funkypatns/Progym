@@ -451,6 +451,7 @@ router.post('/', requirePermission('payments.create'), [
         // TRANSACTIONAL UPDATE
         const result = await req.prisma.$transaction(async (prisma) => {
             let resolvedAmount = amountValue;
+            let sessionCommission = null;
             // 1. Subscription validation (do not mutate until payment is confirmed)
             if (subscriptionId) {
                 const subIdInt = parseInt(subscriptionId);
@@ -493,6 +494,14 @@ router.post('/', requirePermission('payments.create'), [
                     throw new Error(`OVERPAYMENT: Amount exceeds remaining balance (${remaining})`);
                 }
             }
+            if (appointmentId && !subscriptionId) {
+                const appointment = await prisma.appointment.findUnique({
+                    where: { id: parseInt(appointmentId) },
+                    select: { price: true }
+                });
+                if (!appointment) throw new Error('APPOINTMENT_NOT_FOUND');
+                sessionCommission = await CommissionService.getSessionCommissionBreakdown(appointment.price || 0, prisma);
+            }
 
             // schema.prisma (Runtime mismatch workaround: transactionRef field unknown to client)
             // memberId Int
@@ -521,7 +530,11 @@ router.post('/', requirePermission('payments.create'), [
                 transactionRef,
                 verificationMode,
                 posAmountVerified,
-                appointmentId
+                appointmentId,
+                sessionPrice: sessionCommission?.sessionPrice,
+                commissionPercentUsed: sessionCommission?.commissionPercentUsed,
+                trainerPayout: sessionCommission?.trainerPayout,
+                gymShare: sessionCommission?.gymShare
             }, { idempotencyKey });
             const payment = paymentResult.payment;
 
@@ -681,6 +694,15 @@ router.post('/', requirePermission('payments.create'), [
         });
 
         // KNOWN ERRORS
+        if (error.message === 'APPOINTMENT_NOT_FOUND') {
+            return res.status(404).json({ success: false, message: 'Appointment not found' });
+        }
+        if (error.message === 'Session price must be greater than 0') {
+            return res.status(400).json({ success: false, message: 'Session price must be greater than 0' });
+        }
+        if (error.message === 'Invalid default session commission percent') {
+            return res.status(400).json({ success: false, message: 'Invalid default session commission percent' });
+        }
         if (error.message === 'SUBSCRIPTION_NOT_FOUND') {
             return res.status(404).json({ success: false, message: 'Subscription not found or does not belong to member' });
         }

@@ -236,6 +236,10 @@ model Payment {
   memberId       Int
   subscriptionId Int?
   amount         Float
+  sessionPrice   Float?
+  commissionPercentUsed Float?
+  trainerPayout  Float?
+  gymShare       Float?
   method         String   @default("cash") // cash, card, transfer
   status         String   @default("completed") // pending, completed, refunded
   

@@ -1,7 +1,45 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+const DEFAULT_SESSION_COMMISSION_PERCENT = 20;
+
+const roundMoney = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.round((num + Number.EPSILON) * 100) / 100;
+};
+
+const getDefaultSessionCommissionPercent = async (tx = prisma) => {
+    const setting = await tx.setting.findUnique({
+        where: { key: 'defaultSessionCommissionPercent' }
+    });
+    const rawValue = setting?.value ?? DEFAULT_SESSION_COMMISSION_PERCENT;
+    const percent = Number(rawValue);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        throw new Error('Invalid default session commission percent');
+    }
+    return percent;
+};
+
+const getSessionCommissionBreakdown = async (sessionPrice, tx = prisma) => {
+    const price = Number(sessionPrice);
+    if (!Number.isFinite(price) || price <= 0) {
+        throw new Error('Session price must be greater than 0');
+    }
+    const commissionPercentUsed = await getDefaultSessionCommissionPercent(tx);
+    const trainerPayout = roundMoney((price * commissionPercentUsed) / 100);
+    const gymShare = roundMoney(price - trainerPayout);
+    return {
+        sessionPrice: roundMoney(price),
+        commissionPercentUsed,
+        trainerPayout,
+        gymShare
+    };
+};
+
 const CommissionService = {
+    getDefaultSessionCommissionPercent,
+    getSessionCommissionBreakdown,
     /**
      * Calculate and record commission for a payment
      */
@@ -19,29 +57,13 @@ const CommissionService = {
             throw new Error('Appointment or Coach not found');
         }
 
-        // Get Settings
-        const settings = await tx.coachCommissionSettings.findUnique({
-            where: { coachId: appointment.coachId }
-        });
-
-        // Defaults
-        const type = settings?.type || 'percentage';
-        const value = settings?.value || 0;
-        const internalValue = settings?.internalSessionValue || 0;
-
-        let commissionAmount = 0;
-        let basisAmount = 0;
-        let sessionPrice = appointment.price || 0;
-
-        if (type === 'fixed') {
-            commissionAmount = value;
-            basisAmount = value;
-        } else {
-            basisAmount = internalValue > 0 ? internalValue : sessionPrice;
-            commissionAmount = (basisAmount * value) / 100;
-        }
-
-        const gymNetIncome = sessionPrice - commissionAmount;
+        const sessionBreakdown = await getSessionCommissionBreakdown(appointment.price || 0, tx);
+        const type = 'percentage';
+        const value = sessionBreakdown.commissionPercentUsed;
+        const sessionPrice = sessionBreakdown.sessionPrice;
+        const commissionAmount = sessionBreakdown.trainerPayout;
+        const basisAmount = sessionPrice;
+        const gymNetIncome = sessionBreakdown.gymShare;
 
         // Check verification - is it already paid?
         const payments = await tx.payment.findMany({
@@ -62,7 +84,10 @@ const CommissionService = {
             coachName: `${appointment.coach.firstName} ${appointment.coach.lastName}`,
             sessionPrice,
             commissionAmount,
+            commissionPercentUsed: sessionBreakdown.commissionPercentUsed,
+            trainerPayout: sessionBreakdown.trainerPayout,
             gymNetIncome,
+            gymShare: sessionBreakdown.gymShare,
             commissionType: type,
             commissionValue: value,
             basisAmount,

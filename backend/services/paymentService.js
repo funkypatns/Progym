@@ -128,6 +128,23 @@ async function recordPaymentTransaction(prisma, input, options = {}) {
         paidAt
     };
 
+    if (input.sessionPrice !== undefined && input.sessionPrice !== null) {
+        const value = parseFloat(input.sessionPrice);
+        if (Number.isFinite(value)) prismaData.sessionPrice = value;
+    }
+    if (input.commissionPercentUsed !== undefined && input.commissionPercentUsed !== null) {
+        const value = parseFloat(input.commissionPercentUsed);
+        if (Number.isFinite(value)) prismaData.commissionPercentUsed = value;
+    }
+    if (input.trainerPayout !== undefined && input.trainerPayout !== null) {
+        const value = parseFloat(input.trainerPayout);
+        if (Number.isFinite(value)) prismaData.trainerPayout = value;
+    }
+    if (input.gymShare !== undefined && input.gymShare !== null) {
+        const value = parseFloat(input.gymShare);
+        if (Number.isFinite(value)) prismaData.gymShare = value;
+    }
+
     if (input.subscriptionId) prismaData.subscriptionId = parseInt(input.subscriptionId);
     if (input.appointmentId) prismaData.appointmentId = parseInt(input.appointmentId);
     if (finalNotes) prismaData.notes = finalNotes;
