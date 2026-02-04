@@ -302,13 +302,64 @@ const TrainerPayoutModal = ({ isOpen, onClose, trainer, pendingEarnings, onConfi
 const TRAINER_REPORT_FILTERS_KEY = 'trainerReportFilters';
 const TRAINER_REPORT_FILTERS_USER_SET_KEY = 'trainerReportFiltersUserSet';
 
+const formatDateInput = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const buildDefaultRange = () => {
-    const to = new Date();
-    const from = new Date(to.getFullYear(), to.getMonth(), 1);
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
     return {
-        from: from.toISOString().split('T')[0],
-        to: to.toISOString().split('T')[0]
+        from: formatDateInput(start),
+        to: formatDateInput(today)
     };
+};
+
+const isValidDateValue = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const year = parsed.getFullYear();
+    const currentYear = new Date().getFullYear();
+    if (year < currentYear - 1 || year > currentYear + 1) return null;
+    return parsed;
+};
+
+const isValidRange = (range) => {
+    if (!range || !range.from || !range.to) return false;
+    const start = isValidDateValue(range.from);
+    const end = isValidDateValue(range.to);
+    if (!start || !end) return false;
+    return true;
+};
+
+const normalizeRangeForInput = (range) => {
+    if (!range || !range.from || !range.to) return null;
+    const start = isValidDateValue(range.from);
+    const end = isValidDateValue(range.to);
+    if (!start || !end) return null;
+    return {
+        from: formatDateInput(start),
+        to: formatDateInput(end)
+    };
+};
+
+const isRangeInCurrentMonth = (range) => {
+    if (!range) return false;
+    const normalized = normalizeRangeForInput(range);
+    if (!normalized) return false;
+    const start = new Date(normalized.from);
+    const end = new Date(normalized.to);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+    return start >= monthStart && end <= todayEnd;
+};
 };
 
 const getRangeFromQuery = (search) => {
@@ -332,6 +383,33 @@ const getStoredRange = () => {
     } catch (error) {
         return null;
     }
+};
+
+const clearStoredRange = () => {
+    try {
+        localStorage.removeItem(TRAINER_REPORT_FILTERS_KEY);
+        localStorage.removeItem(TRAINER_REPORT_FILTERS_USER_SET_KEY);
+    } catch (error) {
+        // ignore
+    }
+};
+
+const resolveInitialRange = (search) => {
+    const urlRange = getRangeFromQuery(search);
+    if (isValidRange(urlRange)) {
+        return { range: normalizeRangeForInput(urlRange), source: 'url' };
+    }
+
+    const userSet = localStorage.getItem(TRAINER_REPORT_FILTERS_USER_SET_KEY) === 'true';
+    if (userSet) {
+        const stored = getStoredRange();
+        if (isValidRange(stored) && isRangeInCurrentMonth(stored)) {
+            return { range: normalizeRangeForInput(stored), source: 'storage' };
+        }
+        clearStoredRange();
+    }
+
+    return { range: buildDefaultRange(), source: 'default' };
 };
 
 const TrainerReportPage = () => {
@@ -394,29 +472,11 @@ const TrainerReportPage = () => {
 
     useEffect(() => {
         if (didInitRef.current) return;
-        const urlRange = getRangeFromQuery(location.search);
-        if (urlRange) {
-            setDateRange(urlRange);
-            setFiltersReady(true);
-            didInitRef.current = true;
-            return;
-        }
-
-        const userSet = localStorage.getItem(TRAINER_REPORT_FILTERS_USER_SET_KEY) === 'true';
-        if (userSet) {
-            const stored = getStoredRange();
-            if (stored) {
-                setDateRange(stored);
-                setFiltersReady(true);
-                didInitRef.current = true;
-                return;
-            }
-        }
-
-        setDateRange(defaultRange);
+        const resolved = resolveInitialRange(location.search);
+        setDateRange(resolved.range);
         setFiltersReady(true);
         didInitRef.current = true;
-    }, [location.search, defaultRange]);
+    }, [location.search]);
 
     useEffect(() => {
         const loadInitial = async () => {
@@ -969,5 +1029,8 @@ const TrainerReportPage = () => {
 };
 
 export default TrainerReportPage;
+
+
+
 
 
