@@ -271,6 +271,7 @@ const AppointmentService = {
                 orderBy: { createdAt: 'desc' }
             });
             const paymentMethod = normalizePaymentMethod(paymentData?.method || existingPayment?.method || 'other').toUpperCase();
+            const paymentCollected = Boolean(paymentData?.method) && Number.isFinite(sessionPrice) && sessionPrice > 0;
             const paymentNotes = paymentData?.notes ? String(paymentData.notes).trim() : undefined;
 
             if (existingPayment) {
@@ -283,7 +284,7 @@ const AppointmentService = {
                 if (existingPayment.status !== 'completed') {
                     updateData.amount = sessionPrice;
                     updateData.method = paymentMethod;
-                    updateData.status = 'pending';
+                    updateData.status = paymentCollected ? 'completed' : 'pending';
                     if (paymentNotes) updateData.notes = paymentNotes;
                     updateData.createdBy = userContext?.id ?? existingPayment.createdBy;
                     if (userContext) {
@@ -300,7 +301,7 @@ const AppointmentService = {
                     memberId: existing.memberId,
                     amount: sessionPrice,
                     method: paymentMethod,
-                    status: 'pending',
+                    status: paymentCollected ? 'completed' : 'pending',
                     notes: paymentNotes,
                     createdBy: userContext?.id,
                     collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
@@ -308,7 +309,7 @@ const AppointmentService = {
                     commissionPercentUsed,
                     trainerPayout,
                     gymShare
-                }, { receiptSuffix: '-INV' });
+                }, { receiptSuffix: paymentCollected ? '' : '-INV' });
                 sessionPayment = payment;
             }
 
