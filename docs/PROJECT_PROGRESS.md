@@ -174,3 +174,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 8d12a86 | Guard commission preview when appointment coach record is missing. |
 | 2026-02-04 | 7fbdff7 | Persist trainer commission percent on completion and fix preview fallback. |
 | 2026-02-04 | 3cb9bd2 | Use staff trainer for completion preview and fix coach label in modal. |
+| 2026-02-04 | b2db339 | Fix settings reset delete order and date filters. |
