@@ -297,8 +297,19 @@ const TrainerPayoutModal = ({ isOpen, onClose, trainer, pendingEarnings, onConfi
         </div>
     );
 };
+
+const buildDefaultRange = () => {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(to.getDate() - 30);
+    return {
+        from: from.toISOString().split('T')[0],
+        to: to.toISOString().split('T')[0]
+    };
+};
+
 const TrainerReportPage = () => {
-    const { i18n } = useTranslation();
+    const { i18n, t } = useTranslation();
     const language = i18n.language || 'en';
     const isRTL = i18n.dir() === 'rtl';
 
@@ -308,10 +319,8 @@ const TrainerReportPage = () => {
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [serviceFilter, setServiceFilter] = useState('');
     const [search, setSearch] = useState('');
-    const [dateRange, setDateRange] = useState({
-        from: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
-        to: new Date().toISOString().split('T')[0]
-    });
+    const defaultRange = useMemo(() => buildDefaultRange(), []);
+    const [dateRange, setDateRange] = useState(defaultRange);
 
     const [summary, setSummary] = useState({ unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 });
     const [earnings, setEarnings] = useState([]);
@@ -329,6 +338,8 @@ const TrainerReportPage = () => {
     const pendingEarnings = useMemo(() => {
         return earnings.filter(item => item.status === 'UNPAID');
     }, [earnings]);
+
+    const isDefaultRange = dateRange.from === defaultRange.from && dateRange.to === defaultRange.to;
 
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
@@ -352,7 +363,11 @@ const TrainerReportPage = () => {
                 ]);
 
                 if (trainerRes.data?.success) {
-                    setTrainers(trainerRes.data.data || []);
+                    const trainerList = trainerRes.data.data || [];
+                    setTrainers(trainerList);
+                    if (!selectedTrainerId && trainerList.length > 0) {
+                        setSelectedTrainerId(String(trainerList[0].id));
+                    }
                 }
                 if (serviceRes.data?.success) {
                     setServices(serviceRes.data.data || []);
@@ -811,7 +826,11 @@ const TrainerReportPage = () => {
                             headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
                             headerCellClassName="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
                             baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                            emptyMessage={loading ? (isRTL ? 'جاري التحميل...' : 'Loading...') : (isRTL ? 'لا توجد بيانات' : 'No data available')}
+                            emptyMessage={loading
+                                ? (isRTL ? 'جاري التحميل...' : 'Loading...')
+                                : (isDefaultRange
+                                    ? t('reports.trainerReport.emptyLast30Days')
+                                    : (isRTL ? 'لا توجد بيانات' : 'No data available'))}
                             emptyClassName="py-6 text-center text-gray-500 dark:text-gray-400"
                             getRowKey={(row) => row.id}
                         />
@@ -829,7 +848,11 @@ const TrainerReportPage = () => {
                             headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
                             headerCellClassName="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
                             baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                            emptyMessage={loading ? (isRTL ? 'جاري التحميل...' : 'Loading...') : (isRTL ? 'لا توجد سدادات' : 'No payouts available')}
+                            emptyMessage={loading
+                                ? (isRTL ? 'جاري التحميل...' : 'Loading...')
+                                : (isDefaultRange
+                                    ? t('reports.trainerReport.emptyLast30DaysPayouts')
+                                    : (isRTL ? 'لا توجد سدادات' : 'No payouts available'))}
                             emptyClassName="py-6 text-center text-gray-500 dark:text-gray-400"
                             getRowKey={(row) => row.id}
                         />

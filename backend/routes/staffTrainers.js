@@ -5,6 +5,31 @@ const { authenticate } = require('../middleware/auth');
 // All staff trainer routes require authentication
 router.use(authenticate);
 
+const resolveDateRange = (startDate, endDate) => {
+  const defaultEnd = new Date();
+  const defaultStart = new Date();
+  defaultStart.setDate(defaultEnd.getDate() - 30);
+  defaultStart.setHours(0, 0, 0, 0);
+  defaultEnd.setHours(23, 59, 59, 999);
+
+  if (!startDate || !endDate) {
+    return { start: defaultStart, end: defaultEnd };
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { start: defaultStart, end: defaultEnd };
+  }
+  if (typeof startDate === 'string' && startDate.length <= 10) {
+    start.setHours(0, 0, 0, 0);
+  }
+  if (typeof endDate === 'string' && endDate.length <= 10) {
+    end.setHours(23, 59, 59, 999);
+  }
+  return { start, end };
+};
+
 /**
  * GET /api/staff-trainers
  * Return basic list of available trainers for dropdowns
@@ -234,14 +259,13 @@ router.get('/:id/earnings', async (req, res) => {
     if (statusParam === 'PAID' || statusParam === 'UNPAID') {
       where.status = statusParam;
     }
-    if (startDate && endDate) {
-      where.appointment = {
-        start: {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        }
-      };
-    }
+    const range = resolveDateRange(startDate, endDate);
+    where.appointment = {
+      start: {
+        gte: range.start,
+        lte: range.end
+      }
+    };
 
     const earnings = await req.prisma.trainerEarning.findMany({
       where,
@@ -416,16 +440,8 @@ router.get('/:id/payouts', async (req, res) => {
     const where = { trainerId };
     const startDate = req.query.startDate || req.query.from;
     const endDate = req.query.endDate || req.query.to;
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-        if (endDate.length <= 10) {
-          end.setHours(23, 59, 59, 999);
-        }
-        where.paidAt = { gte: start, lte: end };
-      }
-    }
+    const range = resolveDateRange(startDate, endDate);
+    where.paidAt = { gte: range.start, lte: range.end };
 
     const payouts = await req.prisma.trainerPayout.findMany({
       where,
