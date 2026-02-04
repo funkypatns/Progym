@@ -4,6 +4,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle, Lock } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
+import { useAuthStore } from '../../store';
 import toast from 'react-hot-toast';
 import { format, parseISO, startOfMonth, endOfMonth, addMonths, addMinutes, isBefore, isAfter, startOfDay } from 'date-fns';
 import { formatTime } from '../../utils/dateFormatter';
@@ -20,13 +21,13 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [memberSearch, setMemberSearch] = useState('');
     const [members, setMembers] = useState([]);
     const [selectedMember, setSelectedMember] = useState(null);
-    const [coaches, setCoaches] = useState([]);
     const [selectedCoachId, setSelectedCoachId] = useState('');
     const [trainers, setTrainers] = useState([]);
     const [selectedTrainerId, setSelectedTrainerId] = useState('');
     const [trainerLoading, setTrainerLoading] = useState(false);
 
     const [services, setServices] = useState([]);
+    const { user } = useAuthStore();
 
     // Split Date/Time State
     const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -57,13 +58,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
     useEffect(() => {
         if (open) {
-            fetchCoaches();
             fetchTrainerOptions();
             fetchServices();
             if (appointment) {
                 // Edit Mode
                 setSelectedMember(appointment.member);
-                setSelectedCoachId(appointment.coachId?.toString());
+                setSelectedCoachId((user?.id ? user.id.toString() : appointment.coachId?.toString()) || '');
                 setSelectedTrainerId(appointment.trainerId?.toString() || '');
 
                 const start = parseISO(appointment.start);
@@ -85,7 +85,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 // Reset for create mode
                 setMemberSearch('');
                 setSelectedMember(null);
-                setSelectedCoachId('');
+                setSelectedCoachId(user?.id ? user.id.toString() : '');
                 setSelectedTrainerId('');
 
                 if (initialDate) {
@@ -134,17 +134,6 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             }
         } catch (error) {
             console.error('Failed to fetch availability');
-        }
-    };
-
-    const fetchCoaches = async () => {
-        try {
-            const res = await apiClient.get('/users?role=staff');
-            if (res.data.success) {
-                setCoaches(res.data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch coaches');
         }
     };
 
@@ -217,6 +206,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const startTimeParsed = useMemo(() => parseTimeInput(selectedTime), [selectedTime]);
+    const staffName = useMemo(() => {
+        const first = user?.firstName || '';
+        const last = user?.lastName || '';
+        const full = `${first} ${last}`.trim();
+        return full || user?.username || user?.email || '';
+    }, [user]);
     const durationNumber = useMemo(() => {
         const value = parseInt(durationInput, 10);
         return Number.isNaN(value) ? null : value;
@@ -305,8 +300,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 toast.error('Please select a member');
                 return;
             }
-            if (!selectedCoachId) {
-                toast.error('Please select a coach');
+            if (!user?.id) {
+                toast.error('Please select a staff');
                 return;
             }
             if (validationError) {
@@ -318,7 +313,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 start: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
                 end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
                 memberId: selectedMember.id,
-                coachId: parseInt(selectedCoachId),
+                coachId: parseInt(user.id),
                 price: parseFloat(form.price)
             };
             payload.durationMinutes = durationNumber;
@@ -569,23 +564,15 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                         </div>
                                     )}
 
-                                    {/* 2. Coach Select + Show Schedule Button */}
+                                    {/* 2. Staff (Read-only) + Show Schedule Button */}
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold text-slate-500 uppercase">{t('payInOut.employee')}</label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
                                                 <User className={`absolute top-3.5 ${isRtl ? 'right-4' : 'left-4'} text-slate-500`} size={18} />
-                                                <select
-                                                    required
-                                                    value={selectedCoachId || ''}
-                                                    onChange={e => setSelectedCoachId(e.target.value)}
-                                                    className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none ${isRtl ? 'pr-11' : 'pl-11'}`}
-                                                >
-                                                    <option value="">{t('appointments.selectCoach')}</option>
-                                                    {coaches.map(c => (
-                                                        <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
-                                                    ))}
-                                                </select>
+                                                <div className={`w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white ${isRtl ? 'pr-11' : 'pl-11'}`}>
+                                                    {staffName || t('common.notAvailable', 'Not available')}
+                                                </div>
                                             </div>
                                             <button
                                                 type="button"
@@ -920,7 +907,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     open={showSchedule}
                     onClose={() => setShowSchedule(false)}
                     coachId={selectedCoachId}
-                    coachName={coaches.find(c => c.id == selectedCoachId)?.firstName || 'Coach'}
+                    coachName={staffName || 'Coach'}
                 />
 
                 {/* Sub Modal: Completion Preview */}

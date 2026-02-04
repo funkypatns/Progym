@@ -224,10 +224,13 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                             const isCancelled = ['cancelled', 'canceled', 'terminated'].includes(subscriptionStatus);
                             const cancelledAt = group.subscription?.canceledAt ? new Date(group.subscription.canceledAt) : null;
                             const showBalanceFields = group.type === 'subscription';
-                            const coachPayment = group.payments?.find(p => p.appointment && p.appointment.coach) || null;
-                            const trainerName = coachPayment?.appointment?.coach
-                                ? `${coachPayment.appointment.coach.firstName} ${coachPayment.appointment.coach.lastName}`.trim()
-                                : null;
+                            const trainerPayment = group.payments?.find(p => p.appointment?.trainer)
+                                || group.payments?.find(p => p.appointment?.coach)
+                                || null;
+                            const trainerName = trainerPayment?.appointment?.trainer?.name
+                                || (trainerPayment?.appointment?.coach
+                                    ? `${trainerPayment.appointment.coach.firstName} ${trainerPayment.appointment.coach.lastName}`.trim()
+                                    : null);
                             const summaryItems = showBalanceFields
                                 ? [
                                     { label: 'Total', val: group.total, color: 'text-slate-600 dark:text-slate-400' },

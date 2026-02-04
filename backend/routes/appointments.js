@@ -28,7 +28,8 @@ router.post('/', authenticate, async (req, res) => {
 
         const payload = {
             ...req.body,
-            createdByEmployeeId: req.body.createdByEmployeeId ?? req.user?.id
+            coachId: req.user?.id,
+            createdByEmployeeId: req.user?.id
         };
         const appointment = await AppointmentService.createAppointment(payload);
         res.json({ success: true, data: appointment });
@@ -105,7 +106,11 @@ router.get('/pending-completion', authenticate, async (req, res) => {
 // Update
 router.put('/:id', authenticate, async (req, res) => {
     try {
-        const appointment = await AppointmentService.updateAppointment(req.params.id, req.body);
+        const payload = {
+            ...req.body,
+            coachId: req.user?.id
+        };
+        const appointment = await AppointmentService.updateAppointment(req.params.id, payload);
         res.json({ success: true, data: appointment });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

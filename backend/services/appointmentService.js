@@ -46,15 +46,25 @@ const AppointmentService = {
         const durationMinutes = data.durationMinutes ?? ((new Date(data.end) - new Date(data.start)) / 60000);
         const timeRange = buildTimeRange(data.start, durationMinutes);
         const coachId = parseInt(data.coachId);
+        const trainerId = data.trainerId ? parseInt(data.trainerId) : null;
         if (await this.checkOverlap(coachId, timeRange.start, timeRange.end)) {
             throw createOverlapError();
+        }
+        if (trainerId) {
+            const trainer = await prisma.staffTrainer.findUnique({
+                where: { id: trainerId },
+                select: { id: true }
+            });
+            if (!trainer) {
+                throw new Error('Trainer not found');
+            }
         }
 
         return await prisma.appointment.create({
             data: {
                 memberId: parseInt(data.memberId),
                 coachId,
-                trainerId: data.trainerId ? parseInt(data.trainerId) : null,
+                trainerId,
                 title: data.title || null,
                 start: timeRange.start,
                 end: timeRange.end,
@@ -171,6 +181,18 @@ const AppointmentService = {
         const updatePayload = { ...data };
         delete updatePayload.durationMinutes;
         delete updatePayload.startTime;
+        if (updatePayload.trainerId !== undefined) {
+            const parsedTrainerId = updatePayload.trainerId ? parseInt(updatePayload.trainerId) : null;
+            if (parsedTrainerId) {
+                const trainer = await prisma.staffTrainer.findUnique({
+                    where: { id: parsedTrainerId },
+                    select: { id: true }
+                });
+                if (!trainer) {
+                    throw new Error('Trainer not found');
+                }
+            }
+        }
 
         const updated = await prisma.appointment.update({
             where: { id: parseInt(id) },
