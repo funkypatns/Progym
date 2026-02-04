@@ -12,7 +12,7 @@
         "reports": "التقارير",
         "settings": "الإعدادات",
         "plans": "الخطط",
-        "coaches": "\u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0639\u0645\u0648\u0644\u0627\u062a",
+        "coaches": "إدارة العمولات",
         "pos": "نقاط البيع",
         "products": "المنتجات",
         "paymentAlerts": "المتأخرات",
@@ -21,7 +21,7 @@
         "employees": "الموظفين",
         "permissions": "الصلاحيات",
         "appointments": "المواعيد",
-        "staffTrainers": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u062f\u0631\u0628\u064a\u0646"
+        "staffTrainers": "قائمة المدربين"
     },
     "appointments": {
         "title": "المواعيد",
@@ -66,12 +66,13 @@
         "class": "حصة جماعية",
         "other": "أخرى",
         "searchMemberPlaceholder": "بحث باسم العضو أو الهاتف...",
-        "booked": "محجوز"
+        "booked": "محجوز",
+        "trainerCommissionSaved": "تم حفظ نسبة العمولة الافتراضية للمدرب"
     },
     "trainers": {
-        "title": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u062f\u0631\u0628\u064a\u0646",
-        "subtitle": "\u0625\u062f\u0627\u0631\u0629 \u0645\u0644\u0641\u0627\u062a \u0627\u0644\u0645\u062f\u0631\u0628\u064a\u0646",
-        "add": "\u0625\u0636\u0627\u0641\u0629 \u0645\u062f\u0631\u0628"
+        "title": "قائمة المدربين",
+        "subtitle": "إدارة ملفات المدربين",
+        "add": "إضافة مدرب"
     },
     "auth": {
         "login": "تسجيل الدخول",
@@ -366,15 +367,8 @@
             }
         },
         "cancellations": {
-            "title": "تقرير الإلغاءات",
-            "subtitle": "التحليل الشهري للاشتراكات الملغاة والمبالغ المستردة",
-            "netRevenueImpact": "صافي تأثير الإيرادات",
-            "netSubtitle": "الإجمالي - المسترد",
-            "totalCancellations": "إجمالي الإلغاءات",
-            "totalRefunded": "إجمالي المسترد",
-            "reason": "السبب",
-            "cancelledAt": "تاريخ الإلغاء",
-            "refundedAmount": "المبلغ المسترد"
+            "title": "الإلغاءات",
+            "subtitle": "تقرير الإلغاءات الشهري"
         },
         "paymentsSummary": "ملخص المدفوعات",
         "fields": {
@@ -451,10 +445,6 @@
                 "exportExcel": "تصدير إكسل",
                 "searchPlaceholder": "البحث بالاسم، الكود، أو الهاتف..."
             }
-        },
-        "cancellations": {
-            "title": "الإلغاءات",
-            "subtitle": "تقرير الإلغاءات الشهري"
         },
         "noData": "لا توجد بيانات",
         "noCancellations": "لا توجد إلغاءات",

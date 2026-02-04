@@ -12,8 +12,8 @@ import { initReactI18next } from 'react-i18next';
 import en from './en.json';
 import ar from './ar.json';
 
-// Get saved language or default to English
-const savedLanguage = localStorage.getItem('language') || 'en';
+// Get saved language or default to Arabic
+const savedLanguage = localStorage.getItem('language') || 'ar';
 
 i18n
     .use(initReactI18next)
