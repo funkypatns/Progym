@@ -159,3 +159,4 @@ Phase 4 - Receipts system
 | 2026-02-04 | 95c761a | Allow duplicate names; enforce member uniqueness by phone only. |
 | 2026-02-04 | 8ec8698 | Hide remaining/refund fields in session payments UI. |
 | 2026-02-04 | dc1e707 | Compute session commissions from global percent and store on payments. |
+| 2026-02-04 | 0228f2b | Fix mojibake Arabic strings in appointment completion modal and past-date validation. |
