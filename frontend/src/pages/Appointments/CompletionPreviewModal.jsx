@@ -104,6 +104,7 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     if (!data) return null;
 
     const resolvedSessionPrice = Number.isFinite(Number(sessionPrice)) ? Number(sessionPrice) : 0;
+    const sessionPriceInvalid = isSession && (!Number.isFinite(resolvedSessionPrice) || resolvedSessionPrice <= 0);
     const paymentBase = isSession ? resolvedSessionPrice : Number(data.remainingAmount ?? data.sessionPrice ?? 0);
     const totalPaid = Number(data.totalPaid || 0);
     const isPaidNow = isSession
@@ -122,7 +123,7 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const gymShare = isSession
         ? Number((resolvedSessionPrice - trainerPayout).toFixed(2))
         : gymShareRaw;
-    const isConfirmDisabled = loading || (isSession && resolvedSessionPrice <= 0);
+    const isConfirmDisabled = loading || sessionPriceInvalid;
 
     const handleClose = () => {
         resetState();
@@ -130,6 +131,7 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     };
 
     const handleConfirm = () => {
+        if (sessionPriceInvalid) return;
         const payload = {
             sessionPrice: isSession ? resolvedSessionPrice : undefined,
             payment: needsPayment ? {
@@ -183,15 +185,22 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                             <label className="text-xs text-slate-500 font-bold">{texts[lang].sessionPrice}</label>
                                             <input
                                                 type="number"
-                                                min="0"
+                                                min="0.01"
                                                 step="0.01"
                                                 value={sessionPrice}
+                                                required
+                                                aria-invalid={sessionPriceInvalid}
                                                 onChange={(e) => {
                                                     const value = Number(e.target.value);
                                                     setSessionPrice(Number.isFinite(value) ? value : 0);
                                                 }}
                                                 className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:border-emerald-500 focus:outline-none"
                                             />
+                                            {sessionPriceInvalid && (
+                                                <div className="text-[11px] text-rose-400 font-semibold">
+                                                    سعر الجلسة يجب أن يكون أكبر من صفر
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 text-sm">
                                             <div className="flex flex-col gap-1">

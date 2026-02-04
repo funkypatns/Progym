@@ -113,8 +113,20 @@ router.put('/:id', authenticate, async (req, res) => {
 // Complete (Transactional)
 router.post('/:id/complete', authenticate, async (req, res) => {
     try {
-        const { payment, sessionPrice } = req.body || {};
-        const paymentPayload = payment ? { ...payment, sessionPrice } : { sessionPrice };
+        const { payment, sessionPrice, commissionPercent } = req.body || {};
+        const rawSessionPrice = sessionPrice ?? payment?.sessionPrice;
+        const parsedSessionPrice = Number(rawSessionPrice);
+        if (!Number.isFinite(parsedSessionPrice) || parsedSessionPrice <= 0) {
+            return res.status(400).json({
+                ok: false,
+                reason: 'VALIDATION_ERROR',
+                message: 'Session price must be greater than 0',
+                message_ar: 'سعر الجلسة يجب أن يكون أكبر من صفر'
+            });
+        }
+        const paymentPayload = payment
+            ? { ...payment, sessionPrice: parsedSessionPrice, commissionPercent }
+            : { sessionPrice: parsedSessionPrice, commissionPercent };
         const result = await AppointmentService.completeAppointment(req.params.id, paymentPayload, req.user);
         const appointment = result?.appointment ?? result;
         const sessionPayment = result?.sessionPayment ?? null;
@@ -130,7 +142,20 @@ router.post('/:id/complete', authenticate, async (req, res) => {
                 message_en: 'Session price must be greater than 0'
             });
         }
-        console.error('Complete appointment error:', error);
+        if (error?.code === 'P2002') {
+            return res.status(409).json({
+                ok: false,
+                reason: 'CONFLICT',
+                message: 'Duplicate session payment detected'
+            });
+        }
+        console.error('Complete appointment error:', {
+            message: error?.message,
+            code: error?.code,
+            name: error?.name,
+            meta: error?.meta,
+            stack: error?.stack
+        });
         res.status(500).json({
             success: false,
             ok: false,

@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const CommissionService = require('./commissionService');
-const { recordPaymentTransaction } = require('./paymentService');
+const { recordPaymentTransaction, normalizePaymentMethod } = require('./paymentService');
 const { roundMoney } = require('../utils/money');
 
 const createInvalidTimeError = () => {
@@ -265,6 +265,10 @@ const AppointmentService = {
                 where: { appointmentId: parseInt(id), status: 'completed' },
                 orderBy: { createdAt: 'desc' }
             });
+            const existingPendingPayment = await tx.payment.findFirst({
+                where: { appointmentId: parseInt(id), status: 'pending' },
+                orderBy: { createdAt: 'desc' }
+            });
 
             // 2. process Payment if provided
             let addedPaymentAmount = 0;
@@ -295,21 +299,44 @@ const AppointmentService = {
                     if (openShift) shiftId = openShift.id;
                 }
 
-                const { payment } = await recordPaymentTransaction(tx, {
-                    ...paymentData,
-                    appointmentId: parseInt(id),
-                    memberId: existing.memberId,
-                    status: 'completed',
-                    shiftId, // Link to shift
-                    createdBy: userContext?.id,
-                    collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
-                    sessionPrice: sessionCommission?.sessionPrice,
-                    commissionPercentUsed: sessionCommission?.commissionPercentUsed,
-                    trainerPayout: sessionCommission?.trainerPayout,
-                    gymShare: sessionCommission?.gymShare
-                });
-                addedPaymentAmount = payment.amount;
-                sessionPayment = payment;
+                if (existingPendingPayment) {
+                    const method = normalizePaymentMethod(paymentData.method).toUpperCase();
+                    const updatedPayment = await tx.payment.update({
+                        where: { id: existingPendingPayment.id },
+                        data: {
+                            amount: remainingDue,
+                            method,
+                            status: 'completed',
+                            paidAt: new Date(),
+                            notes: paymentData.notes ? String(paymentData.notes).trim() : existingPendingPayment.notes,
+                            shiftId, // Link to shift
+                            createdBy: userContext?.id,
+                            collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
+                            sessionPrice: sessionCommission?.sessionPrice,
+                            commissionPercentUsed: sessionCommission?.commissionPercentUsed,
+                            trainerPayout: sessionCommission?.trainerPayout,
+                            gymShare: sessionCommission?.gymShare
+                        }
+                    });
+                    addedPaymentAmount = updatedPayment.amount;
+                    sessionPayment = updatedPayment;
+                } else {
+                    const { payment } = await recordPaymentTransaction(tx, {
+                        ...paymentData,
+                        appointmentId: parseInt(id),
+                        memberId: existing.memberId,
+                        status: 'completed',
+                        shiftId, // Link to shift
+                        createdBy: userContext?.id,
+                        collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
+                        sessionPrice: sessionCommission?.sessionPrice,
+                        commissionPercentUsed: sessionCommission?.commissionPercentUsed,
+                        trainerPayout: sessionCommission?.trainerPayout,
+                        gymShare: sessionCommission?.gymShare
+                    });
+                    addedPaymentAmount = payment.amount;
+                    sessionPayment = payment;
+                }
             } else if (existingCompletedPayment) {
                 sessionPayment = existingCompletedPayment;
             }
@@ -348,10 +375,7 @@ const AppointmentService = {
 
             // 4. Create pending invoice if unpaid balance remains
             if (sessionRemaining > 0) {
-                const existingPending = await tx.payment.findFirst({
-                    where: { appointmentId: parseInt(id), status: 'pending' }
-                });
-                if (!existingPending) {
+                if (!existingPendingPayment) {
                     const { payment } = await recordPaymentTransaction(tx, {
                         memberId: existing.memberId,
                         appointmentId: parseInt(id),
@@ -368,7 +392,7 @@ const AppointmentService = {
                     }, { receiptSuffix: '-INV' });
                     sessionPayment = sessionPayment || payment;
                 } else {
-                    sessionPayment = sessionPayment || existingPending;
+                    sessionPayment = sessionPayment || existingPendingPayment;
                 }
             }
 
