@@ -7,8 +7,7 @@ router.use(authenticate);
 
 const resolveDateRange = (startDate, endDate) => {
   const defaultEnd = new Date();
-  const defaultStart = new Date();
-  defaultStart.setDate(defaultEnd.getDate() - 30);
+  const defaultStart = new Date(defaultEnd.getFullYear(), defaultEnd.getMonth(), 1);
   defaultStart.setHours(0, 0, 0, 0);
   defaultEnd.setHours(23, 59, 59, 999);
 

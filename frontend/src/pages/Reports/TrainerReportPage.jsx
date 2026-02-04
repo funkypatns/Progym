@@ -300,8 +300,7 @@ const TrainerPayoutModal = ({ isOpen, onClose, trainer, pendingEarnings, onConfi
 
 const buildDefaultRange = () => {
     const to = new Date();
-    const from = new Date();
-    from.setDate(to.getDate() - 30);
+    const from = new Date(to.getFullYear(), to.getMonth(), 1);
     return {
         from: from.toISOString().split('T')[0],
         to: to.toISOString().split('T')[0]

@@ -345,8 +345,8 @@
             "subtitle": "Cashier shift salary and balance"
         },
         "trainerReport": {
-            "emptyLast30Days": "No data in the last 30 days",
-            "emptyLast30DaysPayouts": "No payouts in the last 30 days"
+            "emptyLast30Days": "No data this month",
+            "emptyLast30DaysPayouts": "No payouts this month"
         },
         "shifts": {
             "title": "Shifts",

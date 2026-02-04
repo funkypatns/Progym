@@ -313,8 +313,8 @@
             "subtitle": "رواتب الورديات ورصيد الصندوق"
         },
         "trainerReport": {
-            "emptyLast30Days": "لا توجد بيانات خلال آخر 30 يومًا",
-            "emptyLast30DaysPayouts": "لا توجد سدادات خلال آخر 30 يومًا"
+            "emptyLast30Days": "لا توجد بيانات خلال هذا الشهر",
+            "emptyLast30DaysPayouts": "لا توجد سدادات خلال هذا الشهر"
         },
         "shifts": {
             "title": "الورديات",
