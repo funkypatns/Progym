@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useMemo, useState, useCallback } from 'react';
+﻿import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import {
     Calendar,
     Download,
@@ -298,6 +299,9 @@ const TrainerPayoutModal = ({ isOpen, onClose, trainer, pendingEarnings, onConfi
     );
 };
 
+const TRAINER_REPORT_FILTERS_KEY = 'trainerReportFilters';
+const TRAINER_REPORT_FILTERS_USER_SET_KEY = 'trainerReportFiltersUserSet';
+
 const buildDefaultRange = () => {
     const to = new Date();
     const from = new Date(to.getFullYear(), to.getMonth(), 1);
@@ -307,10 +311,35 @@ const buildDefaultRange = () => {
     };
 };
 
+const getRangeFromQuery = (search) => {
+    if (!search) return null;
+    const params = new URLSearchParams(search);
+    const from = params.get('from') || params.get('startDate');
+    const to = params.get('to') || params.get('endDate');
+    if (!from || !to) return null;
+    return { from, to };
+};
+
+const getStoredRange = () => {
+    try {
+        const raw = localStorage.getItem(TRAINER_REPORT_FILTERS_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.from !== 'string' || typeof parsed.to !== 'string') {
+            return null;
+        }
+        return parsed;
+    } catch (error) {
+        return null;
+    }
+};
+
 const TrainerReportPage = () => {
     const { i18n, t } = useTranslation();
     const language = i18n.language || 'en';
     const isRTL = i18n.dir() === 'rtl';
+    const location = useLocation();
+    const didInitRef = useRef(false);
 
     const [trainers, setTrainers] = useState([]);
     const [services, setServices] = useState([]);
@@ -319,7 +348,8 @@ const TrainerReportPage = () => {
     const [serviceFilter, setServiceFilter] = useState('');
     const [search, setSearch] = useState('');
     const defaultRange = useMemo(() => buildDefaultRange(), []);
-    const [dateRange, setDateRange] = useState(defaultRange);
+    const [dateRange, setDateRange] = useState({ from: '', to: '' });
+    const [filtersReady, setFiltersReady] = useState(false);
 
     const [summary, setSummary] = useState({ unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 });
     const [earnings, setEarnings] = useState([]);
@@ -340,6 +370,15 @@ const TrainerReportPage = () => {
 
     const isDefaultRange = dateRange.from === defaultRange.from && dateRange.to === defaultRange.to;
 
+    const persistDateRange = useCallback((range) => {
+        try {
+            localStorage.setItem(TRAINER_REPORT_FILTERS_USER_SET_KEY, 'true');
+            localStorage.setItem(TRAINER_REPORT_FILTERS_KEY, JSON.stringify(range));
+        } catch (error) {
+            // ignore storage errors
+        }
+    }, []);
+
     const toStartOfDay = (value) => (value ? `${value}T00:00:00` : '');
     const toEndOfDay = (value) => (value ? `${value}T23:59:59.999` : '');
     const normalizeRange = (from, to) => {
@@ -352,6 +391,32 @@ const TrainerReportPage = () => {
         if (start > end) return { from: to, to: from, swapped: true };
         return { from, to, swapped: false };
     };
+
+    useEffect(() => {
+        if (didInitRef.current) return;
+        const urlRange = getRangeFromQuery(location.search);
+        if (urlRange) {
+            setDateRange(urlRange);
+            setFiltersReady(true);
+            didInitRef.current = true;
+            return;
+        }
+
+        const userSet = localStorage.getItem(TRAINER_REPORT_FILTERS_USER_SET_KEY) === 'true';
+        if (userSet) {
+            const stored = getStoredRange();
+            if (stored) {
+                setDateRange(stored);
+                setFiltersReady(true);
+                didInitRef.current = true;
+                return;
+            }
+        }
+
+        setDateRange(defaultRange);
+        setFiltersReady(true);
+        didInitRef.current = true;
+    }, [location.search, defaultRange]);
 
     useEffect(() => {
         const loadInitial = async () => {
@@ -379,6 +444,9 @@ const TrainerReportPage = () => {
     }, []);
 
     const fetchReport = async () => {
+        if (!filtersReady || !dateRange.from || !dateRange.to) {
+            return;
+        }
         if (!selectedTrainerId) {
             setSummary({ unpaidTotal: 0, paidTotal: 0, sessionsCount: 0, payoutsTotal: 0 });
             setEarnings([]);
@@ -474,7 +542,7 @@ const TrainerReportPage = () => {
 
     useEffect(() => {
         fetchReport();
-    }, [selectedTrainerId, statusFilter, serviceFilter, search, dateRange.from, dateRange.to]);
+    }, [filtersReady, selectedTrainerId, statusFilter, serviceFilter, search, dateRange.from, dateRange.to]);
 
     const exportCsv = (filename, rows) => {
         if (!rows.length) {
@@ -696,6 +764,19 @@ const TrainerReportPage = () => {
 
     const trainerRequiredMessage = isRTL ? 'اختر مدرب لعرض التقرير' : 'Select a trainer to view report';
 
+    const handleDateChange = useCallback((field) => (event) => {
+        const value = event.target.value;
+        const nextRange = { ...dateRange, [field]: value };
+        setDateRange(nextRange);
+        persistDateRange(nextRange);
+    }, [dateRange, persistDateRange]);
+
+    const handleResetToCurrentMonth = useCallback(() => {
+        const nextRange = buildDefaultRange();
+        setDateRange(nextRange);
+        persistDateRange(nextRange);
+    }, [persistDateRange]);
+
     return (
         <ReportsPageShell
             title={isRTL ? 'تقرير المدربين' : 'Trainer Report'}
@@ -715,16 +796,24 @@ const TrainerReportPage = () => {
                     <ReportsToolbar.DateRange
                         label={isRTL ? 'من' : 'From'}
                         value={dateRange.from}
-                        onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+                        onChange={handleDateChange('from')}
                         icon={Calendar}
                     />
 
                     <ReportsToolbar.DateRange
                         label={isRTL ? 'إلى' : 'To'}
                         value={dateRange.to}
-                        onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                        onChange={handleDateChange('to')}
                         icon={Calendar}
                     />
+
+                    <ReportsToolbar.Button
+                        variant="secondary"
+                        onClick={handleResetToCurrentMonth}
+                        className="h-10 px-3"
+                    >
+                        {isRTL ? 'هذا الشهر' : 'This Month'}
+                    </ReportsToolbar.Button>
 
                     <ReportsToolbar.Select
                         label={isRTL ? 'الحالة' : 'Status'}
@@ -880,4 +969,5 @@ const TrainerReportPage = () => {
 };
 
 export default TrainerReportPage;
+
 
