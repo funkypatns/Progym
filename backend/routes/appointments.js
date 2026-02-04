@@ -20,7 +20,7 @@ router.post('/', authenticate, async (req, res) => {
         if (requestedStart < today) {
             const headerLang = (req.headers['accept-language'] || req.user?.language || '').toLowerCase();
             const isArabic = headerLang.startsWith('ar');
-            const message = isArabic ? 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø¶Ø§ÙØ© Ø­Ø¬Ø² ÙÙŠ ØªØ§Ø±ÙŠØ® Ø³Ø§Ø¨Ù‚.' : 'You canâ€™t create a booking in a past date.';
+            const message = isArabic ? 'لا يمكن إضافة حجز في تاريخ سابق.' : "You can't create a booking in a past date.";
             return res.status(400).json({ success: false, message });
         }
 
