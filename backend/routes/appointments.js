@@ -115,7 +115,7 @@ router.put('/:id', authenticate, async (req, res) => {
 // Complete (Transactional)
 router.post('/:id/complete', authenticate, async (req, res) => {
     try {
-        const { payment, sessionPrice, commissionPercent } = req.body || {};
+        const { payment, sessionPrice, commissionPercent, paymentMethod } = req.body || {};
         const rawSessionPrice = sessionPrice ?? payment?.sessionPrice;
         const parsedSessionPrice = Number(rawSessionPrice);
         const rawCommission = commissionPercent ?? payment?.commissionPercent;
@@ -132,11 +132,15 @@ router.post('/:id/complete', authenticate, async (req, res) => {
                 sessionPrice: Number.isFinite(parsedSessionPrice) ? parsedSessionPrice : undefined,
                 commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined
             };
+        if (paymentMethod && !paymentPayload.method) {
+            paymentPayload.method = paymentMethod;
+        }
         const result = await AppointmentService.completeAppointment(req.params.id, paymentPayload, req.user);
         const appointment = result?.appointment ?? result;
         const sessionPayment = result?.sessionPayment ?? null;
+        const trainer = result?.trainer ?? null;
         const alreadyCompleted = Boolean(result?.alreadyCompleted);
-        res.json({ success: true, ok: true, appointment, sessionPayment, alreadyCompleted });
+        res.json({ success: true, ok: true, appointment, sessionPayment, trainer, alreadyCompleted });
     } catch (error) {
         if (error?.code === 'SESSION_PRICE_INVALID' || error?.message === 'Session price must be greater than 0') {
             return res.status(400).json({
@@ -235,18 +239,28 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const sessionPrice = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== ''
             ? Number(rawSessionPrice)
             : undefined;
+        const rawCommissionPercent = req.query.commissionPercent;
+        const commissionPercent = rawCommissionPercent !== undefined && rawCommissionPercent !== null && rawCommissionPercent !== ''
+            ? Number(rawCommissionPercent)
+            : undefined;
+        const hasCommissionOverride = Number.isFinite(commissionPercent)
+            && commissionPercent >= 0
+            && commissionPercent <= 100;
         const preview = await CommissionService.calculateCommissionPreview(req.params.id, req.prisma, {
             allowZero: true,
             sessionPrice: Number.isFinite(sessionPrice) ? sessionPrice : undefined
         });
         const trainerPercentRaw = appointment?.trainer?.commissionPercent;
         const trainerPercent = Number(trainerPercentRaw);
-        if (Number.isFinite(trainerPercent) && trainerPercent >= 0 && trainerPercent <= 100) {
+        const resolvedCommissionPercent = hasCommissionOverride
+            ? commissionPercent
+            : (Number.isFinite(trainerPercent) && trainerPercent >= 0 && trainerPercent <= 100 ? trainerPercent : null);
+        if (resolvedCommissionPercent !== null) {
             const priceValue = Number(preview?.sessionPrice || 0);
-            const trainerPayout = roundMoney((priceValue * trainerPercent) / 100);
+            const trainerPayout = roundMoney((priceValue * resolvedCommissionPercent) / 100);
             const gymShare = roundMoney(priceValue - trainerPayout);
-            preview.commissionPercentUsed = trainerPercent;
-            preview.commissionValue = trainerPercent;
+            preview.commissionPercentUsed = resolvedCommissionPercent;
+            preview.commissionValue = resolvedCommissionPercent;
             preview.commissionType = 'percentage';
             preview.trainerPayout = trainerPayout;
             preview.commissionAmount = trainerPayout;

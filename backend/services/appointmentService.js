@@ -250,6 +250,16 @@ const AppointmentService = {
             }
 
             const sessionPrice = roundMoney(parsedSessionPrice);
+            const rawCommissionPercent = paymentData?.commissionPercent;
+            const hasCommissionOverride = rawCommissionPercent !== undefined && rawCommissionPercent !== null && rawCommissionPercent !== '';
+            const parsedCommissionPercent = hasCommissionOverride ? Number(rawCommissionPercent) : NaN;
+            if (hasCommissionOverride && (!Number.isFinite(parsedCommissionPercent) || parsedCommissionPercent < 0 || parsedCommissionPercent > 100)) {
+                const err = new Error('Commission percent must be between 0 and 100');
+                err.code = 'COMMISSION_PERCENT_INVALID';
+                err.message_ar = 'نسبة العمولة يجب أن تكون بين 0 و 100';
+                err.message_en = 'Commission percent must be between 0 and 100';
+                throw err;
+            }
             let trainerCommissionPercent = null;
             if (existing?.trainerId) {
                 const trainer = await tx.staffTrainer.findUnique({
@@ -261,7 +271,9 @@ const AppointmentService = {
                     trainerCommissionPercent = parsedTrainerPercent;
                 }
             }
-            const commissionPercentUsed = trainerCommissionPercent ?? await CommissionService.getDefaultSessionCommissionPercent(tx);
+            const commissionPercentUsed = hasCommissionOverride
+                ? parsedCommissionPercent
+                : (trainerCommissionPercent ?? await CommissionService.getDefaultSessionCommissionPercent(tx));
             const trainerPayout = roundMoney((sessionPrice * commissionPercentUsed) / 100);
             const gymShare = roundMoney(sessionPrice - trainerPayout);
 
@@ -341,6 +353,14 @@ const AppointmentService = {
                 include: { member: true, coach: true, payments: true }
             });
 
+            let updatedTrainer = null;
+            if (hasCommissionOverride && existing?.trainerId) {
+                updatedTrainer = await tx.staffTrainer.update({
+                    where: { id: existing.trainerId },
+                    data: { commissionPercent: parsedCommissionPercent }
+                });
+            }
+
             // 5. Process commission
             await CommissionService.processSessionCommission(updated.id, tx);
 
@@ -384,7 +404,7 @@ const AppointmentService = {
                 }
             }
 
-            return { appointment: updated, sessionPayment, alreadyCompleted: false };
+            return { appointment: updated, sessionPayment, trainer: updatedTrainer, alreadyCompleted: false };
         });
     },
 

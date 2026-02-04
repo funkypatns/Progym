@@ -454,10 +454,22 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setShowCompletionPreview(false);
                 setShowReceipt(true); // Open receipt modal
                 toast.success(isRtl ? 'تم إكمال الجلسة وتسجيل الدفعة' : 'Session completed & Payment recorded');
+                if (isSessionCompletion && appointment?.trainerId && Number.isFinite(payload?.commissionPercent)) {
+                    toast.success(t('appointments.trainerCommissionSaved', isRtl ? 'تم حفظ نسبة العمولة الافتراضية للمدرب' : 'Trainer default commission saved'));
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new Event('trainers:updated'));
+                    }
+                }
                 onSuccess();
                 // Do NOT Close AppointmentModal yet, let user close Receipt then Appointment
             } else {
                 toast.success(isRtl ? 'تم إكمال الجلسة بنجاح' : 'Session completed.');
+                if (isSessionCompletion && appointment?.trainerId && Number.isFinite(payload?.commissionPercent)) {
+                    toast.success(t('appointments.trainerCommissionSaved', isRtl ? 'تم حفظ نسبة العمولة الافتراضية للمدرب' : 'Trainer default commission saved'));
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new Event('trainers:updated'));
+                    }
+                }
                 onSuccess();
                 onClose();
             }

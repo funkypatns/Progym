@@ -46,6 +46,13 @@ const Trainers = () => {
     }, [fetchTrainers]);
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handleTrainersUpdated = () => fetchTrainers();
+        window.addEventListener('trainers:updated', handleTrainersUpdated);
+        return () => window.removeEventListener('trainers:updated', handleTrainersUpdated);
+    }, [fetchTrainers]);
+
+    useEffect(() => {
         if (loading || trainers.length === 0) return;
         const params = new URLSearchParams(location.search);
         const openTrainer = params.get('openTrainer');

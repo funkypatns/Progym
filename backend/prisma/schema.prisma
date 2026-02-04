@@ -572,7 +572,7 @@ model StaffTrainer {
   id                Int      @id @default(autoincrement())
   name              String
   phone             String?
-  commissionPercent Int?
+    commissionPercent Float?
   commissionType    String   @default("percentage") // percentage, fixed
   commissionValue   Float?
   internalSessionValue Float @default(0)

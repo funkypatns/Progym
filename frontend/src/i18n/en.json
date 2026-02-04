@@ -54,6 +54,7 @@
         "commissionPreview": "Commission Preview",
         "commissionPercent": "Commission %",
         "commissionAmount": "Commission Amount",
+        "trainerCommissionSaved": "Trainer default commission saved",
         "date": "Date",
         "startTime": "Start Time",
         "duration": "Duration",

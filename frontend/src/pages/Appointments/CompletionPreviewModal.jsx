@@ -72,6 +72,7 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const [paymentType, setPaymentType] = useState('full'); // full, partial
     const [paymentAmount, setPaymentAmount] = useState(0);
     const [sessionPrice, setSessionPrice] = useState(0);
+    const [commissionPercent, setCommissionPercent] = useState(0);
     const isSession = Boolean(data?.isSession && !data?.isSubscription);
 
     const defaultAmount = useMemo(() => data ? (data.remainingAmount ?? data.sessionPrice ?? 0) : 0, [data]);
@@ -79,11 +80,13 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     useEffect(() => {
         if (open && data) {
             const initialSessionPrice = Number(data.sessionPrice ?? data.remainingAmount ?? 0);
+            const initialCommissionPercent = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0);
             setPaymentMethod('cash');
             setPaymentNotes('');
             setPaymentType('full');
             setSessionPrice(Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0);
             setPaymentAmount(isSession ? (Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0) : defaultAmount);
+            setCommissionPercent(Number.isFinite(initialCommissionPercent) ? initialCommissionPercent : 0);
         }
     }, [open, data, defaultAmount, isSession]);
 
@@ -99,6 +102,7 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
         setPaymentNotes('');
         setPaymentType('full');
         setPaymentAmount(defaultAmount);
+        setCommissionPercent(0);
     }, [defaultAmount]);
 
     if (!data) return null;
@@ -114,16 +118,18 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const remainingAmount = isSession
         ? Math.max(0, resolvedSessionPrice - totalPaid)
         : (data.remainingAmount ?? data.sessionPrice ?? 0);
-    const commissionPercentUsed = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0) || 0;
+    const commissionPercentDefault = Number(data.commissionPercentUsed ?? data.commissionValue ?? 0) || 0;
+    const commissionPercentValue = Number.isFinite(Number(commissionPercent)) ? Number(commissionPercent) : commissionPercentDefault;
     const trainerPayoutRaw = Number(data.trainerPayout ?? data.commissionAmount ?? data.coachCommission ?? 0) || 0;
     const gymShareRaw = Number(data.gymShare ?? data.gymNetIncome ?? 0) || 0;
     const trainerPayout = isSession
-        ? Number(((resolvedSessionPrice * commissionPercentUsed) / 100).toFixed(2))
+        ? Number(((resolvedSessionPrice * commissionPercentValue) / 100).toFixed(2))
         : trainerPayoutRaw;
     const gymShare = isSession
         ? Number((resolvedSessionPrice - trainerPayout).toFixed(2))
         : gymShareRaw;
-    const isConfirmDisabled = loading || sessionPriceInvalid;
+    const commissionInvalid = isSession && (!Number.isFinite(commissionPercentValue) || commissionPercentValue < 0 || commissionPercentValue > 100);
+    const isConfirmDisabled = loading || sessionPriceInvalid || commissionInvalid;
 
     const handleClose = () => {
         resetState();
@@ -134,8 +140,9 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
         if (sessionPriceInvalid) return;
         const payload = {
             sessionPrice: isSession ? resolvedSessionPrice : undefined,
-            commissionPercent: commissionPercentUsed,
+            commissionPercent: commissionPercentValue,
             applyToTrainerDefault: true,
+            paymentMethod: paymentMethod,
             payment: needsPayment ? {
                 amount: Number(paymentAmount),
                 method: paymentMethod,
@@ -204,6 +211,22 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                                 </div>
                                             )}
                                         </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 font-bold">{t('appointments.commissionPercent', 'Commission %')}</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.1"
+                                                value={commissionPercent}
+                                                aria-invalid={commissionInvalid}
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    setCommissionPercent(Number.isFinite(value) ? value : 0);
+                                                }}
+                                                className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:border-emerald-500 focus:outline-none"
+                                            />
+                                        </div>
                                         <div className="grid grid-cols-2 gap-3 text-sm">
                                             <div className="flex flex-col gap-1">
                                                 <span className="text-slate-500 text-xs">{texts[lang].trainerGets}</span>
@@ -215,7 +238,7 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                             </div>
                                         </div>
                                         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                                            {texts[lang].commissionRule}: {commissionPercentUsed}%
+                                            {texts[lang].commissionRule}: {commissionPercentValue}%
                                         </div>
                                     </div>
                                 )}
