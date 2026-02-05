@@ -437,6 +437,8 @@ const AppointmentService = {
 
     /**
      * Adjust final price of a completed appointment (post-completion).
+     * Creates audit trail and recalculates due/overpaid + trainer earning snapshot.
+     * Blocks if appointment is settled.
      */
     async adjustAppointmentPrice(id, payload, userContext = null) {
         const parsedId = parseInt(id);
@@ -467,7 +469,10 @@ const AppointmentService = {
                     status: true,
                     trainerId: true,
                     memberId: true,
-                    coachId: true
+                    coachId: true,
+                    isSettled: true,
+                    dueAmount: true,
+                    overpaidAmount: true
                 }
             });
             if (!appointment) {
@@ -480,28 +485,26 @@ const AppointmentService = {
                 err.status = 400;
                 throw err;
             }
+            if (appointment.isSettled) {
+                const err = new Error('Session is settled and cannot be adjusted');
+                err.status = 409;
+                throw err;
+            }
 
             const currentFinal = appointment.finalPrice ?? appointment.price ?? 0;
             const targetFinal = roundMoney(newFinalPrice);
             const delta = roundMoney(targetFinal - currentFinal);
 
             // Audit log
-            await tx.sessionPriceAdjustment.create({
-                data: {
-                    appointmentId: appointment.id,
-                    oldFinalPrice: currentFinal,
-                    newFinalPrice: targetFinal,
-                    delta,
-                    reason,
-                    changedByUserId: userContext?.id ?? null
-                }
-            });
+            const paidAmount = roundMoney(appointment.paidAmount ?? 0);
+            const paymentStatusBefore = appointment.paymentStatus || 'unpaid';
+            const dueBefore = appointment.dueAmount ?? Math.max(0, (appointment.finalPrice ?? appointment.price ?? 0) - paidAmount);
+            const overpaidBefore = appointment.overpaidAmount ?? Math.max(0, paidAmount - (appointment.finalPrice ?? appointment.price ?? 0));
 
             // Recompute payment status
-            const paidAmount = roundMoney(appointment.paidAmount ?? 0);
             let dueAmount = 0;
             let overpaidAmount = 0;
-            let paymentStatus = appointment.paymentStatus || 'unpaid';
+            let paymentStatus = paymentStatusBefore;
 
             if (paidAmount > targetFinal) {
                 overpaidAmount = roundMoney(paidAmount - targetFinal);
@@ -575,6 +578,25 @@ const AppointmentService = {
                 include: {
                     payments: true,
                     trainer: true
+                }
+            });
+
+            await tx.sessionPriceAdjustment.create({
+                data: {
+                    appointmentId: appointment.id,
+                    oldFinalPrice: currentFinal,
+                    newFinalPrice: targetFinal,
+                    oldEffectivePrice: currentFinal,
+                    newEffectivePrice: targetFinal,
+                    delta,
+                    reason,
+                    changedByUserId: userContext?.id ?? null,
+                    paymentStatusBefore,
+                    paymentStatusAfter: paymentStatus,
+                    dueBefore,
+                    dueAfter: dueAmount,
+                    overpaidBefore,
+                    overpaidAfter: overpaidAmount
                 }
             });
 

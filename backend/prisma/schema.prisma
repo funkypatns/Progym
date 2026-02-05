@@ -853,13 +853,21 @@ model CoachSettlement {
 }
 
 model SessionPriceAdjustment {
-  id              Int      @id @default(autoincrement())
+  id              String   @id @default(uuid())
   appointmentId   Int
-  oldFinalPrice   Float
+  oldFinalPrice   Float?
   newFinalPrice   Float
+  oldEffectivePrice Float?
+  newEffectivePrice Float?
   delta           Float
   reason          String
   changedByUserId Int?
+  paymentStatusBefore String?
+  paymentStatusAfter  String?
+  dueBefore       Float?
+  dueAfter        Float?
+  overpaidBefore  Float?
+  overpaidAfter   Float?
   createdAt       DateTime @default(now())
 
   appointment Appointment @relation(fields: [appointmentId], references: [id])

@@ -220,8 +220,12 @@ router.post('/:id/complete', authenticate, async (req, res) => {
 // Adjust final price after completion
 router.patch('/:id/adjust-price', authenticate, async (req, res) => {
     try {
-        const { newFinalPrice, reason } = req.body || {};
-        const result = await AppointmentService.adjustAppointmentPrice(req.params.id, { newFinalPrice, reason }, req.user);
+        const { newFinalPrice, finalPrice, reason } = req.body || {};
+        const result = await AppointmentService.adjustAppointmentPrice(
+            req.params.id,
+            { newFinalPrice: newFinalPrice ?? finalPrice, reason },
+            req.user
+        );
         return res.json({ success: true, data: result });
     } catch (error) {
         const status = error.status || 400;
@@ -232,7 +236,7 @@ router.patch('/:id/adjust-price', authenticate, async (req, res) => {
     }
 });
 
-// Quick Settle
+\n// Price adjustment history\nrouter.get('/:id/price-adjustments', authenticate, async (req, res) => {\n    try {\n        const id = parseInt(req.params.id);\n        if (Number.isNaN(id)) return res.json({ success: true, data: [] });\n        const rows = await req.prisma.sessionPriceAdjustment.findMany({\n            where: { appointmentId: id },\n            orderBy: { createdAt: 'desc' },\n            include: {\n                changedBy: { select: { firstName: true, lastName: true, username: true, email: true } }\n            }\n        });\n        return res.json({ success: true, data: rows });\n    } catch (error) {\n        console.error('Price adjustments history error', error);\n        return res.json({ success: true, data: [] });\n    }\n});\n\n// Quick Settle
 router.post('/:id/settle', authenticate, async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
@@ -380,3 +384,5 @@ router.get('/availability', authenticate, async (req, res) => {
 });
 
 module.exports = router;
+
+
