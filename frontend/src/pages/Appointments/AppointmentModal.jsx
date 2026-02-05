@@ -50,6 +50,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [adjustForm, setAdjustForm] = useState({ price: '', reason: '' });
     const [adjustPreview, setAdjustPreview] = useState(null);
     const [adjustLoading, setAdjustLoading] = useState(false);
+    const [adjustHistory, setAdjustHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
 
     const [form, setForm] = useState({
         title: 'PT Session',
@@ -381,6 +383,20 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         });
         setAdjustPreview(null);
         setShowAdjustPrice(true);
+        loadAdjustHistory();
+    };
+
+    const loadAdjustHistory = async () => {
+        if (!appointment) return;
+        setHistoryLoading(true);
+        try {
+            const res = await apiClient.get(`/appointments/${appointment.id}/price-adjustments`);
+            setAdjustHistory(Array.isArray(res.data?.data) ? res.data.data : []);
+        } catch (error) {
+            setAdjustHistory([]);
+        } finally {
+            setHistoryLoading(false);
+        }
     };
 
     const handleSubmitAdjustPrice = async () => {
@@ -1076,18 +1092,48 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                         <span>{t('appointments.overpaid', 'Overpaid')}</span>
                                                         <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.overpaidAmount ?? adjustPreview.appointment?.overpaidAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
                                                     </div>
-                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                                        <span>{t('appointments.commissionAmount', 'Commission')}</span>
-                                                        <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.commissionAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
-                                                    </div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                    <span>{t('appointments.commissionAmount', 'Commission')}</span>
+                                                    <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.commissionAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
                                                 </div>
-                                            )}
+                                            </div>
+                                        )}
 
-                                            <div className="flex justify-end gap-2 pt-2">
+                                        {adjustHistory.length > 0 && (
+                                            <div className="mt-3">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setShowAdjustPrice(false)}
-                                                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                                                    onClick={loadAdjustHistory}
+                                                    className="text-xs text-indigo-600 hover:text-indigo-700 underline"
+                                                >
+                                                    {historyLoading ? t('appointments.loading', 'Loading...') : t('appointments.viewAdjustHistory', 'View price history')}
+                                                </button>
+                                                <div className="mt-2 max-h-40 overflow-y-auto space-y-2 text-sm">
+                                                    {adjustHistory.map((row) => (
+                                                        <div key={row.id} className="border border-slate-200 dark:border-slate-800 rounded-lg p-2">
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-500 dark:text-slate-300">{new Date(row.createdAt).toLocaleString()}</span>
+                                                                <span className="font-semibold text-slate-900 dark:text-white">
+                                                                    {formatMoney(row.oldFinalPrice ?? row.oldEffectivePrice ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })} → {formatMoney(row.newFinalPrice ?? row.newEffectivePrice ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-slate-600 dark:text-slate-300">
+                                                                {t('appointments.reason', 'Reason')}: {row.reason}
+                                                            </div>
+                                                            <div className="text-slate-500 dark:text-slate-400">
+                                                                {t('appointments.changedBy', 'Changed by')}: {row.changedBy ? `${row.changedBy.firstName || ''} ${row.changedBy.lastName || row.changedBy.username || row.changedBy.email || ''}`.trim() : t('appointments.system', 'System')}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-end gap-2 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAdjustPrice(false)}
+                                                className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
                                                 >
                                                     {t('common.cancel', 'Cancel')}
                                                 </button>

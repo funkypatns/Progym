@@ -1,4 +1,4 @@
-{
+﻿{
     "app": {
         "name": "Gym Management System",
         "tagline": "Professional Gym Management"
@@ -680,7 +680,7 @@
             "overage": "Overage",
             "balanced": "Balanced"
         },
-        "immutableWarning": "âš ï¸ Cannot edit closing after saving",
+        "immutableWarning": "Ã¢Å¡Â Ã¯Â¸Â Cannot edit closing after saving",
         "confirmCreate": "Confirm Create",
         "closingCreated": "Closing created successfully",
         "closingFailed": "Failed to create closing",
@@ -732,7 +732,7 @@
         "breakdown": "Payment Breakdown",
         "showDetails": "Show Details",
         "hideDetails": "Hide Details",
-        "referenceOnly": "Reference only â€” does not affect reports",
+        "referenceOnly": "Reference only Ã¢â‚¬â€ does not affect reports",
         "noData": "No financial data available"
     },
     "payInOut": {
@@ -828,7 +828,7 @@
         "remainingAmount": "Remaining Amount",
         "notes": "Notes",
         "transactionId": "Transaction ID",
-        "noValue": "â€”",
+        "noValue": "Ã¢â‚¬â€",
         "totalRefunds": "Total Refunds",
         "totalAmount": "Total Amount",
         "thisMonth": "This Month",
@@ -836,3 +836,4 @@
         "notAvailable": "Not available"
     }
 }
+
