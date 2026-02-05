@@ -112,6 +112,7 @@ Phase 4 - Receipts system
 | 2026-02-01 | 5953e1f | Fix coach dropdown selection in appointment modal by adding placeholder and controlled value. |
 | 2026-02-01 | 5266951 | Restore reports overview layout and remove gym income/coach earnings pages from routes/navigation. |
 | 2026-02-05 | 870aedf | Add member credit ledger, auto-apply overpayments to sessions, and expose credit in completion preview. |
+| 2026-02-05 | 0cafb74 | Repair mojibake in Arabic/English i18n files to restore readable text. |
 
 ## Next Actions
 - Run manual tests for full and partial subscription payments.
