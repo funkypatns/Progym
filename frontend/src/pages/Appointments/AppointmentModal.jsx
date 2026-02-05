@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
-import { Fragment } from 'react';
+
 import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle, Lock } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
 import { useAuthStore } from '../../store';
@@ -11,6 +11,7 @@ import { formatTime } from '../../utils/dateFormatter';
 import CoachScheduleModal from './CoachScheduleModal';
 import CompletionPreviewModal from './CompletionPreviewModal';
 import ReceiptModal from '../../components/payments/ReceiptModal';
+import { formatMoney } from '../../utils/numberFormatter';
 
 const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, autoCompleteTriggerId, onAutoCompleteTriggered, readOnly }) => {
     const { t, i18n } = useTranslation();
@@ -45,6 +46,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [showCompletionPreview, setShowCompletionPreview] = useState(false);
     const [completionData, setCompletionData] = useState(null);
     const [completionLoading, setCompletionLoading] = useState(false);
+    const [showAdjustPrice, setShowAdjustPrice] = useState(false);
+    const [adjustForm, setAdjustForm] = useState({ price: '', reason: '' });
+    const [adjustPreview, setAdjustPreview] = useState(null);
+    const [adjustLoading, setAdjustLoading] = useState(false);
 
     const [form, setForm] = useState({
         title: 'PT Session',
@@ -77,10 +82,15 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
                 setForm({
                     title: appointment.title || 'PT Session',
-                    price: appointment.price?.toString() || '0',
+                    price: (appointment.finalPrice ?? appointment.price ?? 0).toString(),
                     notes: appointment.notes || '',
                     status: appointment.status
                 });
+                setAdjustForm({
+                    price: (appointment.finalPrice ?? appointment.price ?? 0).toString(),
+                    reason: ''
+                });
+                setAdjustPreview(null);
             } else {
                 // Reset for create mode
                 setMemberSearch('');
@@ -229,6 +239,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         if (!selectedDay) return false;
         return isBefore(selectedDay, startOfDay(new Date()));
     }, [selectedDay]);
+    const displayedPrice = useMemo(() => {
+        if (appointment) {
+            return Number(appointment.finalPrice ?? appointment.price ?? 0);
+        }
+        return Number(form.price || 0);
+    }, [appointment, form.price]);
 
     const durationValid = durationNumber !== null && durationNumber >= 1 && durationNumber <= 600;
     const isArabic = (i18n.language || '').startsWith('ar');
@@ -354,6 +370,45 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             toast.error('Failed to cancel');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleOpenAdjustPrice = () => {
+        if (!appointment) return;
+        setAdjustForm({
+            price: (appointment.finalPrice ?? appointment.price ?? 0).toString(),
+            reason: ''
+        });
+        setAdjustPreview(null);
+        setShowAdjustPrice(true);
+    };
+
+    const handleSubmitAdjustPrice = async () => {
+        if (!appointment) return;
+        const value = Number(adjustForm.price);
+        if (!Number.isFinite(value) || value < 0) {
+            toast.error(isRtl ? 'أدخل سعرًا صالحًا' : 'Enter a valid price');
+            return;
+        }
+        if (!adjustForm.reason.trim()) {
+            toast.error(isRtl ? 'السبب مطلوب' : 'Reason is required');
+            return;
+        }
+        setAdjustLoading(true);
+        try {
+            const res = await apiClient.patch(`/appointments/${appointment.id}/adjust-price`, {
+                newFinalPrice: value,
+                finalPrice: value, // backward compatibility if backend expects finalPrice
+                reason: adjustForm.reason.trim()
+            });
+            const data = res.data?.data || {};
+            setAdjustPreview(data);
+            toast.success(isRtl ? 'تم تعديل السعر' : 'Price adjusted');
+            onSuccess?.();
+        } catch (error) {
+            toast.error(error.response?.data?.message || (isRtl ? 'فشل تعديل السعر' : 'Failed to adjust price'));
+        } finally {
+            setAdjustLoading(false);
         }
     };
 
@@ -875,6 +930,15 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                         {t('appointments.complete')}
                                                     </button>
                                                 )}
+                                                {isAlreadyCompleted && !isReadOnly && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleOpenAdjustPrice}
+                                                        className="px-4 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition flex-1 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-amber-900/20"
+                                                    >
+                                                        {t('appointments.adjustPrice', 'Adjust Price')}
+                                                    </button>
+                                                )}
                                                 {!isReadOnly && (
                                                     <button
                                                         type="button"
@@ -928,9 +992,128 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     }}
                     onDownload={(id) => console.log('Download', id)}
                 />
+
+                {/* Adjust Price Modal */}
+                <Transition show={showAdjustPrice} as={Fragment}>
+                    <Dialog as="div" className="relative z-50" onClose={() => setShowAdjustPrice(false)}>
+                        <Transition.Child
+                            as={Fragment}
+                            enter="ease-out duration-200"
+                            enterFrom="opacity-0"
+                            enterTo="opacity-100"
+                            leave="ease-in duration-150"
+                            leaveFrom="opacity-100"
+                            leaveTo="opacity-0"
+                        >
+                            <div className="fixed inset-0 bg-black/40" />
+                        </Transition.Child>
+
+                        <div className="fixed inset-0 overflow-y-auto">
+                            <div className="flex min-h-full items-center justify-center p-4">
+                                <Transition.Child
+                                    as={Fragment}
+                                    enter="ease-out duration-200"
+                                    enterFrom="opacity-0 scale-95"
+                                    enterTo="opacity-100 scale-100"
+                                    leave="ease-in duration-150"
+                                    leaveFrom="opacity-100 scale-100"
+                                    leaveTo="opacity-0 scale-95"
+                                >
+                                    <Dialog.Panel className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-xl border border-slate-200 dark:border-slate-800">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-white">
+                                                {t('appointments.adjustPrice', 'Adjust Price')}
+                                            </Dialog.Title>
+                                            <button onClick={() => setShowAdjustPrice(false)} className="p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <div className="text-sm text-slate-600 dark:text-slate-300">
+                                                {t('appointments.currentPrice', 'Current price')}: {' '}
+                                                <span className="font-semibold text-slate-900 dark:text-white">
+                                                    {formatMoney(displayedPrice, i18n.language, { code: 'EGP', symbol: 'EGP' })}
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('appointments.newPrice', 'New price')}</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={adjustForm.price}
+                                                    onChange={(e) => setAdjustForm(prev => ({ ...prev, price: e.target.value }))}
+                                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('appointments.adjustReason', 'Reason')}</label>
+                                                <textarea
+                                                    value={adjustForm.reason}
+                                                    onChange={(e) => setAdjustForm(prev => ({ ...prev, reason: e.target.value }))}
+                                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white"
+                                                    rows={3}
+                                                />
+                                            </div>
+
+                                            {adjustPreview && (
+                                                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-3 text-sm space-y-1">
+                                                    <div className="font-semibold text-slate-700 dark:text-slate-200">
+                                                        {t('appointments.preview', 'Preview')}
+                                                    </div>
+                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                        <span>{t('appointments.status', 'Status')}</span>
+                                                        <span className="font-semibold text-slate-900 dark:text-white">{adjustPreview.appointment?.paymentStatus || adjustPreview.paymentStatus || '-'}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                        <span>{t('appointments.due', 'Due')}</span>
+                                                        <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.dueAmount ?? adjustPreview.appointment?.dueAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                        <span>{t('appointments.overpaid', 'Overpaid')}</span>
+                                                        <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.overpaidAmount ?? adjustPreview.appointment?.overpaidAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                        <span>{t('appointments.commissionAmount', 'Commission')}</span>
+                                                        <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.commissionAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-end gap-2 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAdjustPrice(false)}
+                                                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                                                >
+                                                    {t('common.cancel', 'Cancel')}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSubmitAdjustPrice}
+                                                    disabled={adjustLoading}
+                                                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white disabled:opacity-50"
+                                                >
+                                                    {adjustLoading ? t('appointments.saving', 'Saving...') : t('appointments.save', 'Save')}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </Dialog.Panel>
+                                </Transition.Child>
+                            </div>
+                        </div>
+                    </Dialog>
+                </Transition>
             </Dialog>
         </Transition>
     );
 };
 
 export default AppointmentModal;
+
+
+
+
