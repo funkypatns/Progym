@@ -715,9 +715,12 @@ model Appointment {
   
   start       DateTime
   end         DateTime
-  price       Float    @default(0)
+  price       Float    @default(0)   // Base price at booking
+  finalPrice  Float?                // Final price after adjustments; fallback to price when null
   paidAmount  Float    @default(0)
-  paymentStatus String @default("unpaid") // unpaid, partial, paid
+  dueAmount   Float    @default(0)
+  overpaidAmount Float @default(0)
+  paymentStatus String @default("unpaid") // unpaid, partial, paid, due, overpaid
   
   status      String   @default("scheduled") // scheduled, completed, cancelled, no_show
   notes       String?
@@ -742,6 +745,7 @@ model Appointment {
   earnings    CoachEarning[]
   financialRecord AppointmentFinancialRecord?
   trainerEarning TrainerEarning?
+  priceAdjustments SessionPriceAdjustment[]
 }
 
 /// Commission configuration per coach
@@ -846,5 +850,19 @@ model CoachSettlement {
   expense     Expense? @relation(fields: [expenseId], references: [id])
   earnings    CoachEarning[]
   financialRecords AppointmentFinancialRecord[]
+}
+
+model SessionPriceAdjustment {
+  id              Int      @id @default(autoincrement())
+  appointmentId   Int
+  oldFinalPrice   Float
+  newFinalPrice   Float
+  delta           Float
+  reason          String
+  changedByUserId Int?
+  createdAt       DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  changedBy   User?       @relation(fields: [changedByUserId], references: [id])
 }
 

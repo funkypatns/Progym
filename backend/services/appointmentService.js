@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 const CommissionService = require('./commissionService');
 const { recordPaymentTransaction, normalizePaymentMethod } = require('./paymentService');
 const { roundMoney } = require('../utils/money');
+const { getDefaultSessionCommissionPercent } = require('./commissionService');
 
 const createInvalidTimeError = () => {
     const err = new Error('Invalid time or duration.');
@@ -431,6 +432,159 @@ const AppointmentService = {
             }
 
             return { appointment: updated, sessionPayment, trainer: updatedTrainer, alreadyCompleted: false };
+        });
+    },
+
+    /**
+     * Adjust final price of a completed appointment (post-completion).
+     */
+    async adjustAppointmentPrice(id, payload, userContext = null) {
+        const parsedId = parseInt(id);
+        const newFinalPriceRaw = payload?.newFinalPrice;
+        const reason = (payload?.reason || '').trim();
+        const newFinalPrice = Number(newFinalPriceRaw);
+
+        if (!Number.isFinite(newFinalPrice) || newFinalPrice < 0) {
+            const err = new Error('New final price must be a non-negative number');
+            err.status = 400;
+            throw err;
+        }
+        if (!reason) {
+            const err = new Error('Reason is required for price adjustment');
+            err.status = 400;
+            throw err;
+        }
+
+        return await prisma.$transaction(async (tx) => {
+            const appointment = await tx.appointment.findUnique({
+                where: { id: parsedId },
+                select: {
+                    id: true,
+                    price: true,
+                    finalPrice: true,
+                    paidAmount: true,
+                    paymentStatus: true,
+                    status: true,
+                    trainerId: true,
+                    memberId: true,
+                    coachId: true
+                }
+            });
+            if (!appointment) {
+                const err = new Error('Appointment not found');
+                err.status = 404;
+                throw err;
+            }
+            if (!['completed', 'auto_completed'].includes(appointment.status)) {
+                const err = new Error('Price can only be adjusted after completion');
+                err.status = 400;
+                throw err;
+            }
+
+            const currentFinal = appointment.finalPrice ?? appointment.price ?? 0;
+            const targetFinal = roundMoney(newFinalPrice);
+            const delta = roundMoney(targetFinal - currentFinal);
+
+            // Audit log
+            await tx.sessionPriceAdjustment.create({
+                data: {
+                    appointmentId: appointment.id,
+                    oldFinalPrice: currentFinal,
+                    newFinalPrice: targetFinal,
+                    delta,
+                    reason,
+                    changedByUserId: userContext?.id ?? null
+                }
+            });
+
+            // Recompute payment status
+            const paidAmount = roundMoney(appointment.paidAmount ?? 0);
+            let dueAmount = 0;
+            let overpaidAmount = 0;
+            let paymentStatus = appointment.paymentStatus || 'unpaid';
+
+            if (paidAmount > targetFinal) {
+                overpaidAmount = roundMoney(paidAmount - targetFinal);
+                paymentStatus = 'overpaid';
+            } else if (paidAmount < targetFinal) {
+                dueAmount = roundMoney(targetFinal - paidAmount);
+                paymentStatus = paidAmount > 0 ? 'partial' : 'due';
+            } else {
+                paymentStatus = 'paid';
+            }
+
+            // Resolve commission percent
+            let commissionPercent = null;
+            const existingTrainerEarning = await tx.trainerEarning.findUnique({
+                where: { appointmentId: appointment.id },
+                select: { commissionPercent: true, status: true }
+            });
+            if (existingTrainerEarning?.commissionPercent !== null && existingTrainerEarning?.commissionPercent !== undefined) {
+                commissionPercent = existingTrainerEarning.commissionPercent;
+            } else if (appointment.trainerId) {
+                const trainer = await tx.staffTrainer.findUnique({
+                    where: { id: appointment.trainerId },
+                    select: { commissionPercent: true }
+                });
+                if (trainer?.commissionPercent !== null && trainer?.commissionPercent !== undefined) {
+                    commissionPercent = trainer.commissionPercent;
+                }
+            }
+            if (commissionPercent === null || commissionPercent === undefined) {
+                commissionPercent = await getDefaultSessionCommissionPercent(tx);
+            }
+            const commissionAmount = roundMoney((targetFinal * commissionPercent) / 100);
+
+            // Update trainer earning snapshot (create if missing)
+            if (appointment.trainerId) {
+                const existing = await tx.trainerEarning.findUnique({
+                    where: { appointmentId: appointment.id }
+                });
+                if (existing) {
+                    await tx.trainerEarning.update({
+                        where: { appointmentId: appointment.id },
+                        data: {
+                            baseAmount: targetFinal,
+                            commissionAmount,
+                            commissionPercent
+                        }
+                    });
+                } else {
+                    await tx.trainerEarning.create({
+                        data: {
+                            trainerId: appointment.trainerId,
+                            appointmentId: appointment.id,
+                            baseAmount: targetFinal,
+                            commissionPercent,
+                            commissionAmount,
+                            status: 'UNPAID'
+                        }
+                    });
+                }
+            }
+
+            // Update appointment
+            const updatedAppointment = await tx.appointment.update({
+                where: { id: appointment.id },
+                data: {
+                    finalPrice: targetFinal,
+                    dueAmount,
+                    overpaidAmount,
+                    paymentStatus
+                },
+                include: {
+                    payments: true,
+                    trainer: true
+                }
+            });
+
+            return {
+                appointment: updatedAppointment,
+                commissionPercent,
+                commissionAmount,
+                dueAmount,
+                overpaidAmount
+            };
         });
     },
 

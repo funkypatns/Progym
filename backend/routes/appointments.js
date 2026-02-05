@@ -217,6 +217,21 @@ router.post('/:id/complete', authenticate, async (req, res) => {
     }
 });
 
+// Adjust final price after completion
+router.patch('/:id/adjust-price', authenticate, async (req, res) => {
+    try {
+        const { newFinalPrice, reason } = req.body || {};
+        const result = await AppointmentService.adjustAppointmentPrice(req.params.id, { newFinalPrice, reason }, req.user);
+        return res.json({ success: true, data: result });
+    } catch (error) {
+        const status = error.status || 400;
+        return res.status(status).json({
+            success: false,
+            message: error.message || 'Failed to adjust price'
+        });
+    }
+});
+
 // Quick Settle
 router.post('/:id/settle', authenticate, async (req, res) => {
     try {
