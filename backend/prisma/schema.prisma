@@ -275,9 +275,30 @@ model Payment {
   
   earnings     CoachEarning[] // Linked commission earning
     appointmentId Int? @unique
-    appointment   Appointment? @relation(fields: [appointmentId], references: [id])
-  
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+
   @@index([transactionRef])
+}
+
+/// Member credit ledger (positive = credit granted, negative = credit consumed)
+model MemberCreditLedger {
+  id                    Int      @id @default(autoincrement())
+  memberId              Int
+  sourceAppointmentId   Int?
+  appliedAppointmentId  Int?
+  amount                Float
+  note                  String?
+  createdByUserId       Int?
+  createdAt             DateTime @default(now())
+
+  member            Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sourceAppointment Appointment?  @relation("SourceAppointmentCredit", fields: [sourceAppointmentId], references: [id], onDelete: SetNull)
+  appliedAppointment Appointment? @relation("AppliedAppointmentCredit", fields: [appliedAppointmentId], references: [id], onDelete: SetNull)
+  createdBy         User?         @relation(fields: [createdByUserId], references: [id])
+
+  @@index([memberId])
+  @@index([sourceAppointmentId])
+  @@index([appliedAppointmentId])
 }
 
 /// Receipt counters for daily incremental receipt numbers
@@ -746,6 +767,8 @@ model Appointment {
   financialRecord AppointmentFinancialRecord?
   trainerEarning TrainerEarning?
   priceAdjustments SessionPriceAdjustment[]
+  creditAdjustmentsAsSource   MemberCreditLedger[] @relation("SourceAppointmentCredit")
+  creditAdjustmentsAppliedTo  MemberCreditLedger[] @relation("AppliedAppointmentCredit")
 }
 
 /// Commission configuration per coach

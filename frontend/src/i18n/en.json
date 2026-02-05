@@ -280,7 +280,13 @@
         "paidAt": "Paid At",
         "paymentMethod": "Method",
         "unknown": "Unknown",
-        "other": "Other"
+        "other": "Other",
+        "total": "Total",
+        "paid": "Paid",
+        "due": "Due",
+        "credit": "Credit / Overpaid",
+        "creditApplied": "Credit Applied",
+        "remainingDue": "Remaining Due"
     },
     "reports": {
         "title": "Reports",

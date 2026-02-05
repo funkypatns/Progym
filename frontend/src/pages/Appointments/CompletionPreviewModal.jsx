@@ -83,11 +83,14 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
             const initialCommissionPercent = Number(
                 data.commissionPercentUsed ?? data.commissionValue ?? data.defaultCommissionPercent ?? 0
             );
+            const initialCreditApplied = Number(data.creditAppliedPreview || 0);
+            const initialPaid = Number(data.totalPaid || 0);
+            const baseRemaining = Math.max(0, (Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0) - initialCreditApplied - initialPaid);
             setPaymentMethod('cash');
             setPaymentNotes('');
             setPaymentType('full');
             setSessionPrice(Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0);
-            setPaymentAmount(isSession ? (Number.isFinite(initialSessionPrice) ? initialSessionPrice : 0) : defaultAmount);
+            setPaymentAmount(isSession ? baseRemaining : defaultAmount);
             setCommissionPercent(Number.isFinite(initialCommissionPercent) ? initialCommissionPercent : 0);
         }
     }, [open, data, defaultAmount, isSession]);
@@ -95,9 +98,12 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     useEffect(() => {
         if (isSession) {
             const numericPrice = Number(sessionPrice);
-            setPaymentAmount(Number.isFinite(numericPrice) ? numericPrice : 0);
+            const creditPreview = Number(data?.creditAppliedPreview || 0);
+            const paidPreview = Number(data?.totalPaid || 0);
+            const baseRemaining = Math.max(0, (Number.isFinite(numericPrice) ? numericPrice : 0) - creditPreview - paidPreview);
+            setPaymentAmount(baseRemaining);
         }
-    }, [sessionPrice, isSession]);
+    }, [sessionPrice, isSession, data]);
 
     const resetState = useCallback(() => {
         setPaymentMethod('cash');
@@ -113,13 +119,15 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
     const sessionPriceInvalid = isSession && (!Number.isFinite(resolvedSessionPrice) || resolvedSessionPrice <= 0);
     const paymentBase = isSession ? resolvedSessionPrice : Number(data.remainingAmount ?? data.sessionPrice ?? 0);
     const totalPaid = Number(data.totalPaid || 0);
+    const creditAvailable = Number(data.creditAvailable || 0);
+    const creditAppliedPreview = Number(data.creditAppliedPreview || 0);
     const isPaidNow = isSession
         ? (resolvedSessionPrice > 0 && totalPaid >= resolvedSessionPrice - 0.01)
         : data.isPaid;
     const needsPayment = !isPaidNow && paymentBase > 0;
     const remainingAmount = isSession
-        ? Math.max(0, resolvedSessionPrice - totalPaid)
-        : (data.remainingAmount ?? data.sessionPrice ?? 0);
+        ? Math.max(0, resolvedSessionPrice - totalPaid - creditAppliedPreview)
+        : Math.max(0, (data.remainingAmount ?? data.sessionPrice ?? 0) - creditAppliedPreview);
     const commissionPercentDefault = Number(
         data.commissionPercentUsed ?? data.commissionValue ?? data.defaultCommissionPercent ?? 0
     ) || 0;
@@ -190,11 +198,11 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                     <p>{t('appointments.completionDisclaimer', texts[lang].completionDisclaimer)}</p>
                                 </div>
                                 {isSession && (
-                                    <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 space-y-3">
-                                        <div className="text-xs uppercase tracking-wider text-slate-400 font-bold">
-                                            {t('appointments.financialImpact', texts[lang].financialImpact)}
-                                        </div>
-                                        <div className="space-y-1">
+                                <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 space-y-3">
+                                    <div className="text-xs uppercase tracking-wider text-slate-400 font-bold">
+                                        {t('appointments.financialImpact', texts[lang].financialImpact)}
+                                    </div>
+                                    <div className="space-y-1">
                                             <label className="text-xs text-slate-500 font-bold">{texts[lang].sessionPrice}</label>
                                             <input
                                                 type="number"
@@ -239,8 +247,24 @@ const CompletionPreviewModal = ({ open, onClose, onConfirm, data, loading }) => 
                                             <div className="flex flex-col gap-1">
                                                 <span className="text-slate-500 text-xs">{texts[lang].gymGets}</span>
                                                 <span className="text-white font-bold">{gymShare.toFixed(2)}</span>
-                                            </div>
+                                    </div>
+                                </div>
+                                {isSession && (creditAvailable > 0 || creditAppliedPreview > 0) && (
+                                    <div className="p-3 bg-blue-900/20 border border-blue-800/40 rounded-lg text-sm text-blue-100 space-y-1">
+                                        <div className="font-semibold flex justify-between">
+                                            <span>{t('payments.credit', 'Credit / Overpaid')}</span>
+                                            <span>{(creditAvailable || 0).toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US', { minimumFractionDigits: 2 })}</span>
                                         </div>
+                                        <div className="flex justify-between text-xs text-blue-200">
+                                            <span>{t('payments.creditApplied', 'Credit Applied')}</span>
+                                            <span>{(creditAppliedPreview || 0).toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-blue-200">
+                                            <span>{t('payments.remainingDue', 'Remaining Due')}</span>
+                                            <span>{remainingAmount.toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </div>
+                                )}
                                         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                                             {texts[lang].commissionRule}: {commissionPercentValue}%
                                         </div>

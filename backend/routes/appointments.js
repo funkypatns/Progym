@@ -4,6 +4,7 @@ const AppointmentService = require('../services/appointmentService');
 const { authenticate } = require('../middleware/auth');
 const { parseDateRange } = require('../utils/dateParams');
 const { roundMoney } = require('../utils/money');
+const CreditService = require('../services/creditService');
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Create
@@ -145,7 +146,17 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         const sessionPayment = result?.sessionPayment ?? null;
         const trainer = result?.trainer ?? null;
         const alreadyCompleted = Boolean(result?.alreadyCompleted);
-        res.json({ success: true, ok: true, appointment, sessionPayment, trainer, alreadyCompleted });
+        res.json({
+            success: true,
+            ok: true,
+            appointment,
+            sessionPayment,
+            trainer,
+            alreadyCompleted,
+            appliedCredit: result?.appliedCredit ?? 0,
+            dueAmount: result?.dueAmount ?? appointment?.dueAmount,
+            overpaidAmount: result?.overpaidAmount ?? appointment?.overpaidAmount
+        });
     } catch (error) {
         if (error?.code === 'SESSION_PRICE_INVALID' || error?.message === 'Session price must be greater than 0') {
             return res.status(400).json({
@@ -254,6 +265,9 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const appointment = await req.prisma.appointment.findUnique({
             where: { id: parseInt(req.params.id) },
             select: {
+                memberId: true,
+                price: true,
+                finalPrice: true,
                 trainerId: true,
                 title: true,
                 trainer: { select: { commissionPercent: true, name: true } }
@@ -305,11 +319,19 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         preview.gymShare = gymShare;
         preview.gymNetIncome = gymShare;
         preview.basisAmount = priceValue;
+        const creditBalance = appointment?.memberId
+            ? await CreditService.getBalance(req.prisma, appointment.memberId)
+            : 0;
+        const creditAppliedPreview = Math.min(creditBalance, priceValue);
+        const remainingAfterCredit = Math.max(0, priceValue - creditAppliedPreview - (preview.totalPaid || 0));
         const responseData = {
             ...preview,
             defaultCommissionPercent,
             trainerName: trainerForPreview?.name || preview?.coachName || '',
-            serviceName: appointment?.title || ''
+            serviceName: appointment?.title || '',
+            creditAvailable: roundMoney(creditBalance),
+            creditAppliedPreview: roundMoney(creditAppliedPreview),
+            remainingAfterCredit: roundMoney(remainingAfterCredit)
         };
         res.json({ success: true, data: responseData });
     } catch (error) {

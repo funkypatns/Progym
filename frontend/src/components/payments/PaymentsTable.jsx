@@ -69,12 +69,13 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                 } else if (aptId) {
                     // Appointment Logic
                     const apt = payment.appointment;
-                    const total = apt.price || 0;
+                    const total = apt.finalPrice ?? apt.price ?? 0;
                     const paid = apt.paidAmount || 0;
-                    const remaining = Math.max(0, total - paid);
+                    const remaining = Number.isFinite(apt.dueAmount) ? apt.dueAmount : Math.max(0, total - paid);
+                    const credit = Number.isFinite(apt.overpaidAmount) ? apt.overpaidAmount : Math.max(0, paid - total);
 
                     let status = 'DUE';
-                    if (paid >= total - 0.01) status = 'PAID';
+                    if (remaining <= 0.01) status = 'PAID';
                     else if (paid > 0) status = 'PARTIAL';
 
                     // Allow Manual Override status if present? No, calculate it.
@@ -94,6 +95,7 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                         total,
                         paid,
                         remaining,
+                        credit,
                         status: status,
                         daysRemaining: 0,
                         isPaused: false,
@@ -239,8 +241,10 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                     { label: 'Due', val: group.remaining, color: group.remaining > 0 ? 'text-rose-600' : 'text-slate-400', bold: true, highlight: group.remaining > 0 }
                                 ]
                                 : [
-                                    { label: 'Total', val: group.total, color: 'text-slate-600 dark:text-slate-400' },
-                                    { label: 'Paid', val: group.paid, color: 'text-emerald-600' }
+                                    { label: t('payments.total', 'Total'), val: group.total, color: 'text-slate-600 dark:text-slate-400' },
+                                    { label: t('payments.paid', 'Paid'), val: group.paid, color: 'text-emerald-600' },
+                                    { label: t('payments.due', 'Due'), val: group.remaining, color: group.remaining > 0 ? 'text-rose-600' : 'text-slate-400', bold: group.remaining > 0 },
+                                    { label: t('payments.credit', 'Credit'), val: group.credit || 0, color: (group.credit || 0) > 0 ? 'text-blue-600' : 'text-slate-400' }
                                 ];
 
                             return (

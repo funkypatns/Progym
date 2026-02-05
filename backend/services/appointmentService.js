@@ -5,6 +5,7 @@ const CommissionService = require('./commissionService');
 const { recordPaymentTransaction, normalizePaymentMethod } = require('./paymentService');
 const { roundMoney } = require('../utils/money');
 const { getDefaultSessionCommissionPercent } = require('./commissionService');
+const CreditService = require('./creditService');
 
 const createInvalidTimeError = () => {
     const err = new Error('Invalid time or duration.');
@@ -300,13 +301,18 @@ const AppointmentService = {
             const trainerPayout = roundMoney((sessionPrice * commissionPercentUsed) / 100);
             const gymShare = roundMoney(sessionPrice - trainerPayout);
 
+            // Credit balance (apply before creating payment to avoid over-collection)
+            const creditBalance = await CreditService.getBalance(tx, existing.memberId);
+            const appliedCredit = roundMoney(Math.min(creditBalance, sessionPrice));
+
             let sessionPayment = null;
             const existingPayment = await tx.payment.findFirst({
                 where: { appointmentId: parseInt(id) },
                 orderBy: { createdAt: 'desc' }
             });
             const paymentMethod = normalizePaymentMethod(paymentData?.method || existingPayment?.method || 'other').toUpperCase();
-            const paymentCollected = Boolean(paymentData?.method) && Number.isFinite(sessionPrice) && sessionPrice > 0;
+            const amountToCollect = roundMoney(Math.max(sessionPrice - appliedCredit, 0));
+            const paymentCollected = Boolean(paymentData?.method) && Number.isFinite(amountToCollect) && amountToCollect > 0;
             const paymentNotes = paymentData?.notes ? String(paymentData.notes).trim() : undefined;
 
             if (existingPayment) {
@@ -317,7 +323,7 @@ const AppointmentService = {
                     gymShare
                 };
                 if (existingPayment.status !== 'completed') {
-                    updateData.amount = sessionPrice;
+                    updateData.amount = amountToCollect;
                     updateData.method = paymentMethod;
                     updateData.status = paymentCollected ? 'completed' : 'pending';
                     if (paymentNotes) updateData.notes = paymentNotes;
@@ -330,11 +336,11 @@ const AppointmentService = {
                     where: { id: existingPayment.id },
                     data: updateData
                 });
-            } else {
+            } else if (paymentCollected) {
                 const { payment } = await recordPaymentTransaction(tx, {
                     appointmentId: parseInt(id),
                     memberId: existing.memberId,
-                    amount: sessionPrice,
+                    amount: amountToCollect,
                     method: paymentMethod,
                     status: paymentCollected ? 'completed' : 'pending',
                     notes: paymentNotes,
@@ -348,18 +354,38 @@ const AppointmentService = {
                 sessionPayment = payment;
             }
 
-            // 2.5 Recalculate Payment Status
+            // Credit application (auto-apply to session)
+            let appliedCreditUsed = 0;
+            if (appliedCredit > 0) {
+                const creditResult = await CreditService.applyCredit(tx, existing.memberId, appliedCredit, {
+                    appliedAppointmentId: parseInt(id),
+                    createdByUserId: userContext?.id ?? null,
+                    note: 'Applied credit to session completion'
+                });
+                appliedCreditUsed = creditResult.applied;
+            }
+
+            // 2.5 Recalculate Payment Status using payments + credit applied
             const allPayments = await tx.payment.findMany({
                 where: { appointmentId: parseInt(id), status: 'completed' },
                 select: { amount: true }
             });
-            const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0); // Includes just added one
+            const totalPaidCash = roundMoney(allPayments.reduce((sum, p) => sum + p.amount, 0)); // Includes just added one
+            const totalPaid = roundMoney(totalPaidCash + appliedCreditUsed);
 
             const sessionRemaining = Math.max(0, sessionPrice - totalPaid);
 
             let paymentStatus = 'unpaid';
-            if (totalPaid >= sessionPrice - 0.01) paymentStatus = 'paid';
-            else if (totalPaid > 0) paymentStatus = 'partial';
+            if (sessionRemaining > 0.01 && totalPaid > 0) {
+                paymentStatus = 'due';
+            } else if (sessionRemaining > 0.01) {
+                paymentStatus = 'due';
+            } else {
+                paymentStatus = 'paid';
+            }
+
+            const dueAmount = roundMoney(Math.max(0, sessionPrice - totalPaid));
+            const overpaidAmount = roundMoney(Math.max(0, totalPaid - sessionPrice));
 
             // 3. Update status
             const updated = await tx.appointment.update({
@@ -368,6 +394,9 @@ const AppointmentService = {
                     status: 'completed',
                     paidAmount: totalPaid,
                     paymentStatus,
+                    dueAmount,
+                    overpaidAmount,
+                    finalPrice: sessionPrice,
                     isCompleted: true,
                     price: sessionPrice,
                     completedByEmployeeId: userContext?.id ?? undefined,
@@ -375,6 +404,15 @@ const AppointmentService = {
                 },
                 include: { member: true, coach: true, payments: true }
             });
+
+            // If overpaid, grant credit delta
+            if (overpaidAmount > 0) {
+                await CreditService.adjustCreditDelta(tx, existing.memberId, overpaidAmount, {
+                    sourceAppointmentId: updated.id,
+                    createdByUserId: userContext?.id ?? null,
+                    note: 'Overpayment credit from session completion'
+                });
+            }
 
             let updatedTrainer = null;
             if (hasCommissionOverride && existing?.trainerId) {
@@ -431,7 +469,15 @@ const AppointmentService = {
                 }
             }
 
-            return { appointment: updated, sessionPayment, trainer: updatedTrainer, alreadyCompleted: false };
+            return {
+                appointment: updated,
+                sessionPayment,
+                trainer: updatedTrainer,
+                alreadyCompleted: false,
+                appliedCredit: appliedCreditUsed,
+                dueAmount,
+                overpaidAmount
+            };
         });
     },
 
@@ -504,14 +550,14 @@ const AppointmentService = {
             // Recompute payment status
             let dueAmount = 0;
             let overpaidAmount = 0;
-            let paymentStatus = paymentStatusBefore;
+            let paymentStatus = 'paid';
 
             if (paidAmount > targetFinal) {
                 overpaidAmount = roundMoney(paidAmount - targetFinal);
-                paymentStatus = 'overpaid';
+                paymentStatus = 'paid';
             } else if (paidAmount < targetFinal) {
                 dueAmount = roundMoney(targetFinal - paidAmount);
-                paymentStatus = paidAmount > 0 ? 'partial' : 'due';
+                paymentStatus = 'due';
             } else {
                 paymentStatus = 'paid';
             }
@@ -580,6 +626,16 @@ const AppointmentService = {
                     trainer: true
                 }
             });
+
+            // Credit delta for overpayment changes
+            const creditDelta = overpaidAmount - overpaidBefore;
+            if (creditDelta !== 0) {
+                await CreditService.adjustCreditDelta(tx, appointment.memberId, creditDelta, {
+                    sourceAppointmentId: appointment.id,
+                    createdByUserId: userContext?.id ?? null,
+                    note: 'Price adjustment credit update'
+                });
+            }
 
             await tx.sessionPriceAdjustment.create({
                 data: {
