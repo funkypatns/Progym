@@ -5,6 +5,15 @@ const { authenticate } = require('../middleware/auth');
 // All staff trainer routes require authentication
 router.use(authenticate);
 
+const DEFAULT_SESSION_COMMISSION_PERCENT = 20;
+const getDefaultSessionCommissionPercent = async (prisma) => {
+  const setting = await prisma.setting.findUnique({ where: { key: 'defaultSessionCommissionPercent' } });
+  const raw = setting?.value;
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num < 0 || num > 100) return DEFAULT_SESSION_COMMISSION_PERCENT;
+  return num;
+};
+
 const resolveDateRange = (startDate, endDate) => {
   const defaultEnd = new Date();
   const defaultStart = new Date(defaultEnd.getFullYear(), defaultEnd.getMonth(), 1);
@@ -274,9 +283,15 @@ router.get('/:id/earnings', async (req, res) => {
             id: true,
             title: true,
             price: true,
+            finalPrice: true,
+            paidAmount: true,
+            dueAmount: true,
+            overpaidAmount: true,
+            paymentStatus: true,
             start: true,
             end: true,
             member: { select: { firstName: true, lastName: true, memberId: true } },
+            trainer: { select: { id: true, name: true, commissionPercent: true } },
             completedByEmployee: { select: { firstName: true, lastName: true } }
           }
         }
@@ -284,17 +299,31 @@ router.get('/:id/earnings', async (req, res) => {
       orderBy: { createdAt: 'asc' }
     });
 
+    const defaultCommissionPercent = await getDefaultSessionCommissionPercent(req.prisma);
+
     const mapped = earnings.map(item => {
       const memberName = `${item.appointment?.member?.firstName || ''} ${item.appointment?.member?.lastName || ''}`.trim();
       const employeeName = item.appointment?.completedByEmployee
         ? `${item.appointment.completedByEmployee.firstName || ''} ${item.appointment.completedByEmployee.lastName || ''}`.trim()
         : '';
-      const basisAmount = item.baseAmount ?? item.appointment?.price ?? 0;
-      const ruleText = item.commissionPercent !== null && item.commissionPercent !== undefined
-        ? `${item.commissionPercent}% of ${basisAmount || 0}`
-        : `Fixed ${item.commissionAmount || 0}`;
+
+      const effectivePrice = item.appointment?.finalPrice ?? item.baseAmount ?? item.appointment?.price ?? 0;
+      const commissionPercentUsed = item.commissionPercent !== null && item.commissionPercent !== undefined
+        ? item.commissionPercent
+        : (item.appointment?.trainer?.commissionPercent ?? defaultCommissionPercent);
+      const commissionAmount = item.commissionAmount !== null && item.commissionAmount !== undefined
+        ? item.commissionAmount
+        : Number(((effectivePrice * (commissionPercentUsed || 0)) / 100).toFixed(2));
+
+      const basisAmount = effectivePrice;
+      const ruleText = `${commissionPercentUsed ?? 0}% of ${basisAmount || 0}`;
       const dateValue = item.appointment?.end || item.appointment?.start || item.createdAt;
       const date = dateValue instanceof Date ? dateValue.toISOString() : dateValue;
+
+      const dueAmount = item.appointment?.dueAmount ?? Math.max(0, effectivePrice - (item.appointment?.paidAmount ?? 0));
+      const overpaidAmount = item.appointment?.overpaidAmount ?? Math.max(0, (item.appointment?.paidAmount ?? 0) - effectivePrice);
+      const paymentStatus = item.appointment?.paymentStatus || (dueAmount > 0 ? 'DUE' : (overpaidAmount > 0 ? 'OVERPAID' : 'PAID'));
+
       return {
         id: item.id,
         appointmentId: item.appointmentId,
@@ -304,9 +333,13 @@ router.get('/:id/earnings', async (req, res) => {
         sourceRef: item.appointment?.title || 'Session',
         basisAmount,
         ruleText,
-        earningAmount: Number(item.commissionAmount || 0),
+        earningAmount: Number(commissionAmount || 0),
+        commissionPercent: commissionPercentUsed ?? null,
         status: item.status === 'PAID' ? 'paid' : 'pending',
-        employeeName
+        employeeName,
+        paymentStatus,
+        dueAmount,
+        overpaidAmount
       };
     });
 
