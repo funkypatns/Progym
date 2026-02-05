@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
+﻿const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const DEFAULT_SESSION_COMMISSION_PERCENT = 20;
@@ -70,9 +70,7 @@ const CommissionService = {
         const parsedOverride = overridePrice !== undefined && overridePrice !== null
             ? Number(overridePrice)
             : null;
-        const basePrice = Number.isFinite(parsedOverride) && parsedOverride > 0
-            ? parsedOverride
-            : Number(appointment.price || 0);
+        const effectivePrice = appointment.finalPrice ?? appointment.price ?? 0;\r\n        const basePrice = Number.isFinite(parsedOverride) && parsedOverride > 0\r\n            ? parsedOverride\r\n            : Number(effectivePrice);
         let sessionBreakdown;
         if (Number.isFinite(basePrice) && basePrice > 0) {
             sessionBreakdown = await getSessionCommissionBreakdown(basePrice, tx);
@@ -398,3 +396,4 @@ const CommissionService = {
 };
 
 module.exports = CommissionService;
+
