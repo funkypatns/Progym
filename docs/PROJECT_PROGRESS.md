@@ -200,3 +200,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 912b6a6 | Add undo completion backend with permission guard, safety checks, and audit log. |
 | 2026-02-10 | a037572 | Add undo completion UI with permission gate and reason modal. |
 | 2026-02-10 | d6d4cc7 | Harden license activation error handling to avoid 500s on bad license server responses. |
+| 2026-02-10 | 791b7c5 | Fix invalid en.json syntax causing Vite i18n import 500. |
