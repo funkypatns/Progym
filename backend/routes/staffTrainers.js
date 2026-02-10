@@ -314,11 +314,17 @@ router.get('/:id/earnings', async (req, res) => {
         ? `${item.appointment.completedByEmployee.firstName || ''} ${item.appointment.completedByEmployee.lastName || ''}`.trim()
         : '';
 
-      const originalPrice = item.appointment?.price ?? 0;
-      const finalPrice = item.appointment?.finalPrice ?? originalPrice;
-      const effectivePrice = finalPrice ?? item.baseAmount ?? originalPrice ?? 0;
       const adjustment = item.appointment?.priceAdjustments?.[0] || null;
-      const adjustmentDifference = Number(finalPrice || 0) - Number(originalPrice || 0);
+      const originalPrice = Number(
+        adjustment?.oldEffectivePrice ?? item.appointment?.price ?? 0
+      );
+      const finalPrice = Number(
+        adjustment?.newEffectivePrice ?? item.appointment?.finalPrice ?? originalPrice
+      );
+      const effectivePrice = finalPrice ?? item.baseAmount ?? originalPrice ?? 0;
+      const adjustmentDifference = Number.isFinite(adjustment?.delta)
+        ? Number(adjustment.delta)
+        : (Number(finalPrice || 0) - Number(originalPrice || 0));
       const adjustedBy = adjustment?.changedBy
         ? [adjustment.changedBy.firstName, adjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
           || adjustment.changedBy.username || ''

@@ -2358,10 +2358,16 @@ router.get('/gym-income-sessions', async (req, res) => {
             const employeeName = employee ? [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() : '';
             const methodLabel = row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED';
 
-            const originalPrice = row.appointment?.price ?? 0;
-            const finalPrice = row.appointment?.finalPrice ?? originalPrice;
             const adjustment = row.appointment?.priceAdjustments?.[0] || null;
-            const adjustmentDifference = finalPrice - originalPrice;
+            const originalPrice = Number(
+                adjustment?.oldEffectivePrice ?? row.appointment?.price ?? 0
+            );
+            const finalPrice = Number(
+                adjustment?.newEffectivePrice ?? row.appointment?.finalPrice ?? originalPrice
+            );
+            const adjustmentDifference = Number.isFinite(adjustment?.delta)
+                ? Number(adjustment.delta)
+                : (finalPrice - originalPrice);
             const adjustedBy = adjustment?.changedBy
                 ? [adjustment.changedBy.firstName, adjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
                     || adjustment.changedBy.username || ''
@@ -2529,10 +2535,16 @@ router.get('/trainer-earnings', async (req, res) => {
             const memberName = [member?.firstName, member?.lastName].filter(Boolean).join(' ').trim();
             const employee = earning.appointment?.completedByEmployee || earning.appointment?.createdByEmployee;
             const employeeName = employee ? [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() : '';
-            const originalPrice = earning.appointment?.price ?? 0;
-            const finalPrice = earning.appointment?.finalPrice ?? originalPrice;
             const adjustment = earning.appointment?.priceAdjustments?.[0] || null;
-            const adjustmentDifference = finalPrice - originalPrice;
+            const originalPrice = Number(
+                adjustment?.oldEffectivePrice ?? earning.appointment?.price ?? 0
+            );
+            const finalPrice = Number(
+                adjustment?.newEffectivePrice ?? earning.appointment?.finalPrice ?? originalPrice
+            );
+            const adjustmentDifference = Number.isFinite(adjustment?.delta)
+                ? Number(adjustment.delta)
+                : (finalPrice - originalPrice);
             const adjustedBy = adjustment?.changedBy
                 ? [adjustment.changedBy.firstName, adjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
                     || adjustment.changedBy.username || ''
