@@ -75,7 +75,7 @@
         "undoReason": "Reason for undo",
         "undoConfirm": "Confirm Undo",
         "undoCancel": "Cancel",
-        "undoSuccess": "Session completion reversed"
+        "undoSuccess": "Session completion reversed",
         "date": "Date",
         "startTime": "Start Time",
         "duration": "Duration",
