@@ -84,7 +84,14 @@
         "overpaid": "مدفوع زائد",
         "dueExplanation": "المستحق على العميل",
         "overpaidExplanation": "مبلغ زائد كرصيد",
-        "fullyPaidExplanation": "مدفوع بالكامل بعد التعديل"
+        "fullyPaidExplanation": "مدفوع بالكامل بعد التعديل",
+        "undoComplete": "إلغاء الإكمال",
+        "undoCompleteTitle": "إلغاء إكمال الجلسة",
+        "undoCompleteWarning": "سيتم عكس الإكمال والسجلات المالية المرتبطة. استخدم بحذر.",
+        "undoReason": "سبب الإلغاء",
+        "undoConfirm": "تأكيد الإلغاء",
+        "undoCancel": "إلغاء",
+        "undoSuccess": "تم إلغاء إكمال الجلسة"
     },
     "trainers": {
         "title": "قائمة المدربين",

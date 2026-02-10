@@ -12,11 +12,13 @@ import CoachScheduleModal from './CoachScheduleModal';
 import CompletionPreviewModal from './CompletionPreviewModal';
 import ReceiptModal from '../../components/payments/ReceiptModal';
 import { formatMoney } from '../../utils/numberFormatter';
+import { usePermissions } from '../../hooks/usePermissions';
 
 const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, autoCompleteTriggerId, onAutoCompleteTriggered, readOnly }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
     const isReadOnly = Boolean(readOnly);
+    const { can, PERMISSIONS } = usePermissions();
 
     // Form State
     const [memberSearch, setMemberSearch] = useState('');
@@ -52,6 +54,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [adjustLoading, setAdjustLoading] = useState(false);
     const [adjustHistory, setAdjustHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [showUndoComplete, setShowUndoComplete] = useState(false);
+    const [undoReason, setUndoReason] = useState('');
+    const [undoLoading, setUndoLoading] = useState(false);
 
     const [form, setForm] = useState({
         title: 'PT Session',
@@ -386,6 +391,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         loadAdjustHistory();
     };
 
+    const handleOpenUndoComplete = () => {
+        if (!appointment) return;
+        setUndoReason('');
+        setShowUndoComplete(true);
+    };
+
     const loadAdjustHistory = async () => {
         if (!appointment) return;
         setHistoryLoading(true);
@@ -425,6 +436,29 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             toast.error(error.response?.data?.message || (isRtl ? 'فشل تعديل السعر' : 'Failed to adjust price'));
         } finally {
             setAdjustLoading(false);
+        }
+    };
+
+    const handleSubmitUndoComplete = async () => {
+        if (!appointment) return;
+        if (!undoReason.trim()) {
+            toast.error(isRtl ? 'السبب مطلوب' : 'Reason is required');
+            return;
+        }
+        setUndoLoading(true);
+        try {
+            await apiClient.post(`/appointments/${appointment.id}/undo-complete`, {
+                reason: undoReason.trim()
+            });
+            toast.success(t('appointments.undoSuccess', 'Session completion reversed'));
+            setShowUndoComplete(false);
+            onSuccess?.();
+            onClose?.();
+        } catch (error) {
+            const fallback = isRtl ? 'فشل إلغاء الإكمال' : 'Failed to undo completion';
+            toast.error(error.response?.data?.message || fallback);
+        } finally {
+            setUndoLoading(false);
         }
     };
 
@@ -561,6 +595,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const isCompletableStatus = appointment && !['cancelled', 'no_show', 'completed', 'auto_completed'].includes(appointment.status);
     const isAlreadyCompleted = Boolean(appointment && (appointment.isCompleted || appointment.status === 'completed' || appointment.status === 'auto_completed' || appointment.completedAt));
     const canComplete = appointment && !isAlreadyCompleted && isCompletableStatus;
+    const canUndoComplete = Boolean(appointment && isAlreadyCompleted && !isReadOnly && can(PERMISSIONS.SESSION_UNDO_COMPLETE));
     const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError;
 
     return (
@@ -956,6 +991,15 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                         {t('appointments.adjustPrice', 'Adjust Price')}
                                                     </button>
                                                 )}
+                                                {canUndoComplete && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleOpenUndoComplete}
+                                                        className="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold transition flex-1 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-slate-900/20"
+                                                    >
+                                                        {t('appointments.undoComplete', 'Undo Complete')}
+                                                    </button>
+                                                )}
                                                 {!isReadOnly && (
                                                     <button
                                                         type="button"
@@ -1194,6 +1238,86 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                     {adjustLoading ? t('appointments.saving', 'Saving...') : t('appointments.save', 'Save')}
                                                 </button>
                                             </div>
+                                        </div>
+                                    </Dialog.Panel>
+                                </Transition.Child>
+                            </div>
+                        </div>
+                    </Dialog>
+                </Transition>
+
+                {/* Undo Complete Modal */}
+                <Transition show={showUndoComplete} as={Fragment}>
+                    <Dialog as="div" className="relative z-50" onClose={() => setShowUndoComplete(false)}>
+                        <Transition.Child
+                            as={Fragment}
+                            enter="ease-out duration-200"
+                            enterFrom="opacity-0"
+                            enterTo="opacity-100"
+                            leave="ease-in duration-150"
+                            leaveFrom="opacity-100"
+                            leaveTo="opacity-0"
+                        >
+                            <div className="fixed inset-0 bg-black/40" />
+                        </Transition.Child>
+
+                        <div className="fixed inset-0 overflow-y-auto">
+                            <div className="flex min-h-full items-center justify-center p-4">
+                                <Transition.Child
+                                    as={Fragment}
+                                    enter="ease-out duration-200"
+                                    enterFrom="opacity-0 scale-95"
+                                    enterTo="opacity-100 scale-100"
+                                    leave="ease-in duration-150"
+                                    leaveFrom="opacity-100 scale-100"
+                                    leaveTo="opacity-0 scale-95"
+                                >
+                                    <Dialog.Panel className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-xl border border-slate-200 dark:border-slate-800">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-white">
+                                                {t('appointments.undoCompleteTitle', 'Undo Completion')}
+                                            </Dialog.Title>
+                                            <button onClick={() => setShowUndoComplete(false)} className="p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                                            {t('appointments.undoCompleteWarning', 'This will reverse completion and related financial records. Use with caution.')}
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                                                    {t('appointments.undoReason', 'Reason for undo')}
+                                                </label>
+                                                <textarea
+                                                    value={undoReason}
+                                                    onChange={(e) => setUndoReason(e.target.value)}
+                                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    rows={3}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-6 flex items-center justify-end gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowUndoComplete(false)}
+                                                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                            >
+                                                {t('appointments.undoCancel', 'Cancel')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleSubmitUndoComplete}
+                                                disabled={undoLoading}
+                                                className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold hover:opacity-90 transition disabled:opacity-60"
+                                            >
+                                                {undoLoading
+                                                    ? (isRtl ? 'جارٍ الإلغاء...' : 'Undoing...')
+                                                    : t('appointments.undoConfirm', 'Confirm Undo')}
+                                            </button>
                                         </div>
                                     </Dialog.Panel>
                                 </Transition.Child>

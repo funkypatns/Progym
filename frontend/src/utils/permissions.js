@@ -60,6 +60,7 @@ export const PERMISSIONS = {
     // Appointments
     APPOINTMENTS_VIEW: 'appointments.view',
     APPOINTMENTS_MANAGE: 'appointments.manage',
+    SESSION_UNDO_COMPLETE: 'session.undo_complete',
 
     // Coaches
     COACHES_VIEW: 'coaches.view',
@@ -154,6 +155,7 @@ export const PERMISSION_CATEGORIES = {
         permissions: [
             PERMISSIONS.APPOINTMENTS_VIEW,
             PERMISSIONS.APPOINTMENTS_MANAGE,
+            PERMISSIONS.SESSION_UNDO_COMPLETE,
             PERMISSIONS.COACHES_VIEW,
             PERMISSIONS.COACHES_MANAGE
         ]
