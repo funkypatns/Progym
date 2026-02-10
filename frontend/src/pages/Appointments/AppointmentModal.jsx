@@ -454,7 +454,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setShowCompletionPreview(true);
             }
         } catch (error) {
-            toast.error('Failed to prepare completion');
+            const fallback = isRtl ? 'فشل تجهيز الإكمال' : 'Failed to prepare completion';
+            toast.error(error.response?.data?.message_ar || error.response?.data?.message_en || error.response?.data?.message || fallback);
         } finally {
             setCompletionLoading(false);
         }
