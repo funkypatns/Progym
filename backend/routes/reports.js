@@ -2359,11 +2359,9 @@ router.get('/gym-income-sessions', async (req, res) => {
             const methodLabel = row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED';
 
             const adjustment = row.appointment?.priceAdjustments?.[0] || null;
-            const originalPrice = Number(
-                adjustment?.oldEffectivePrice ?? row.appointment?.price ?? 0
-            );
+            const originalPrice = Number(row.appointment?.price ?? 0);
             const finalPrice = Number(
-                adjustment?.newEffectivePrice ?? row.appointment?.finalPrice ?? originalPrice
+                row.appointment?.finalPrice ?? originalPrice
             );
             const adjustmentDifference = Number.isFinite(adjustment?.delta)
                 ? Number(adjustment.delta)
