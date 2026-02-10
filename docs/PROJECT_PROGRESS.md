@@ -190,3 +190,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 0ce58d6 | Harden completion preview query parsing and response fields. |
 | 2026-02-10 | 91d5150 | Stabilize completion preview by validating params and guarding credit lookup. |
 | 2026-02-10 | 51ed5ef | Fix completion update to avoid invalid Prisma fields on older DB. |
+| 2026-02-10 | 879a059 | Surface preview completion errors in appointment modal. |
