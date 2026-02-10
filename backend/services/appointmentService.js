@@ -388,20 +388,18 @@ const AppointmentService = {
             const overpaidAmount = roundMoney(Math.max(0, totalPaid - sessionPrice));
 
             // 3. Update status
+            const updateData = {
+                status: 'completed',
+                paidAmount: totalPaid,
+                paymentStatus,
+                isCompleted: true,
+                price: sessionPrice,
+                completedByEmployeeId: userContext?.id ?? undefined,
+                completedAt: new Date()
+            };
             const updated = await tx.appointment.update({
                 where: { id: parseInt(id) },
-                data: {
-                    status: 'completed',
-                    paidAmount: totalPaid,
-                    paymentStatus,
-                    dueAmount,
-                    overpaidAmount,
-                    finalPrice: sessionPrice,
-                    isCompleted: true,
-                    price: sessionPrice,
-                    completedByEmployeeId: userContext?.id ?? undefined,
-                    completedAt: new Date()
-                },
+                data: updateData,
                 include: { member: true, coach: true, payments: true }
             });
 
