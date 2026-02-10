@@ -194,3 +194,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 89ecc01 | Make adjust-price endpoint schema-safe (no finalPrice select/update). |
 | 2026-02-10 | 1d04825 | Finalize price adjustment audit with final-price reporting (trainer & gym income) and adjust-price preview labels. |
 | 2026-02-10 | 8c59593 | Harden license activation errors, add format validation, and auto-clear corrupt cache. |
+| 2026-02-10 | 6ee4ca8 | Prevent Prisma startup crash by forcing library engine + dotenv in backend. |
