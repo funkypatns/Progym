@@ -191,3 +191,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 91d5150 | Stabilize completion preview by validating params and guarding credit lookup. |
 | 2026-02-10 | 51ed5ef | Fix completion update to avoid invalid Prisma fields on older DB. |
 | 2026-02-10 | 879a059 | Surface preview completion errors in appointment modal. |
+| 2026-02-10 | 89ecc01 | Make adjust-price endpoint schema-safe (no finalPrice select/update). |
