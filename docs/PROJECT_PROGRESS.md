@@ -199,3 +199,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 339bf18 | Report adjustment fields now use SessionPriceAdjustment snapshots for original/final/diff. |
 | 2026-02-10 | 912b6a6 | Add undo completion backend with permission guard, safety checks, and audit log. |
 | 2026-02-10 | a037572 | Add undo completion UI with permission gate and reason modal. |
+| 2026-02-10 | d6d4cc7 | Harden license activation error handling to avoid 500s on bad license server responses. |
