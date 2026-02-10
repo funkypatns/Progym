@@ -247,7 +247,26 @@ router.patch('/:id/adjust-price', authenticate, async (req, res) => {
     }
 });
 
-\n// Price adjustment history\nrouter.get('/:id/price-adjustments', authenticate, async (req, res) => {\n    try {\n        const id = parseInt(req.params.id);\n        if (Number.isNaN(id)) return res.json({ success: true, data: [] });\n        const rows = await req.prisma.sessionPriceAdjustment.findMany({\n            where: { appointmentId: id },\n            orderBy: { createdAt: 'desc' },\n            include: {\n                changedBy: { select: { firstName: true, lastName: true, username: true, email: true } }\n            }\n        });\n        return res.json({ success: true, data: rows });\n    } catch (error) {\n        console.error('Price adjustments history error', error);\n        return res.json({ success: true, data: [] });\n    }\n});\n\n// Quick Settle
+// Price adjustment history
+router.get('/:id/price-adjustments', authenticate, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (Number.isNaN(id)) return res.json({ success: true, data: [] });
+        const rows = await req.prisma.sessionPriceAdjustment.findMany({
+            where: { appointmentId: id },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                changedBy: { select: { firstName: true, lastName: true, username: true, email: true } }
+            }
+        });
+        return res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Price adjustments history error', error);
+        return res.json({ success: true, data: [] });
+    }
+});
+
+// Quick Settle
 router.post('/:id/settle', authenticate, async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
@@ -262,23 +281,36 @@ router.post('/:id/settle', authenticate, async (req, res) => {
 router.get('/:id/preview-completion', authenticate, async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
+        const appointmentId = Number(req.params.id);
+        if (!Number.isInteger(appointmentId)) {
+            return res.status(400).json({ success: false, reason: 'INVALID_ID' });
+        }
         const appointment = await req.prisma.appointment.findUnique({
-            where: { id: parseInt(req.params.id) },
+            where: { id: appointmentId },
             select: {
+                id: true,
                 memberId: true,
-                price: true,
-                finalPrice: true,
+                coachId: true,
                 trainerId: true,
                 title: true,
-                trainer: { select: { commissionPercent: true, name: true } }
+                price: true,
+                finalPrice: true,
+                paidAmount: true,
+                dueAmount: true,
+                overpaidAmount: true,
+                paymentStatus: true,
+                trainer: { select: { id: true, name: true, commissionPercent: true } }
             }
         });
+        if (!appointment) {
+            return res.status(404).json({ success: false, reason: 'NOT_FOUND' });
+        }
         const rawTrainerId = req.query.trainerId;
         const trainerId = rawTrainerId !== undefined && rawTrainerId !== null && rawTrainerId !== ''
             ? Number(rawTrainerId)
             : null;
         let trainerOverride = null;
-        if (Number.isFinite(trainerId) && trainerId > 0 && trainerId !== appointment?.trainerId) {
+        if (Number.isFinite(trainerId) && trainerId > 0 && trainerId !== appointment.trainerId) {
             trainerOverride = await req.prisma.staffTrainer.findUnique({
                 where: { id: trainerId },
                 select: { commissionPercent: true, name: true }
@@ -309,6 +341,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
                 ? trainerPercent
                 : defaultCommissionPercent);
         const priceValue = Number(preview?.sessionPrice || 0);
+        const effectivePrice = appointment.finalPrice ?? appointment.price ?? 0;
         const trainerPayout = roundMoney((priceValue * resolvedCommissionPercent) / 100);
         const gymShare = roundMoney(priceValue - trainerPayout);
         preview.commissionPercentUsed = resolvedCommissionPercent;
@@ -319,7 +352,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         preview.gymShare = gymShare;
         preview.gymNetIncome = gymShare;
         preview.basisAmount = priceValue;
-        const creditBalance = appointment?.memberId
+        const creditBalance = appointment.memberId
             ? await CreditService.getBalance(req.prisma, appointment.memberId)
             : 0;
         const creditAppliedPreview = Math.min(creditBalance, priceValue);
@@ -327,15 +360,26 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const responseData = {
             ...preview,
             defaultCommissionPercent,
+            trainerId: appointment.trainerId,
             trainerName: trainerForPreview?.name || preview?.coachName || '',
-            serviceName: appointment?.title || '',
+            serviceName: appointment.title || '',
+            effectivePrice: roundMoney(effectivePrice),
+            paidAmount: roundMoney(appointment.paidAmount || 0),
+            dueAmount: roundMoney(appointment.dueAmount || 0),
+            overpaidAmount: roundMoney(appointment.overpaidAmount || 0),
+            paymentStatus: appointment.paymentStatus || null,
             creditAvailable: roundMoney(creditBalance),
             creditAppliedPreview: roundMoney(creditAppliedPreview),
             remainingAfterCredit: roundMoney(remainingAfterCredit)
         };
         res.json({ success: true, data: responseData });
     } catch (error) {
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Preview completion error', error);
+        res.status(500).json({
+            success: false,
+            reason: 'SERVER_ERROR',
+            message: 'Failed to prepare completion'
+        });
     }
 });
 
