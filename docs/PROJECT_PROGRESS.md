@@ -197,3 +197,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 6ee4ca8 | Prevent Prisma startup crash by forcing library engine + dotenv in backend. |
 | 2026-02-10 | 60d08d5 | Restore Arabic translations in appointments (adjust price + completion modal labels). |
 | 2026-02-10 | 339bf18 | Report adjustment fields now use SessionPriceAdjustment snapshots for original/final/diff. |
+| 2026-02-10 | 912b6a6 | Add undo completion backend with permission guard, safety checks, and audit log. |
