@@ -16,6 +16,13 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = 'file:./gym.db';
+}
+if (!process.env.PRISMA_CLIENT_ENGINE_TYPE) {
+    process.env.PRISMA_CLIENT_ENGINE_TYPE = 'library';
+}
 const { PrismaClient } = require('@prisma/client');
 
 // Initialize Express app
