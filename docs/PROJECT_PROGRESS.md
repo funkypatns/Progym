@@ -187,3 +187,4 @@ Phase 4 - Receipts system
 | 2026-02-05 | bfe911d | Backend only: add appointment final/due/overpaid fields, price adjustment audit, and adjust-price endpoint. |
 | 2026-02-05 | 7b552cf | Frontend: add Adjust Price modal for completed appointments (calls adjust-price API). |
 | 2026-02-05 | 7e8a2d6 | Price adjustment audit/history UI, guard settled sessions; effective commission fixes. |
+| 2026-02-10 | 0ce58d6 | Harden completion preview query parsing and response fields. |
