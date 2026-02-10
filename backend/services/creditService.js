@@ -6,6 +6,9 @@ const { roundMoney } = require('../utils/money');
  */
 const CreditService = {
     async getBalance(prisma, memberId) {
+        if (!prisma?.memberCreditLedger?.aggregate) {
+            return 0;
+        }
         const result = await prisma.memberCreditLedger.aggregate({
             where: { memberId: parseInt(memberId) },
             _sum: { amount: true }
@@ -21,6 +24,9 @@ const CreditService = {
         appliedAppointmentId = null,
         createdByUserId = null
     }) {
+        if (!prisma?.memberCreditLedger?.create) {
+            return null;
+        }
         const safeAmount = roundMoney(amount || 0);
         if (!Number.isFinite(safeAmount) || safeAmount === 0) return null;
         return prisma.memberCreditLedger.create({

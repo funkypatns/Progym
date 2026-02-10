@@ -283,7 +283,21 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const CommissionService = require('../services/commissionService');
         const appointmentId = Number(req.params.id);
         if (!Number.isInteger(appointmentId)) {
-            return res.status(400).json({ success: false, reason: 'INVALID_ID' });
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST' });
+        }
+        const rawTrainerId = req.query.trainerId;
+        const trainerId = rawTrainerId !== undefined && rawTrainerId !== null && rawTrainerId !== ''
+            ? Number(rawTrainerId)
+            : null;
+        if (rawTrainerId !== undefined && rawTrainerId !== null && rawTrainerId !== '' && !Number.isFinite(trainerId)) {
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST' });
+        }
+        const rawSessionPrice = req.query.sessionPrice;
+        const sessionPrice = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== ''
+            ? Number(rawSessionPrice)
+            : undefined;
+        if (rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== '' && !Number.isFinite(sessionPrice)) {
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST' });
         }
         const appointment = await req.prisma.appointment.findUnique({
             where: { id: appointmentId },
@@ -294,10 +308,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
                 trainerId: true,
                 title: true,
                 price: true,
-                finalPrice: true,
                 paidAmount: true,
-                dueAmount: true,
-                overpaidAmount: true,
                 paymentStatus: true,
                 trainer: { select: { id: true, name: true, commissionPercent: true } }
             }
@@ -305,10 +316,6 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         if (!appointment) {
             return res.status(404).json({ success: false, reason: 'NOT_FOUND' });
         }
-        const rawTrainerId = req.query.trainerId;
-        const trainerId = rawTrainerId !== undefined && rawTrainerId !== null && rawTrainerId !== ''
-            ? Number(rawTrainerId)
-            : null;
         let trainerOverride = null;
         if (Number.isFinite(trainerId) && trainerId > 0 && trainerId !== appointment.trainerId) {
             trainerOverride = await req.prisma.staffTrainer.findUnique({
@@ -316,20 +323,35 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
                 select: { commissionPercent: true, name: true }
             });
         }
-        const rawSessionPrice = req.query.sessionPrice;
-        const sessionPrice = rawSessionPrice !== undefined && rawSessionPrice !== null && rawSessionPrice !== ''
-            ? Number(rawSessionPrice)
-            : undefined;
         const rawCommissionPercent = req.query.commissionPercent;
         const commissionPercent = rawCommissionPercent !== undefined && rawCommissionPercent !== null && rawCommissionPercent !== ''
             ? Number(rawCommissionPercent)
             : undefined;
+        if (rawCommissionPercent !== undefined && rawCommissionPercent !== null && rawCommissionPercent !== '' && !Number.isFinite(commissionPercent)) {
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST' });
+        }
         const hasCommissionOverride = Number.isFinite(commissionPercent)
             && commissionPercent >= 0
             && commissionPercent <= 100;
+        let finalPriceValue = null;
+        try {
+            const rows = await req.prisma.$queryRaw`SELECT finalPrice FROM Appointment WHERE id = ${appointmentId}`;
+            if (Array.isArray(rows) && rows.length > 0) {
+                finalPriceValue = rows[0]?.finalPrice ?? null;
+            }
+        } catch (rawError) {
+            if (isDev) {
+                console.warn('Preview completion: failed to read finalPrice via raw query', rawError?.message || rawError);
+            }
+        }
+        const hasFinalPrice = finalPriceValue !== null && finalPriceValue !== undefined
+            && Number.isFinite(Number(finalPriceValue));
+        const effectivePrice = Number.isFinite(sessionPrice)
+            ? sessionPrice
+            : (hasFinalPrice ? Number(finalPriceValue) : Number(appointment.price || 0));
         const preview = await CommissionService.calculateCommissionPreview(req.params.id, req.prisma, {
             allowZero: true,
-            sessionPrice: Number.isFinite(sessionPrice) ? sessionPrice : undefined
+            sessionPrice: Number.isFinite(effectivePrice) ? effectivePrice : undefined
         });
         const trainerForPreview = trainerOverride || appointment?.trainer;
         const trainerPercentRaw = trainerForPreview?.commissionPercent;
@@ -341,7 +363,6 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
                 ? trainerPercent
                 : defaultCommissionPercent);
         const priceValue = Number(preview?.sessionPrice || 0);
-        const effectivePrice = appointment.finalPrice ?? appointment.price ?? 0;
         const trainerPayout = roundMoney((priceValue * resolvedCommissionPercent) / 100);
         const gymShare = roundMoney(priceValue - trainerPayout);
         preview.commissionPercentUsed = resolvedCommissionPercent;
@@ -357,17 +378,21 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
             : 0;
         const creditAppliedPreview = Math.min(creditBalance, priceValue);
         const remainingAfterCredit = Math.max(0, priceValue - creditAppliedPreview - (preview.totalPaid || 0));
+        const paidAmount = roundMoney(appointment.paidAmount || 0);
+        const dueAmount = roundMoney(Math.max(0, priceValue - paidAmount));
+        const overpaidAmount = roundMoney(Math.max(0, paidAmount - priceValue));
         const responseData = {
             ...preview,
             defaultCommissionPercent,
             trainerId: appointment.trainerId,
             trainerName: trainerForPreview?.name || preview?.coachName || '',
             serviceName: appointment.title || '',
-            effectivePrice: roundMoney(effectivePrice),
-            paidAmount: roundMoney(appointment.paidAmount || 0),
-            dueAmount: roundMoney(appointment.dueAmount || 0),
-            overpaidAmount: roundMoney(appointment.overpaidAmount || 0),
-            paymentStatus: appointment.paymentStatus || null,
+            effectivePrice: roundMoney(priceValue),
+            finalPrice: hasFinalPrice ? roundMoney(Number(finalPriceValue)) : null,
+            paidAmount,
+            dueAmount,
+            overpaidAmount,
+            paymentStatus: appointment.paymentStatus || (dueAmount > 0 ? 'DUE' : 'PAID'),
             creditAvailable: roundMoney(creditBalance),
             creditAppliedPreview: roundMoney(creditAppliedPreview),
             remainingAfterCredit: roundMoney(remainingAfterCredit)
