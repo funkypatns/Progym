@@ -234,14 +234,19 @@ router.patch('/:id/adjust-price', authenticate, async (req, res) => {
         const { newFinalPrice, finalPrice, reason } = req.body || {};
         const result = await AppointmentService.adjustAppointmentPrice(
             req.params.id,
-            { newFinalPrice: newFinalPrice ?? finalPrice, reason },
+            { newFinalPrice: newFinalPrice ?? finalPrice, reason, newPrice: req.body?.newPrice },
             req.user
         );
         return res.json({ success: true, data: result });
     } catch (error) {
         const status = error.status || 400;
+        const reason =
+            status === 404 ? 'NOT_FOUND' :
+            status === 409 ? 'CONFLICT' :
+            'BAD_REQUEST';
         return res.status(status).json({
             success: false,
+            reason,
             message: error.message || 'Failed to adjust price'
         });
     }
