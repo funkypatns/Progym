@@ -688,6 +688,272 @@ const AppointmentService = {
     },
 
     /**
+     * Undo completion for a session (revert completion side-effects).
+     * Blocks if downstream financial operations exist.
+     */
+    async undoCompleteAppointment(id, payload = {}, userContext = null) {
+        const parsedId = parseInt(id);
+        if (!Number.isFinite(parsedId) || parsedId <= 0) {
+            const err = new Error('Invalid appointment id');
+            err.status = 400;
+            err.code = 'BAD_REQUEST';
+            throw err;
+        }
+        const reason = (payload?.reason || '').trim();
+        if (!reason) {
+            const err = new Error('Reason is required');
+            err.status = 400;
+            err.code = 'VALIDATION_ERROR';
+            throw err;
+        }
+        if (!userContext?.id) {
+            const err = new Error('Missing user context');
+            err.status = 401;
+            err.code = 'UNAUTHORIZED';
+            throw err;
+        }
+
+        return await prisma.$transaction(async (tx) => {
+            const appointment = await tx.appointment.findUnique({
+                where: { id: parsedId },
+                select: {
+                    id: true,
+                    status: true,
+                    isCompleted: true,
+                    completedAt: true,
+                    completedByEmployeeId: true,
+                    price: true,
+                    finalPrice: true,
+                    paidAmount: true,
+                    paymentStatus: true,
+                    dueAmount: true,
+                    overpaidAmount: true,
+                    memberId: true,
+                    trainerId: true,
+                    coachId: true
+                }
+            });
+
+            if (!appointment) {
+                const err = new Error('Appointment not found');
+                err.status = 404;
+                err.code = 'NOT_FOUND';
+                throw err;
+            }
+
+            const isCompleted = appointment.isCompleted
+                || appointment.status === 'completed'
+                || appointment.status === 'auto_completed'
+                || Boolean(appointment.completedAt);
+            if (!isCompleted) {
+                const err = new Error('Session is not completed');
+                err.status = 400;
+                err.code = 'NOT_COMPLETED';
+                throw err;
+            }
+
+            const payments = await tx.payment.findMany({
+                where: { appointmentId: parsedId },
+                include: {
+                    refunds: { select: { id: true } },
+                    shift: { select: { id: true, closedAt: true } }
+                }
+            });
+
+            if (payments.some(p => p.refunds && p.refunds.length > 0)) {
+                const err = new Error('Cannot undo completion: refunds exist for this session');
+                err.status = 409;
+                err.code = 'REFUND_EXISTS';
+                throw err;
+            }
+
+            if (payments.some(p => (p.amount || 0) > 0 && p.status === 'completed')) {
+                const err = new Error('Cannot undo completion: payment already collected. Refund first.');
+                err.status = 409;
+                err.code = 'PAYMENT_COLLECTED';
+                throw err;
+            }
+
+            if (payments.some(p => p.shift?.closedAt)) {
+                const err = new Error('Cannot undo completion: shift is already closed.');
+                err.status = 409;
+                err.code = 'SHIFT_CLOSED';
+                throw err;
+            }
+
+            for (const payment of payments) {
+                if (!payment.paidAt) continue;
+                const closing = await tx.cashClosing.findFirst({
+                    where: {
+                        startAt: { lte: payment.paidAt },
+                        endAt: { gte: payment.paidAt }
+                    },
+                    select: { id: true }
+                });
+                if (closing) {
+                    const err = new Error('Cannot undo completion: cash closing already includes this session.');
+                    err.status = 409;
+                    err.code = 'CLOSING_LOCKED';
+                    throw err;
+                }
+            }
+
+            const trainerEarning = await tx.trainerEarning.findUnique({
+                where: { appointmentId: parsedId },
+                select: { id: true, status: true, payoutId: true }
+            });
+            if (trainerEarning && (trainerEarning.status === 'PAID' || trainerEarning.payoutId)) {
+                const err = new Error('Cannot undo completion: trainer payout already processed.');
+                err.status = 409;
+                err.code = 'TRAINER_SETTLED';
+                throw err;
+            }
+
+            const coachEarning = await tx.coachEarning.findFirst({
+                where: { appointmentId: parsedId },
+                select: { id: true, status: true, settlementId: true, paidAt: true }
+            });
+            if (coachEarning && (coachEarning.status === 'paid' || coachEarning.settlementId || coachEarning.paidAt)) {
+                const err = new Error('Cannot undo completion: coach settlement already processed.');
+                err.status = 409;
+                err.code = 'COACH_SETTLED';
+                throw err;
+            }
+
+            const financialRecord = await tx.appointmentFinancialRecord.findUnique({
+                where: { appointmentId: parsedId },
+                select: { id: true, status: true, settlementId: true }
+            });
+            if (financialRecord && (financialRecord.status === 'PAID' || financialRecord.settlementId)) {
+                const err = new Error('Cannot undo completion: financial record already settled.');
+                err.status = 409;
+                err.code = 'FINANCIAL_SETTLED';
+                throw err;
+            }
+
+            const creditUsed = await tx.memberCreditLedger.findFirst({
+                where: {
+                    sourceAppointmentId: parsedId,
+                    appliedAppointmentId: { not: null }
+                },
+                select: { id: true }
+            });
+            if (creditUsed) {
+                const err = new Error('Cannot undo completion: credit generated by this session was already used.');
+                err.status = 409;
+                err.code = 'CREDIT_USED';
+                throw err;
+            }
+
+            const appliedCreditAgg = await tx.memberCreditLedger.aggregate({
+                where: { appliedAppointmentId: parsedId },
+                _sum: { amount: true }
+            });
+            const appliedCreditTotal = roundMoney(appliedCreditAgg._sum.amount || 0);
+            if (appliedCreditTotal < 0) {
+                await CreditService.addEntry(tx, {
+                    memberId: appointment.memberId,
+                    amount: Math.abs(appliedCreditTotal),
+                    note: 'Undo completion: restore applied credit',
+                    createdByUserId: userContext.id
+                });
+            }
+
+            const sourceCreditAgg = await tx.memberCreditLedger.aggregate({
+                where: { sourceAppointmentId: parsedId, appliedAppointmentId: null },
+                _sum: { amount: true }
+            });
+            const sourceCreditTotal = roundMoney(sourceCreditAgg._sum.amount || 0);
+            if (sourceCreditTotal > 0) {
+                await CreditService.addEntry(tx, {
+                    memberId: appointment.memberId,
+                    amount: -sourceCreditTotal,
+                    note: 'Undo completion: reverse unused credit',
+                    createdByUserId: userContext.id
+                });
+            }
+
+            const beforeSnapshot = {
+                status: appointment.status,
+                isCompleted: appointment.isCompleted,
+                completedAt: appointment.completedAt,
+                completedByEmployeeId: appointment.completedByEmployeeId,
+                price: appointment.price,
+                finalPrice: appointment.finalPrice,
+                paidAmount: appointment.paidAmount,
+                paymentStatus: appointment.paymentStatus,
+                dueAmount: appointment.dueAmount,
+                overpaidAmount: appointment.overpaidAmount
+            };
+
+            await tx.payment.updateMany({
+                where: { appointmentId: parsedId },
+                data: { status: 'cancelled' }
+            });
+
+            await tx.trainerEarning.deleteMany({
+                where: { appointmentId: parsedId, status: { not: 'PAID' } }
+            });
+
+            await tx.coachEarning.deleteMany({
+                where: { appointmentId: parsedId, status: { not: 'paid' } }
+            });
+
+            await CommissionService.voidSessionCommission(parsedId, tx);
+
+            const updated = await tx.appointment.update({
+                where: { id: parsedId },
+                data: {
+                    status: 'scheduled',
+                    isCompleted: false,
+                    completedAt: null,
+                    completedByEmployeeId: null,
+                    paymentStatus: 'unpaid',
+                    paidAmount: 0,
+                    dueAmount: 0,
+                    overpaidAmount: 0,
+                    finalPrice: null
+                }
+            });
+
+            const afterSnapshot = {
+                status: updated.status,
+                isCompleted: updated.isCompleted,
+                completedAt: updated.completedAt,
+                completedByEmployeeId: updated.completedByEmployeeId,
+                price: updated.price,
+                finalPrice: updated.finalPrice,
+                paidAmount: updated.paidAmount,
+                paymentStatus: updated.paymentStatus,
+                dueAmount: updated.dueAmount,
+                overpaidAmount: updated.overpaidAmount
+            };
+
+            await tx.auditLog.create({
+                data: {
+                    action: 'SESSION_COMPLETION_REVERSED',
+                    entityType: 'Appointment',
+                    entityId: String(parsedId),
+                    performedBy: userContext.id,
+                    metadata: JSON.stringify({
+                        reason,
+                        completedBy: appointment.completedByEmployeeId,
+                        completedAt: appointment.completedAt,
+                        beforeSnapshot,
+                        afterSnapshot
+                    })
+                }
+            });
+
+            return {
+                appointment: updated,
+                beforeSnapshot,
+                afterSnapshot
+            };
+        });
+    },
+
+    /**
      * Delete/Cancel appointment
      */
     async deleteAppointment(id) {
