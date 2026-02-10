@@ -189,3 +189,4 @@ Phase 4 - Receipts system
 | 2026-02-05 | 7e8a2d6 | Price adjustment audit/history UI, guard settled sessions; effective commission fixes. |
 | 2026-02-10 | 0ce58d6 | Harden completion preview query parsing and response fields. |
 | 2026-02-10 | 91d5150 | Stabilize completion preview by validating params and guarding credit lookup. |
+| 2026-02-10 | 51ed5ef | Fix completion update to avoid invalid Prisma fields on older DB. |
