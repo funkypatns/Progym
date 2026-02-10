@@ -195,3 +195,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 1d04825 | Finalize price adjustment audit with final-price reporting (trainer & gym income) and adjust-price preview labels. |
 | 2026-02-10 | 8c59593 | Harden license activation errors, add format validation, and auto-clear corrupt cache. |
 | 2026-02-10 | 6ee4ca8 | Prevent Prisma startup crash by forcing library engine + dotenv in backend. |
+| 2026-02-10 | 60d08d5 | Restore Arabic translations in appointments (adjust price + completion modal labels). |
