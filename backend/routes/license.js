@@ -80,15 +80,30 @@ router.get('/hardware-id', (req, res) => {
 router.post('/activate', async (req, res) => {
     try {
         const { licenseKey, gymName } = req.body;
+        const trimmedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
+        const isDev = process.env.NODE_ENV !== 'production';
 
-        if (!licenseKey) {
+        if (!trimmedKey) {
             return res.status(400).json({
                 success: false,
-                message: 'License key is required'
+                message: 'License key is required',
+                errorCode: 'INVALID_KEY',
+                code: 'INVALID_KEY'
             });
         }
 
-        const result = await licenseService.activate(licenseKey, gymName);
+        // Basic format guard (avoid obviously invalid inputs)
+        const keyFormatOk = /^[A-Za-z0-9-]{8,}$/.test(trimmedKey);
+        if (!keyFormatOk) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid license key format',
+                errorCode: 'INVALID_KEY_FORMAT',
+                code: 'INVALID_KEY_FORMAT'
+            });
+        }
+
+        const result = await licenseService.activate(trimmedKey, gymName);
 
         if (result.success) {
             return res.json({
@@ -101,26 +116,42 @@ router.post('/activate', async (req, res) => {
         // Map error codes to HTTP status codes
         let httpStatus = 400;
         if (result.code === 'NETWORK_ERROR') {
-            httpStatus = 200; // Keep client flow stable; still return success: false
-        } else if (result.code === 'HARDWARE_MISMATCH') {
-            httpStatus = 409; // Conflict
-        } else if (result.code === 'EXPIRED' || result.code === 'INVALID' || result.code === 'REVOKED') {
-            httpStatus = 403; // Forbidden
+            httpStatus = 503;
+        } else if (result.code === 'HARDWARE_MISMATCH' || result.code === 'ALREADY_ACTIVATED') {
+            httpStatus = 409;
+        } else if (result.code === 'EXPIRED' || result.code === 'INVALID' || result.code === 'REVOKED' || result.code === 'SUSPENDED') {
+            httpStatus = 403;
+        } else if (result.code === 'NOT_FOUND') {
+            httpStatus = 404;
+        } else if (result.code === 'UNAUTHORIZED') {
+            httpStatus = 401;
+        } else if (result.code === 'FORBIDDEN') {
+            httpStatus = 403;
         }
 
         return res.status(httpStatus).json({
             success: false,
-            code: result.code,
-            message: result.message
+            message: result.message || 'Activation failed',
+            errorCode: result.code || 'ACTIVATION_FAILED',
+            code: result.code || 'ACTIVATION_FAILED',
+            details: isDev ? result.details : undefined
         });
 
     } catch (error) {
-        console.error('Activation unexpected error:', error);
-        res.status(200).json({
+        console.error('Activation unexpected error:', {
+            name: error?.name,
+            message: error?.message,
+            code: error?.code,
+            stack: error?.stack
+        });
+        res.status(500).json({
             success: false,
+            errorCode: 'UNEXPECTED_ERROR',
             code: 'UNEXPECTED_ERROR',
             message: 'Unexpected error during activation',
-            debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+            details: process.env.NODE_ENV !== 'production'
+                ? { name: error?.name, message: error?.message, code: error?.code }
+                : undefined
         });
     }
 });

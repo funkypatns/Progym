@@ -135,6 +135,19 @@ function loadLicenseCache() {
     }
 }
 
+function safeClearCorruptCache() {
+    try {
+        if (!fs.existsSync(CACHE_FILE)) return;
+        const cached = loadLicenseCache();
+        if (cached) return;
+        const corruptedName = `${CACHE_FILE}.corrupt-${Date.now()}`;
+        fs.renameSync(CACHE_FILE, corruptedName);
+        console.warn(`License cache was corrupted. Moved to ${corruptedName}`);
+    } catch (error) {
+        console.warn('Failed to clear corrupt license cache:', error?.message);
+    }
+}
+
 /**
  * Check if system clock has been tampered with
  */
@@ -169,11 +182,18 @@ const licenseService = {
      * Activate a license key
      */
     activate: async (licenseKey, gymName = null) => {
+        const normalizedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
+        if (!normalizedKey) {
+            return { success: false, code: 'INVALID_KEY', message: 'License key is required' };
+        }
         const hardwareId = generateHardwareId();
 
+        // Clear corrupt cache before activation so we can rebuild safely
+        safeClearCorruptCache();
+
         // DEV MODE: Accept special dev key for testing without license server
-        if (licenseKey === 'DEV-MODE-TEST-1234' || licenseKey === 'GYM-DEV-TEST-1234' || (licenseKey && licenseKey.startsWith('GYM-') && licenseKey.endsWith('-V7UM'))) {
-            console.log('🔓 DEV MODE: Activating with development/recovery license');
+        if (normalizedKey === 'DEV-MODE-TEST-1234' || normalizedKey === 'GYM-DEV-TEST-1234' || (normalizedKey.startsWith('GYM-') && normalizedKey.endsWith('-V7UM'))) {
+            console.log('???? DEV MODE: Activating with development/recovery license');
             const devLicense = {
                 type: 'premium',
                 maxMembers: 9999,
@@ -182,7 +202,7 @@ const licenseService = {
             };
 
             saveLicenseCache({
-                licenseKey,
+                licenseKey: normalizedKey,
                 hardwareId,
                 license: devLicense,
                 lastValidated: new Date().toISOString(),
@@ -197,7 +217,7 @@ const licenseService = {
 
         try {
             const response = await axios.post(`${LICENSE_SERVER_URL}/api/licenses/activate`, {
-                licenseKey,
+                licenseKey: normalizedKey,
                 hardwareId,
                 gymName
             }, { timeout: 10000 });
@@ -205,7 +225,7 @@ const licenseService = {
             if (response.data.success) {
                 // Cache the license locally
                 saveLicenseCache({
-                    licenseKey,
+                    licenseKey: normalizedKey,
                     hardwareId,
                     license: response.data.license,
                     lastValidated: new Date().toISOString(),
@@ -225,14 +245,22 @@ const licenseService = {
             };
 
         } catch (error) {
-            console.error('License activation error:', error.message);
+            console.error('License activation error:', {
+                message: error?.message,
+                code: error?.code,
+                status: error?.response?.status
+            });
 
             if (error.response) {
                 console.error('[DEBUG] License Server Error Response:', JSON.stringify(error.response.data, null, 2));
                 return {
                     success: false,
                     code: error.response.data.code || 'SERVER_ERROR',
-                    message: error.response.data.message || 'Activation failed'
+                    message: error.response.data.message || 'Activation failed',
+                    details: {
+                        status: error.response.status,
+                        data: error.response.data
+                    }
                 };
             }
 
@@ -240,7 +268,8 @@ const licenseService = {
             return {
                 success: false,
                 code: 'NETWORK_ERROR',
-                message: 'Cannot connect to license server. Please ensure the license server is running, or use DEV-MODE-TEST-1234 for testing.'
+                message: 'Cannot connect to license server. Please ensure the license server is running, or use DEV-MODE-TEST-1234 for testing.',
+                details: { message: error?.message }
             };
         }
     },
