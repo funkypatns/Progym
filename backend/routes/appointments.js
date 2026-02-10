@@ -313,6 +313,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
                 trainerId: true,
                 title: true,
                 price: true,
+                finalPrice: true,
                 paidAmount: true,
                 paymentStatus: true,
                 trainer: { select: { id: true, name: true, commissionPercent: true } }
@@ -338,22 +339,11 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const hasCommissionOverride = Number.isFinite(commissionPercent)
             && commissionPercent >= 0
             && commissionPercent <= 100;
-        let finalPriceValue = null;
-        try {
-            const rows = await req.prisma.$queryRaw`SELECT finalPrice FROM Appointment WHERE id = ${appointmentId}`;
-            if (Array.isArray(rows) && rows.length > 0) {
-                finalPriceValue = rows[0]?.finalPrice ?? null;
-            }
-        } catch (rawError) {
-            if (isDev) {
-                console.warn('Preview completion: failed to read finalPrice via raw query', rawError?.message || rawError);
-            }
-        }
-        const hasFinalPrice = finalPriceValue !== null && finalPriceValue !== undefined
-            && Number.isFinite(Number(finalPriceValue));
+        const hasFinalPrice = appointment.finalPrice !== null && appointment.finalPrice !== undefined
+            && Number.isFinite(Number(appointment.finalPrice));
         const effectivePrice = Number.isFinite(sessionPrice)
             ? sessionPrice
-            : (hasFinalPrice ? Number(finalPriceValue) : Number(appointment.price || 0));
+            : (hasFinalPrice ? Number(appointment.finalPrice) : Number(appointment.price || 0));
         const preview = await CommissionService.calculateCommissionPreview(req.params.id, req.prisma, {
             allowZero: true,
             sessionPrice: Number.isFinite(effectivePrice) ? effectivePrice : undefined
@@ -393,7 +383,8 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
             trainerName: trainerForPreview?.name || preview?.coachName || '',
             serviceName: appointment.title || '',
             effectivePrice: roundMoney(priceValue),
-            finalPrice: hasFinalPrice ? roundMoney(Number(finalPriceValue)) : null,
+            originalPrice: roundMoney(appointment.price || 0),
+            finalPrice: hasFinalPrice ? roundMoney(Number(appointment.finalPrice)) : null,
             paidAmount,
             dueAmount,
             overpaidAmount,

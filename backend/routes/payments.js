@@ -497,10 +497,11 @@ router.post('/', requirePermission('payments.create'), [
             if (appointmentId && !subscriptionId) {
                 const appointment = await prisma.appointment.findUnique({
                     where: { id: parseInt(appointmentId) },
-                    select: { price: true }
+                    select: { price: true, finalPrice: true }
                 });
                 if (!appointment) throw new Error('APPOINTMENT_NOT_FOUND');
-                sessionCommission = await CommissionService.getSessionCommissionBreakdown(appointment.price || 0, prisma);
+                const effectivePrice = appointment.finalPrice ?? appointment.price ?? 0;
+                sessionCommission = await CommissionService.getSessionCommissionBreakdown(effectivePrice, prisma);
             }
 
             // schema.prisma (Runtime mismatch workaround: transactionRef field unknown to client)

@@ -2301,9 +2301,17 @@ router.get('/gym-income-sessions', async (req, res) => {
                         start: true,
                         end: true,
                         price: true,
+                        finalPrice: true,
                         member: { select: { firstName: true, lastName: true, memberId: true } },
                         trainer: { select: { id: true, name: true } },
-                        completedByEmployee: { select: { firstName: true, lastName: true } }
+                        completedByEmployee: { select: { firstName: true, lastName: true } },
+                        priceAdjustments: {
+                            take: 1,
+                            orderBy: { createdAt: 'desc' },
+                            include: {
+                                changedBy: { select: { firstName: true, lastName: true, username: true } }
+                            }
+                        }
                     }
                 }
             },
@@ -2350,21 +2358,35 @@ router.get('/gym-income-sessions', async (req, res) => {
             const employeeName = employee ? [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() : '';
             const methodLabel = row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED';
 
-                return {
-                    appointmentId: row.appointmentId,
-                    paidAt: row.paidAt,
-                    sessionDate: row.appointment?.start || row.paidAt,
-                    customerName: memberName,
-                    customerCode: row.member?.memberId || '',
-                    serviceName: row.appointment?.title || '',
-                    trainerName,
-                    employeeName,
-                    paymentMethod: methodLabel,
-                    amount: row.amount || 0
-                };
-            });
+            const originalPrice = row.appointment?.price ?? 0;
+            const finalPrice = row.appointment?.finalPrice ?? originalPrice;
+            const adjustment = row.appointment?.priceAdjustments?.[0] || null;
+            const adjustmentDifference = finalPrice - originalPrice;
+            const adjustedBy = adjustment?.changedBy
+                ? [adjustment.changedBy.firstName, adjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
+                    || adjustment.changedBy.username || ''
+                : '';
+            return {
+                appointmentId: row.appointmentId,
+                paidAt: row.paidAt,
+                sessionDate: row.appointment?.start || row.paidAt,
+                customerName: memberName,
+                customerCode: row.member?.memberId || '',
+                serviceName: row.appointment?.title || '',
+                trainerName,
+                employeeName,
+                paymentMethod: methodLabel,
+                amount: finalPrice || 0,
+                originalPrice,
+                finalPrice,
+                adjustmentDifference,
+                adjustmentReason: adjustment?.reason || '',
+                adjustedBy,
+                adjustedAt: adjustment?.createdAt || null
+            };
+        });
 
-        const totalRevenue = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
+        const totalRevenue = rows.reduce((sum, row) => sum + (row.finalPrice || 0), 0);
         const sessionsCount = rows.length;
         const averagePrice = sessionsCount ? totalRevenue / sessionsCount : 0;
 
@@ -2470,12 +2492,20 @@ router.get('/trainer-earnings', async (req, res) => {
                         start: true,
                         end: true,
                         price: true,
+                        finalPrice: true,
                         paidAmount: true,
                         paymentStatus: true,
                         status: true,
                         member: { select: { id: true, firstName: true, lastName: true, memberId: true, phone: true } },
                         createdByEmployee: { select: { id: true, firstName: true, lastName: true } },
                         completedByEmployee: { select: { id: true, firstName: true, lastName: true } },
+                        priceAdjustments: {
+                            take: 1,
+                            orderBy: { createdAt: 'desc' },
+                            include: {
+                                changedBy: { select: { firstName: true, lastName: true, username: true } }
+                            }
+                        },
                         payments: {
                             select: {
                                 id: true,
@@ -2499,6 +2529,14 @@ router.get('/trainer-earnings', async (req, res) => {
             const memberName = [member?.firstName, member?.lastName].filter(Boolean).join(' ').trim();
             const employee = earning.appointment?.completedByEmployee || earning.appointment?.createdByEmployee;
             const employeeName = employee ? [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() : '';
+            const originalPrice = earning.appointment?.price ?? 0;
+            const finalPrice = earning.appointment?.finalPrice ?? originalPrice;
+            const adjustment = earning.appointment?.priceAdjustments?.[0] || null;
+            const adjustmentDifference = finalPrice - originalPrice;
+            const adjustedBy = adjustment?.changedBy
+                ? [adjustment.changedBy.firstName, adjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
+                    || adjustment.changedBy.username || ''
+                : '';
             return {
                 id: earning.id,
                 trainerId: earning.trainerId,
@@ -2509,7 +2547,13 @@ router.get('/trainer-earnings', async (req, res) => {
                 customerCode: member?.memberId || '',
                 customerPhone: member?.phone || '',
                 serviceName: earning.appointment?.title || '',
-                baseAmount: earning.baseAmount ?? earning.appointment?.price ?? 0,
+                baseAmount: earning.baseAmount ?? finalPrice ?? 0,
+                originalPrice,
+                finalPrice,
+                adjustmentDifference,
+                adjustmentReason: adjustment?.reason || '',
+                adjustedBy,
+                adjustedAt: adjustment?.createdAt || null,
                 commissionPercent: earning.commissionPercent ?? null,
                 commissionAmount: earning.commissionAmount ?? 0,
                 status: earning.status,

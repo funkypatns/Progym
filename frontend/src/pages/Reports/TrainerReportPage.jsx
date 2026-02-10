@@ -41,6 +41,14 @@ const TrainerDetailsModal = ({ isOpen, onClose, earning, language }) => {
     const customerLabel = earning.customerCode
         ? `${earning.customerName} (${earning.customerCode})`
         : earning.customerName;
+    const originalPrice = Number(earning.originalPrice ?? appointment.price ?? earning.baseAmount ?? 0);
+    const finalPrice = Number(earning.finalPrice ?? appointment.finalPrice ?? earning.baseAmount ?? originalPrice);
+    const adjustmentDifference = Number.isFinite(earning.adjustmentDifference)
+        ? Number(earning.adjustmentDifference)
+        : (finalPrice - originalPrice);
+    const adjustmentApplied = adjustmentDifference !== 0;
+    const adjustedBy = earning.adjustedBy || '';
+    const adjustmentReason = earning.adjustmentReason || '';
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -85,10 +93,28 @@ const TrainerDetailsModal = ({ isOpen, onClose, earning, language }) => {
                         </div>
                         <div>
                             <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'السعر' : 'Price'}
+                                {language === 'ar' ? 'السعر الأصلي' : 'Original Price'}
                             </div>
                             <div className="font-semibold text-gray-900 dark:text-white">
-                                {formatMoney(appointment.price || earning.baseAmount, language, { code: 'EGP', symbol: 'EGP' })}
+                                {formatMoney(originalPrice, language, { code: 'EGP', symbol: 'EGP' })}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-gray-500 dark:text-gray-400">
+                                {language === 'ar' ? 'السعر النهائي' : 'Final Price'}
+                            </div>
+                            <div className="font-semibold text-gray-900 dark:text-white">
+                                {formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-gray-500 dark:text-gray-400">
+                                {language === 'ar' ? 'فرق التعديل' : 'Adjustment'}
+                            </div>
+                            <div className="font-semibold text-gray-900 dark:text-white">
+                                {adjustmentApplied
+                                    ? `${adjustmentDifference > 0 ? '+' : ''}${formatMoney(Math.abs(adjustmentDifference), language, { code: 'EGP', symbol: 'EGP' })}`
+                                    : '-'}
                             </div>
                         </div>
                         <div>
@@ -109,6 +135,22 @@ const TrainerDetailsModal = ({ isOpen, onClose, earning, language }) => {
                             </div>
                             <div className="font-semibold text-gray-900 dark:text-white">{earning.employeeName || '-'}</div>
                         </div>
+                        {adjustmentApplied && (
+                            <div>
+                                <div className="text-gray-500 dark:text-gray-400">
+                                    {language === 'ar' ? 'تم التعديل بواسطة' : 'Adjusted By'}
+                                </div>
+                                <div className="font-semibold text-gray-900 dark:text-white">{adjustedBy || '-'}</div>
+                            </div>
+                        )}
+                        {adjustmentApplied && (
+                            <div>
+                                <div className="text-gray-500 dark:text-gray-400">
+                                    {language === 'ar' ? 'سبب التعديل' : 'Adjustment Reason'}
+                                </div>
+                                <div className="font-semibold text-gray-900 dark:text-white">{adjustmentReason || '-'}</div>
+                            </div>
+                        )}
                     </div>
 
                     {payments.length > 0 && (
@@ -541,7 +583,16 @@ const TrainerReportPage = () => {
                     commissionAmount: item.earningAmount || 0,
                     status: item.status === 'paid' ? 'PAID' : 'UNPAID',
                     employeeName: item.employeeName || '',
-                    trainerName: selectedTrainer?.name || ''
+                    trainerName: selectedTrainer?.name || '',
+                    originalPrice: item.originalPrice ?? item.price ?? 0,
+                    finalPrice: item.finalPrice ?? item.basisAmount ?? 0,
+                    adjustmentDifference: item.adjustmentDifference ?? 0,
+                    adjustmentReason: item.adjustmentReason || '',
+                    adjustedBy: item.adjustedBy || '',
+                    adjustedAt: item.adjustedAt || null,
+                    paymentStatus: item.paymentStatus || '',
+                    dueAmount: item.dueAmount ?? 0,
+                    overpaidAmount: item.overpaidAmount ?? 0
                 }))
                 .filter((item) => {
                     if (serviceName && !String(item.serviceName || '').toLowerCase().includes(serviceName.toLowerCase())) {
@@ -620,11 +671,15 @@ const TrainerReportPage = () => {
             Date: formatDateTime(row.sessionDate, language),
             Customer: row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName,
             Service: row.serviceName,
-            BaseAmount: row.baseAmount,
+            OriginalPrice: row.originalPrice ?? row.baseAmount ?? 0,
+            FinalPrice: row.finalPrice ?? row.baseAmount ?? 0,
+            AdjustmentDifference: row.adjustmentDifference ?? 0,
             Rule: row.ruleText || '',
             CommissionAmount: row.commissionAmount,
             Status: row.status,
-            Employee: row.employeeName || ''
+            Employee: row.employeeName || '',
+            AdjustmentReason: row.adjustmentReason || '',
+            AdjustedBy: row.adjustedBy || ''
         }));
         exportCsv('trainer-earnings.csv', rows);
     };
@@ -677,13 +732,36 @@ const TrainerReportPage = () => {
             render: (row) => row.serviceName || '-'
         },
         {
-            key: 'baseAmount',
-            label: isRTL ? 'الأساس' : 'Base Amount',
+            key: 'originalPrice',
+            label: isRTL ? 'السعر الأصلي' : 'Original Price',
+            width: 'minmax(130px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatMoney(row.originalPrice ?? row.baseAmount ?? 0, language, { code: 'EGP', symbol: 'EGP' })
+        },
+        {
+            key: 'finalPrice',
+            label: isRTL ? 'السعر النهائي' : 'Final Price',
+            width: 'minmax(130px, 1fr)',
+            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
+            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            align: 'left',
+            render: (row) => formatMoney(row.finalPrice ?? row.baseAmount ?? 0, language, { code: 'EGP', symbol: 'EGP' })
+        },
+        {
+            key: 'adjustmentDifference',
+            label: isRTL ? 'فرق التعديل' : 'Adjustment',
             width: 'minmax(120px, 1fr)',
             headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
             cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
             align: 'left',
-            render: (row) => formatMoney(row.baseAmount, language, { code: 'EGP', symbol: 'EGP' })
+            render: (row) => {
+                const diff = Number(row.adjustmentDifference || 0);
+                if (!diff) return '-';
+                const sign = diff > 0 ? '+' : '';
+                return `${sign}${formatMoney(Math.abs(diff), language, { code: 'EGP', symbol: 'EGP' })}`;
+            }
         },
         {
             key: 'ruleText',

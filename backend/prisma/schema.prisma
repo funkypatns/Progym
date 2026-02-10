@@ -46,6 +46,8 @@ model User {
   openedShifts POSShift[] @relation("ShiftOpener")
   closedShifts POSShift[] @relation("ShiftCloser")
   payments     Payment[]  @relation("PaymentCreator")
+  creditLedgerEntries MemberCreditLedger[]
+  sessionPriceAdjustments SessionPriceAdjustment[]
   
   // Closing & Audit Relations
   closings        CashClosing[] @relation("EmployeeClosings")
@@ -129,6 +131,7 @@ model Member {
   reminders     Reminder[]
   appointmentRecords AppointmentFinancialRecord[]
   appointments  Appointment[]
+  creditLedgerEntries MemberCreditLedger[]
 
   @@index([gender])
 }
@@ -876,7 +879,7 @@ model CoachSettlement {
 }
 
 model SessionPriceAdjustment {
-  id              String   @id @default(uuid())
+  id              Int      @id @default(autoincrement())
   appointmentId   Int
   oldFinalPrice   Float?
   newFinalPrice   Float

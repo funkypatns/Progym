@@ -1076,29 +1076,76 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                 />
                                             </div>
 
-                                            {adjustPreview && (
-                                                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-3 text-sm space-y-1">
-                                                    <div className="font-semibold text-slate-700 dark:text-slate-200">
-                                                        {t('appointments.preview', 'Preview')}
+                                            {adjustPreview && (() => {
+                                                const originalPrice = Number(adjustPreview.originalPrice ?? appointment?.price ?? 0);
+                                                const newPrice = Number(adjustPreview.newPrice ?? adjustPreview.finalPrice ?? adjustForm.price ?? 0);
+                                                const paidAmount = Number(adjustPreview.paidAmount ?? appointment?.paidAmount ?? 0);
+                                                const difference = Number.isFinite(adjustPreview.adjustmentDifference)
+                                                    ? Number(adjustPreview.adjustmentDifference)
+                                                    : (newPrice - originalPrice);
+                                                const dueAmount = Number(adjustPreview.dueAmount ?? 0);
+                                                const overpaidAmount = Number(adjustPreview.overpaidAmount ?? 0);
+                                                const status = dueAmount > 0 ? 'DUE' : 'PAID';
+                                                const commissionPercent = Number(adjustPreview.commissionPercent ?? 0);
+                                                const commissionAmount = Number(adjustPreview.commissionAmount ?? 0);
+                                                return (
+                                                    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-3 text-sm space-y-2">
+                                                        <div className="font-semibold text-slate-700 dark:text-slate-200">
+                                                            {t('appointments.preview', 'Preview')}
+                                                        </div>
+                                                        <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                            <span>{t('appointments.originalPrice', 'Original Price')}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(originalPrice, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                            <span>{t('appointments.adjustedPrice', 'Adjusted Price')}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(newPrice, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                            <span>{t('appointments.priceDifference', 'Difference')}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-white">
+                                                                {difference >= 0 ? '+' : ''}{formatMoney(difference, i18n.language, { code: 'EGP', symbol: 'EGP' })}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                            <span>{t('appointments.paidAmount', 'Paid')}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(paidAmount, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                            <span>{t('appointments.status', 'Status')}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-white">{status}</span>
+                                                        </div>
+                                                        {dueAmount > 0 && (
+                                                            <div className="text-xs text-amber-600 dark:text-amber-400">
+                                                                {t('appointments.dueExplanation', 'Customer still owes')} {formatMoney(dueAmount, i18n.language, { code: 'EGP', symbol: 'EGP' })}
+                                                            </div>
+                                                        )}
+                                                        {overpaidAmount > 0 && (
+                                                            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                                                                {t('appointments.overpaidExplanation', 'Overpaid amount to credit')} {formatMoney(overpaidAmount, i18n.language, { code: 'EGP', symbol: 'EGP' })}
+                                                            </div>
+                                                        )}
+                                                        {dueAmount <= 0 && overpaidAmount <= 0 && (
+                                                            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                                                                {t('appointments.fullyPaidExplanation', 'Fully paid after adjustment')}
+                                                            </div>
+                                                        )}
+                                                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                            <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                                <span>{t('appointments.commissionRate', 'Commission Rate')}</span>
+                                                                <span className="font-semibold text-slate-900 dark:text-white">{commissionPercent}%</span>
+                                                            </div>
+                                                            <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                                                                <span>{t('appointments.commissionAmount', 'Commission')}</span>
+                                                                <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(commissionAmount, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
+                                                            </div>
+                                                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                                {t('appointments.commissionBasedOnFinal', 'Commission based on adjusted price')}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                                        <span>{t('appointments.status', 'Status')}</span>
-                                                        <span className="font-semibold text-slate-900 dark:text-white">{adjustPreview.appointment?.paymentStatus || adjustPreview.paymentStatus || '-'}</span>
-                                                    </div>
-                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                                        <span>{t('appointments.due', 'Due')}</span>
-                                                        <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.dueAmount ?? adjustPreview.appointment?.dueAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                                        <span>{t('appointments.overpaid', 'Overpaid')}</span>
-                                                        <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.overpaidAmount ?? adjustPreview.appointment?.overpaidAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
-                                                    </div>
-                                                <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                                                    <span>{t('appointments.commissionAmount', 'Commission')}</span>
-                                                    <span className="font-semibold text-slate-900 dark:text-white">{formatMoney(adjustPreview.commissionAmount ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}</span>
-                                                </div>
-                                            </div>
-                                        )}
+                                                );
+                                            })()}
 
                                         {adjustHistory.length > 0 && (
                                             <div className="mt-3">

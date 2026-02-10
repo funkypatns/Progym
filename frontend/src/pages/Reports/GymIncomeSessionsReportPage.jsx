@@ -287,7 +287,11 @@ const GymIncomeSessionsReportPage = () => {
                 'المدرب',
                 'الموظف',
                 'طريقة الدفع',
-                'المبلغ',
+                'السعر الأصلي',
+                'السعر النهائي',
+                'الفرق',
+                'سبب التعديل',
+                'تم التعديل بواسطة',
                 'رقم الحجز'
             ].join(',')
         ];
@@ -304,7 +308,11 @@ const GymIncomeSessionsReportPage = () => {
                 row.trainerName || '',
                 row.employeeName || '',
                 methodLabel(row.paymentMethod),
-                row.amount ?? 0,
+                row.originalPrice ?? 0,
+                row.finalPrice ?? row.amount ?? 0,
+                row.adjustmentDifference ?? 0,
+                row.adjustmentReason || '',
+                row.adjustedBy || '',
                 row.appointmentId ?? ''
             ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',');
             csvRows.push(line);
@@ -408,7 +416,7 @@ const GymIncomeSessionsReportPage = () => {
         },
         {
             key: 'amount',
-            label: isRTL ? 'المبلغ' : 'Amount',
+            label: isRTL ? 'السعر النهائي' : 'Final Price',
             width: 'minmax(140px, 1fr)',
             headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
             cellClassName: 'px-4 py-3 text-center whitespace-nowrap',
@@ -418,6 +426,46 @@ const GymIncomeSessionsReportPage = () => {
                     {row.amount ? `ج.م ${Number(row.amount).toLocaleString()}` : '—'}
                 </span>
             )
+        },
+        {
+            key: 'originalPrice',
+            label: isRTL ? 'السعر الأصلي' : 'Original Price',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-4 py-3 text-center whitespace-nowrap text-xs text-gray-600 dark:text-gray-300',
+            align: 'center',
+            render: (row) => (Number.isFinite(row.originalPrice) ? `ج.م ${Number(row.originalPrice).toLocaleString()}` : '—')
+        },
+        {
+            key: 'adjustmentDifference',
+            label: isRTL ? 'فرق التعديل' : 'Adjustment',
+            width: 'minmax(140px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-4 py-3 text-center whitespace-nowrap text-xs text-gray-600 dark:text-gray-300',
+            align: 'center',
+            render: (row) => {
+                const diff = Number(row.adjustmentDifference || 0);
+                if (!diff) return '—';
+                return `${diff > 0 ? '+' : ''}ج.م ${Math.abs(diff).toLocaleString()}`;
+            }
+        },
+        {
+            key: 'adjustedBy',
+            label: isRTL ? 'تم التعديل بواسطة' : 'Adjusted By',
+            width: 'minmax(160px, 1fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-600 dark:text-gray-300 text-xs',
+            align: 'right',
+            render: (row) => row.adjustedBy || '—'
+        },
+        {
+            key: 'adjustmentReason',
+            label: isRTL ? 'سبب التعديل' : 'Adjustment Reason',
+            width: 'minmax(200px, 1.2fr)',
+            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-4 py-3 text-gray-500 dark:text-gray-400 text-xs',
+            align: 'right',
+            render: (row) => row.adjustmentReason || '—'
         }
     ]), [formatDate, isRTL, methodLabel]);
 

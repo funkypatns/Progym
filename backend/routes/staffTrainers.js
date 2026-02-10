@@ -292,7 +292,14 @@ router.get('/:id/earnings', async (req, res) => {
             end: true,
             member: { select: { firstName: true, lastName: true, memberId: true } },
             trainer: { select: { id: true, name: true, commissionPercent: true } },
-            completedByEmployee: { select: { firstName: true, lastName: true } }
+            completedByEmployee: { select: { firstName: true, lastName: true } },
+            priceAdjustments: {
+              take: 1,
+              orderBy: { createdAt: 'desc' },
+              include: {
+                changedBy: { select: { firstName: true, lastName: true, username: true } }
+              }
+            }
           }
         }
       },
@@ -307,7 +314,15 @@ router.get('/:id/earnings', async (req, res) => {
         ? `${item.appointment.completedByEmployee.firstName || ''} ${item.appointment.completedByEmployee.lastName || ''}`.trim()
         : '';
 
-      const effectivePrice = item.appointment?.finalPrice ?? item.baseAmount ?? item.appointment?.price ?? 0;
+      const originalPrice = item.appointment?.price ?? 0;
+      const finalPrice = item.appointment?.finalPrice ?? originalPrice;
+      const effectivePrice = finalPrice ?? item.baseAmount ?? originalPrice ?? 0;
+      const adjustment = item.appointment?.priceAdjustments?.[0] || null;
+      const adjustmentDifference = Number(finalPrice || 0) - Number(originalPrice || 0);
+      const adjustedBy = adjustment?.changedBy
+        ? [adjustment.changedBy.firstName, adjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
+          || adjustment.changedBy.username || ''
+        : '';
       const commissionPercentUsed = item.commissionPercent !== null && item.commissionPercent !== undefined
         ? item.commissionPercent
         : (item.appointment?.trainer?.commissionPercent ?? defaultCommissionPercent);
@@ -339,7 +354,13 @@ router.get('/:id/earnings', async (req, res) => {
         employeeName,
         paymentStatus,
         dueAmount,
-        overpaidAmount
+        overpaidAmount,
+        originalPrice,
+        finalPrice,
+        adjustmentDifference,
+        adjustmentReason: adjustment?.reason || '',
+        adjustedBy,
+        adjustedAt: adjustment?.createdAt || null
       };
     });
 

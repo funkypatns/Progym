@@ -70,7 +70,10 @@ const CommissionService = {
         const parsedOverride = overridePrice !== undefined && overridePrice !== null
             ? Number(overridePrice)
             : null;
-        const effectivePrice = appointment.finalPrice ?? appointment.price ?? 0;\r\n        const basePrice = Number.isFinite(parsedOverride) && parsedOverride > 0\r\n            ? parsedOverride\r\n            : Number(effectivePrice);
+        const effectivePrice = appointment.finalPrice ?? appointment.price ?? 0;
+        const basePrice = Number.isFinite(parsedOverride) && parsedOverride > 0
+            ? parsedOverride
+            : Number(effectivePrice);
         let sessionBreakdown;
         if (Number.isFinite(basePrice) && basePrice > 0) {
             sessionBreakdown = await getSessionCommissionBreakdown(basePrice, tx);
