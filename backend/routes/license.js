@@ -104,6 +104,16 @@ router.post('/activate', async (req, res) => {
         }
 
         const result = await licenseService.activate(trimmedKey, gymName);
+        if (!result || typeof result.success !== 'boolean') {
+            console.error('Activation unexpected result:', result);
+            return res.status(500).json({
+                success: false,
+                message: 'Unexpected error during activation',
+                errorCode: 'UNEXPECTED_RESULT',
+                code: 'UNEXPECTED_RESULT',
+                details: isDev ? { resultType: typeof result } : undefined
+            });
+        }
 
         if (result.success) {
             return res.json({

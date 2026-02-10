@@ -252,14 +252,20 @@ const licenseService = {
             });
 
             if (error.response) {
-                console.error('[DEBUG] License Server Error Response:', JSON.stringify(error.response.data, null, 2));
+                const responseData = error.response.data;
+                const safeData = responseData && typeof responseData === 'object' ? responseData : {};
+                const fallbackMessage = typeof responseData === 'string' && responseData.trim()
+                    ? responseData
+                    : 'Activation failed';
+
+                console.error('[DEBUG] License Server Error Response:', JSON.stringify(responseData ?? null, null, 2));
                 return {
                     success: false,
-                    code: error.response.data.code || 'SERVER_ERROR',
-                    message: error.response.data.message || 'Activation failed',
+                    code: safeData.code || 'SERVER_ERROR',
+                    message: safeData.message || fallbackMessage,
                     details: {
                         status: error.response.status,
-                        data: error.response.data
+                        data: responseData
                     }
                 };
             }
