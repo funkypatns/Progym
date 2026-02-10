@@ -193,3 +193,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 879a059 | Surface preview completion errors in appointment modal. |
 | 2026-02-10 | 89ecc01 | Make adjust-price endpoint schema-safe (no finalPrice select/update). |
 | 2026-02-10 | 1d04825 | Finalize price adjustment audit with final-price reporting (trainer & gym income) and adjust-price preview labels. |
+| 2026-02-10 | 8c59593 | Harden license activation errors, add format validation, and auto-clear corrupt cache. |
