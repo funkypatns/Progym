@@ -1,7 +1,7 @@
 ﻿const express = require('express');
 const router = express.Router();
 const AppointmentService = require('../services/appointmentService');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { parseDateRange } = require('../utils/dateParams');
 const { roundMoney } = require('../utils/money');
 const CreditService = require('../services/creditService');
@@ -224,31 +224,6 @@ router.post('/:id/complete', authenticate, async (req, res) => {
                     meta: error?.meta
                 }
             } : {})
-        });
-    }
-});
-
-// Undo completion (admin-only permission)
-router.post('/:id/undo-complete', authenticate, requirePermission('session.undo_complete'), async (req, res) => {
-    try {
-        const reason = (req.body?.reason || '').trim();
-        const result = await AppointmentService.undoCompleteAppointment(
-            req.params.id,
-            { reason },
-            req.user
-        );
-        return res.json({ success: true, data: result });
-    } catch (error) {
-        const status = error.status || 400;
-        const reason =
-            status === 404 ? 'NOT_FOUND' :
-            status === 409 ? 'CONFLICT' :
-            status === 401 ? 'UNAUTHORIZED' :
-            'BAD_REQUEST';
-        return res.status(status).json({
-            success: false,
-            reason,
-            message: error.message || 'Failed to undo completion'
         });
     }
 });
