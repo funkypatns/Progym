@@ -96,6 +96,41 @@ const resolveMemberForValidation = async (prisma, identifier) => {
     return null;
 };
 
+const findActivePackage = async (prisma, memberId) => {
+    const now = new Date();
+    await prisma.memberPackage.updateMany({
+        where: {
+            memberId,
+            status: 'ACTIVE',
+            endDate: { lt: now }
+        },
+        data: { status: 'EXPIRED' }
+    });
+    await prisma.memberPackage.updateMany({
+        where: {
+            memberId,
+            status: 'ACTIVE',
+            remainingSessions: { lte: 0 }
+        },
+        data: { status: 'DEPLETED' }
+    });
+
+    return prisma.memberPackage.findFirst({
+        where: {
+            memberId,
+            status: 'ACTIVE',
+            remainingSessions: { gt: 0 },
+            startDate: { lte: now },
+            OR: [
+                { endDate: null },
+                { endDate: { gte: now } }
+            ]
+        },
+        include: { plan: true },
+        orderBy: { createdAt: 'desc' }
+    });
+};
+
 const computeEligibility = async (prisma, member, mode) => {
     const now = new Date();
     const activeSubscription = await prisma.subscription.findFirst({
@@ -110,7 +145,9 @@ const computeEligibility = async (prisma, member, mode) => {
         include: { plan: true }
     });
 
+    const activePackage = await findActivePackage(prisma, member.id);
     const hasActiveSubscription = Boolean(activeSubscription);
+    const hasActivePackage = Boolean(activePackage);
     const { start, end } = getTodayRange();
     const booking = await prisma.appointment.findFirst({
         where: {
@@ -126,13 +163,13 @@ const computeEligibility = async (prisma, member, mode) => {
     if (mode === 'session') {
         eligible = hasBookingToday;
     } else {
-        eligible = hasActiveSubscription;
+        eligible = hasActiveSubscription || hasActivePackage;
     }
     if (eligible) {
         reason = 'ELIGIBLE';
     }
 
-    return { eligible, reason, hasActiveSubscription, hasBookingToday, activeSubscription };
+    return { eligible, reason, hasActiveSubscription, hasActivePackage, hasBookingToday, activeSubscription, activePackage };
 };
 
 /**
@@ -204,7 +241,7 @@ router.post('/validate', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (re
         }
 
         const modeToUse = mode === 'session' ? 'session' : 'membership';
-        const { eligible, reason, hasActiveSubscription, hasBookingToday } = await computeEligibility(req.prisma, member, modeToUse);
+        const { eligible, reason, hasActiveSubscription, hasActivePackage, hasBookingToday } = await computeEligibility(req.prisma, member, modeToUse);
 
         return res.json({
             success: true,
@@ -212,6 +249,7 @@ router.post('/validate', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (re
                 eligible,
                 reason,
                 hasActiveSubscription,
+                hasActivePackage,
                 hasBookingToday
             }
         });
@@ -350,7 +388,7 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
 
         // Check subscription status
         const modeToUse = mode === 'session' ? 'session' : 'membership';
-        const { eligible, reason, activeSubscription } = await computeEligibility(req.prisma, member, modeToUse);
+        const { eligible, reason, activeSubscription, activePackage, hasActivePackage } = await computeEligibility(req.prisma, member, modeToUse);
         let visitType = null;
         let appointmentUsed = null;
         let subscriptionResponse = null;
@@ -365,8 +403,12 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
         }
 
         if (modeToUse === 'membership') {
-            visitType = 'SUBSCRIPTION';
-            subscriptionResponse = activeSubscription;
+            if (activeSubscription) {
+                visitType = 'SUBSCRIPTION';
+                subscriptionResponse = activeSubscription;
+            } else if (activePackage) {
+                visitType = 'PACKAGE';
+            }
         } else {
             const { start, end } = getTodayRange();
             appointmentUsed = await req.prisma.appointment.findFirst({
@@ -401,19 +443,82 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
             });
         }
 
-        // Create check-in
+        let checkIn = null;
+        let packageSnapshot = null;
         const metadata = { visitType };
         if (appointmentUsed) {
             metadata.appointmentId = appointmentUsed.id;
         }
 
-        const checkIn = await req.prisma.checkIn.create({
-            data: {
-                memberId: member.id,
-                method: methodToUse,
-                notes: JSON.stringify(metadata)
-            }
-        });
+        if (visitType === 'PACKAGE') {
+            // Consume package session in a single transaction
+            const result = await req.prisma.$transaction(async (tx) => {
+                const now = new Date();
+                const pkg = await tx.memberPackage.findFirst({
+                    where: {
+                        memberId: member.id,
+                        status: 'ACTIVE',
+                        remainingSessions: { gt: 0 },
+                        startDate: { lte: now },
+                        OR: [
+                            { endDate: null },
+                            { endDate: { gte: now } }
+                        ]
+                    },
+                    include: { plan: true },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                if (!pkg) {
+                    const err = new Error('No active package available');
+                    err.status = 400;
+                    throw err;
+                }
+
+                const nextRemaining = pkg.remainingSessions - 1;
+                const nextStatus = nextRemaining <= 0 ? 'DEPLETED' : 'ACTIVE';
+
+                const updatedPackage = await tx.memberPackage.update({
+                    where: { id: pkg.id },
+                    data: {
+                        remainingSessions: nextRemaining,
+                        status: nextStatus
+                    },
+                    include: { plan: true }
+                });
+
+                await tx.packageSessionUsage.create({
+                    data: {
+                        memberId: member.id,
+                        memberPackageId: pkg.id,
+                        source: 'CHECKIN',
+                        createdByEmployeeId: req.user?.id ?? null,
+                        notes: null
+                    }
+                });
+
+                const createdCheckIn = await tx.checkIn.create({
+                    data: {
+                        memberId: member.id,
+                        method: methodToUse,
+                        notes: JSON.stringify(metadata)
+                    }
+                });
+
+                return { updatedPackage, createdCheckIn };
+            });
+
+            checkIn = result.createdCheckIn;
+            packageSnapshot = result.updatedPackage;
+        } else {
+            checkIn = await req.prisma.checkIn.create({
+                data: {
+                    memberId: member.id,
+                    method: methodToUse,
+                    notes: JSON.stringify(metadata)
+                }
+            });
+        }
 
         const now = new Date();
         const responsePayload = {
@@ -446,6 +551,16 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
             };
         }
 
+        if (visitType === 'PACKAGE' && packageSnapshot) {
+            responsePayload.package = {
+                id: packageSnapshot.id,
+                planName: packageSnapshot.plan?.name || '',
+                remainingSessions: packageSnapshot.remainingSessions,
+                totalSessions: packageSnapshot.totalSessionsSnapshot,
+                endDate: packageSnapshot.endDate
+            };
+        }
+
         res.json({
             success: true,
             message: 'Check-in successful',
@@ -454,9 +569,10 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
 
     } catch (error) {
         console.error('Check-in error:', error);
-        res.status(400).json({
+        const status = error.status || 400;
+        res.status(status).json({
             success: false,
-            message: 'Check-in failed'
+            message: error.message || 'Check-in failed'
         });
     }
 });

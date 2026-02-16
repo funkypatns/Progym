@@ -109,6 +109,7 @@ app.use((req, res, next) => {
 const authRoutes = require('./routes/auth');
 const memberRoutes = require('./routes/members');
 const subscriptionRoutes = require('./routes/subscriptions');
+const packagePlanRoutes = require('./routes/package-plans');
 const planRoutes = require('./routes/plans');
 const checkInRoutes = require('./routes/checkin');
 const paymentRoutes = require('./routes/payments');
@@ -134,6 +135,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/package-plans', packagePlanRoutes);
 app.use('/api/plans', planRoutes);
 app.use('/api/checkin', checkInRoutes);
 app.use('/api/payments', paymentRoutes);

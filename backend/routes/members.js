@@ -1080,5 +1080,106 @@ router.get('/:id/details', requirePermission(PERMISSIONS.MEMBERS_VIEW), async (r
     }
 });
 
+/**
+ * GET /api/members/:memberId/active-package
+ * Return active session package if exists
+ */
+router.get('/:memberId/active-package', requirePermission(PERMISSIONS.MEMBERS_VIEW), async (req, res) => {
+    try {
+        const parsedMemberId = Number.parseInt(req.params.memberId, 10);
+        if (!Number.isInteger(parsedMemberId)) {
+            return res.status(400).json({ success: false, message: 'Invalid member id' });
+        }
+
+        const now = new Date();
+        const activePackage = await req.prisma.memberPackage.findFirst({
+            where: {
+                memberId: parsedMemberId,
+                status: 'ACTIVE'
+            },
+            include: { plan: true },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (!activePackage) {
+            return res.json({ success: true, data: null });
+        }
+
+        if ((activePackage.endDate && activePackage.endDate < now) || activePackage.remainingSessions <= 0) {
+            await req.prisma.memberPackage.update({
+                where: { id: activePackage.id },
+                data: { status: activePackage.remainingSessions <= 0 ? 'DEPLETED' : 'EXPIRED' }
+            });
+            return res.json({ success: true, data: null });
+        }
+
+        return res.json({ success: true, data: activePackage });
+    } catch (error) {
+        console.error('Get active package error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to fetch active package' });
+    }
+});
+
+/**
+ * POST /api/members/:memberId/packages
+ * Assign/buy a session package for a member
+ */
+router.post('/:memberId/packages', requireActiveShift, requirePermission(PERMISSIONS.SUBSCRIPTIONS_CREATE), async (req, res) => {
+    try {
+        const parsedMemberId = Number.parseInt(req.params.memberId, 10);
+        const { packagePlanId, startDate } = req.body || {};
+        const parsedPlanId = Number.parseInt(packagePlanId, 10);
+
+        if (!Number.isInteger(parsedMemberId) || !Number.isInteger(parsedPlanId)) {
+            return res.status(400).json({ success: false, message: 'Invalid member or package plan id' });
+        }
+
+        const plan = await req.prisma.packagePlan.findUnique({ where: { id: parsedPlanId } });
+        if (!plan || !plan.isActive) {
+            return res.status(400).json({ success: false, message: 'Package plan not found or inactive' });
+        }
+
+        const start = startDate ? new Date(startDate) : new Date();
+        if (Number.isNaN(start.getTime())) {
+            return res.status(400).json({ success: false, message: 'Invalid start date' });
+        }
+        const endDate = plan.validityDays ? new Date(start.getTime() + plan.validityDays * 24 * 60 * 60 * 1000) : null;
+
+        const created = await req.prisma.$transaction(async (tx) => {
+            const existing = await tx.memberPackage.findFirst({
+                where: {
+                    memberId: parsedMemberId,
+                    status: 'ACTIVE'
+                }
+            });
+            if (existing) {
+                const err = new Error('Member already has an active package');
+                err.status = 409;
+                throw err;
+            }
+
+            return tx.memberPackage.create({
+                data: {
+                    memberId: parsedMemberId,
+                    packagePlanId: plan.id,
+                    startDate: start,
+                    endDate,
+                    totalSessionsSnapshot: plan.totalSessions,
+                    remainingSessions: plan.totalSessions,
+                    status: 'ACTIVE',
+                    createdByEmployeeId: req.user?.id ?? null
+                },
+                include: { plan: true }
+            });
+        });
+
+        return res.json({ success: true, data: created });
+    } catch (error) {
+        const status = error.status || 500;
+        console.error('Assign package error:', error);
+        return res.status(status).json({ success: false, message: error.message || 'Failed to assign package' });
+    }
+});
+
 module.exports = router;
 
