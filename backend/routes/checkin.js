@@ -64,6 +64,40 @@ const getTodayRange = () => {
     return { start, end };
 };
 
+const parseIdempotencyKey = (req) => {
+    const raw = String(
+        req.header('Idempotency-Key')
+        || req.header('idempotency-key')
+        || req.header('idempotency_key')
+        || ''
+    ).trim();
+    if (!raw) return '';
+    return raw.slice(0, 128);
+};
+
+const parseJsonSafely = (text, fallback = null) => {
+    if (!text || typeof text !== 'string') return fallback;
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        return fallback;
+    }
+};
+
+const toPackageSummary = (pkg) => {
+    if (!pkg) return null;
+    return {
+        id: pkg.id,
+        planName: pkg.plan?.name || '',
+        remainingSessions: pkg.remainingSessions,
+        totalSessions: pkg.totalSessions,
+        endDate: pkg.endDate,
+        status: pkg.status,
+        sessionName: pkg.sessionName || pkg.plan?.name || null,
+        sessionPrice: pkg.sessionPrice ?? null
+    };
+};
+
 const resolveMemberForValidation = async (prisma, identifier) => {
     const cleaned = (identifier ?? '').toString().trim();
     if (!cleaned) return null;
@@ -112,20 +146,30 @@ const findActivePackage = async (prisma, memberId) => {
             status: 'ACTIVE',
             remainingSessions: { lte: 0 }
         },
-        data: { status: 'DEPLETED' }
+        data: { status: 'COMPLETED' }
     });
 
+    const baseWhere = {
+        memberId,
+        status: 'ACTIVE',
+        remainingSessions: { gt: 0 },
+        startDate: { lte: now },
+        plan: { type: 'PACKAGE' },
+        OR: [
+            { endDate: null },
+            { endDate: { gte: now } }
+        ]
+    };
+
+    const withEndDate = await prisma.memberPackage.findFirst({
+        where: { ...baseWhere, endDate: { not: null } },
+        include: { plan: true },
+        orderBy: { endDate: 'asc' }
+    });
+    if (withEndDate) return withEndDate;
+
     return prisma.memberPackage.findFirst({
-        where: {
-            memberId,
-            status: 'ACTIVE',
-            remainingSessions: { gt: 0 },
-            startDate: { lte: now },
-            OR: [
-                { endDate: null },
-                { endDate: { gte: now } }
-            ]
-        },
+        where: { ...baseWhere, endDate: null },
         include: { plan: true },
         orderBy: { createdAt: 'desc' }
     });
@@ -241,7 +285,7 @@ router.post('/validate', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (re
         }
 
         const modeToUse = mode === 'session' ? 'session' : 'membership';
-        const { eligible, reason, hasActiveSubscription, hasActivePackage, hasBookingToday } = await computeEligibility(req.prisma, member, modeToUse);
+        const { eligible, reason, hasActiveSubscription, hasActivePackage, hasBookingToday, activePackage } = await computeEligibility(req.prisma, member, modeToUse);
 
         return res.json({
             success: true,
@@ -250,7 +294,8 @@ router.post('/validate', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (re
                 reason,
                 hasActiveSubscription,
                 hasActivePackage,
-                hasBookingToday
+                hasBookingToday,
+                activePackage: toPackageSummary(activePackage)
             }
         });
     } catch (error) {
@@ -264,9 +309,11 @@ router.post('/validate', requirePermission(PERMISSIONS.CHECKINS_VIEW), async (re
  * Check-in a member
  */
 router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res) => {
+    let idempotencyKey = '';
     try {
-        const { memberId, query, method, source, mode } = req.body;
+        const { memberId, query, method, source, mode, sessionName, sessionPrice } = req.body || {};
         const methodToUse = method || source || 'manual';
+        idempotencyKey = parseIdempotencyKey(req);
 
         const identifier = (memberId ?? query ?? '').toString().trim();
         if (!identifier) {
@@ -386,6 +433,20 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
             });
         }
 
+        if (idempotencyKey) {
+            const existingRequest = await req.prisma.checkInIdempotency.findUnique({
+                where: { idempotencyKey }
+            });
+            if (existingRequest?.responseJson) {
+                return res.json({
+                    success: true,
+                    message: 'Check-in successful',
+                    data: parseJsonSafely(existingRequest.responseJson, null),
+                    idempotentReplay: true
+                });
+            }
+        }
+
         // Check subscription status
         const modeToUse = mode === 'session' ? 'session' : 'membership';
         const { eligible, reason, activeSubscription, activePackage, hasActivePackage } = await computeEligibility(req.prisma, member, modeToUse);
@@ -454,17 +515,25 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
             // Consume package session in a single transaction
             const result = await req.prisma.$transaction(async (tx) => {
                 const now = new Date();
-                const pkg = await tx.memberPackage.findFirst({
-                    where: {
-                        memberId: member.id,
-                        status: 'ACTIVE',
-                        remainingSessions: { gt: 0 },
-                        startDate: { lte: now },
-                        OR: [
-                            { endDate: null },
-                            { endDate: { gte: now } }
-                        ]
-                    },
+                const baseWhere = {
+                    memberId: member.id,
+                    status: 'ACTIVE',
+                    remainingSessions: { gt: 0 },
+                    startDate: { lte: now },
+                    plan: { type: 'PACKAGE' },
+                    OR: [
+                        { endDate: null },
+                        { endDate: { gte: now } }
+                    ]
+                };
+
+                const pkgWithEnd = await tx.memberPackage.findFirst({
+                    where: { ...baseWhere, endDate: { not: null } },
+                    include: { plan: true },
+                    orderBy: { endDate: 'asc' }
+                });
+                const pkg = pkgWithEnd || await tx.memberPackage.findFirst({
+                    where: { ...baseWhere, endDate: null },
                     include: { plan: true },
                     orderBy: { createdAt: 'desc' }
                 });
@@ -475,27 +544,19 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
                     throw err;
                 }
 
-                const nextRemaining = pkg.remainingSessions - 1;
-                const nextStatus = nextRemaining <= 0 ? 'DEPLETED' : 'ACTIVE';
-
-                const updatedPackage = await tx.memberPackage.update({
-                    where: { id: pkg.id },
-                    data: {
-                        remainingSessions: nextRemaining,
-                        status: nextStatus
-                    },
-                    include: { plan: true }
-                });
-
-                await tx.packageSessionUsage.create({
-                    data: {
-                        memberId: member.id,
-                        memberPackageId: pkg.id,
-                        source: 'CHECKIN',
-                        createdByEmployeeId: req.user?.id ?? null,
-                        notes: null
-                    }
-                });
+                const explicitSessionName = typeof sessionName === 'string' && sessionName.trim()
+                    ? sessionName.trim()
+                    : null;
+                const parsedSessionPrice = sessionPrice !== undefined && sessionPrice !== null && sessionPrice !== ''
+                    ? Number(sessionPrice)
+                    : NaN;
+                const fallbackSessionPrice = Number(pkg.sessionPrice ?? (Number(pkg.plan?.price || 0) > 0 && Number(pkg.totalSessions || 0) > 0
+                    ? Number(pkg.plan.price) / Number(pkg.totalSessions)
+                    : 0));
+                const usedSessionName = explicitSessionName || pkg.sessionName || pkg.plan?.name || null;
+                const usedSessionPrice = Number.isFinite(parsedSessionPrice) && parsedSessionPrice >= 0
+                    ? parsedSessionPrice
+                    : fallbackSessionPrice;
 
                 const createdCheckIn = await tx.checkIn.create({
                     data: {
@@ -504,6 +565,67 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
                         notes: JSON.stringify(metadata)
                     }
                 });
+
+                await tx.packageSessionUsage.create({
+                    data: {
+                        memberId: member.id,
+                        memberPackageId: pkg.id,
+                        checkInId: createdCheckIn.id,
+                        sessionName: usedSessionName,
+                        sessionPrice: usedSessionPrice,
+                        source: 'CHECKIN',
+                        createdByEmployeeId: req.user?.id ?? null,
+                        notes: null
+                    }
+                });
+
+                const nextRemaining = pkg.remainingSessions - 1;
+                const nextStatus = nextRemaining <= 0 ? 'COMPLETED' : 'ACTIVE';
+
+                const updatedPackage = await tx.memberPackage.update({
+                    where: { id: pkg.id },
+                    data: {
+                        remainingSessions: nextRemaining,
+                        status: nextStatus,
+                        sessionName: usedSessionName,
+                        sessionPrice: usedSessionPrice
+                    },
+                    include: { plan: true }
+                });
+
+                const payload = {
+                    checkIn: createdCheckIn,
+                    member: {
+                        id: member.id,
+                        memberId: member.memberId,
+                        firstName: member.firstName,
+                        lastName: member.lastName,
+                        photo: member.photo
+                    },
+                    visitType: 'PACKAGE',
+                    package: {
+                        id: updatedPackage.id,
+                        planName: updatedPackage.plan?.name || '',
+                        remainingSessions: updatedPackage.remainingSessions,
+                        totalSessions: updatedPackage.totalSessions,
+                        endDate: updatedPackage.endDate,
+                        status: updatedPackage.status,
+                        sessionName: usedSessionName,
+                        sessionPrice: usedSessionPrice
+                    }
+                };
+
+                if (idempotencyKey) {
+                    await tx.checkInIdempotency.create({
+                        data: {
+                            idempotencyKey,
+                            memberId: member.id,
+                            memberPackageId: updatedPackage.id,
+                            checkInId: createdCheckIn.id,
+                            responseJson: JSON.stringify(payload)
+                        }
+                    });
+                }
 
                 return { updatedPackage, createdCheckIn };
             });
@@ -556,9 +678,42 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
                 id: packageSnapshot.id,
                 planName: packageSnapshot.plan?.name || '',
                 remainingSessions: packageSnapshot.remainingSessions,
-                totalSessions: packageSnapshot.totalSessionsSnapshot,
-                endDate: packageSnapshot.endDate
+                totalSessions: packageSnapshot.totalSessions,
+                endDate: packageSnapshot.endDate,
+                status: packageSnapshot.status,
+                sessionName: packageSnapshot.sessionName || packageSnapshot.plan?.name || null,
+                sessionPrice: packageSnapshot.sessionPrice ?? null
             };
+        }
+
+        if (idempotencyKey && visitType !== 'PACKAGE') {
+            try {
+                await req.prisma.checkInIdempotency.create({
+                    data: {
+                        idempotencyKey,
+                        memberId: member.id,
+                        memberPackageId: null,
+                        checkInId: checkIn.id,
+                        responseJson: JSON.stringify(responsePayload)
+                    }
+                });
+            } catch (error) {
+                if (error?.code === 'P2002') {
+                    const existingRequest = await req.prisma.checkInIdempotency.findUnique({
+                        where: { idempotencyKey }
+                    });
+                    if (existingRequest?.responseJson) {
+                        return res.json({
+                            success: true,
+                            message: 'Check-in successful',
+                            data: parseJsonSafely(existingRequest.responseJson, responsePayload),
+                            idempotentReplay: true
+                        });
+                    }
+                } else {
+                    throw error;
+                }
+            }
         }
 
         res.json({
@@ -568,6 +723,23 @@ router.post('/', requirePermission(PERMISSIONS.CHECKINS_MANAGE), async (req, res
         });
 
     } catch (error) {
+        if (idempotencyKey && error?.code === 'P2002' && String(error?.meta?.target || '').includes('idempotencyKey')) {
+            try {
+                const existingRequest = await req.prisma.checkInIdempotency.findUnique({
+                    where: { idempotencyKey }
+                });
+                if (existingRequest?.responseJson) {
+                    return res.json({
+                        success: true,
+                        message: 'Check-in successful',
+                        data: parseJsonSafely(existingRequest.responseJson, null),
+                        idempotentReplay: true
+                    });
+                }
+            } catch (lookupError) {
+                console.error('Check-in idempotency replay lookup error:', lookupError);
+            }
+        }
         console.error('Check-in error:', error);
         const status = error.status || 400;
         res.status(status).json({

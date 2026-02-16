@@ -19,6 +19,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
 // ============================================
 // USER & AUTHENTICATION
 // ============================================
@@ -137,6 +138,7 @@ model Member {
   creditLedgerEntries MemberCreditLedger[]
   packages      MemberPackage[]
   packageSessionUsages PackageSessionUsage[]
+  checkInIdempotencyRecords CheckInIdempotency[]
 
   @@index([gender])
 }
@@ -150,9 +152,13 @@ model SubscriptionPlan {
   id          Int      @id @default(autoincrement())
   name        String   // Basic, Premium, VIP
   nameAr      String?  // Arabic name
+  type        String   @default("MEMBERSHIP") // MEMBERSHIP, PACKAGE
   duration    Int      // Duration in days
   durationType String  @default("days") // days, months, years
   price       Float
+  packageTotalSessions Int?
+  packageValidityDays  Int?
+  packageSessionServiceId Int?
   description String?
   descriptionAr String?
   features    String?  // JSON array of features
@@ -163,6 +169,7 @@ model SubscriptionPlan {
 
   // Relations
   subscriptions Subscription[]
+  packages      MemberPackage[]
 }
 
 /// Member subscriptions
@@ -215,50 +222,35 @@ model Subscription {
 }
 
 // ============================================
-// SESSION PACKAGES (SESSION-BASED PLANS)
+// SESSION PACKAGES (SESSION-BASED ASSIGNMENTS)
 // ============================================
-
-/// Package plans available (session-based)
-model PackagePlan {
-  id          Int      @id @default(autoincrement())
-  name        String
-  nameAr      String?
-  price       Float
-  totalSessions Int
-  validityDays Int?
-  description String?
-  descriptionAr String?
-  isActive    Boolean  @default(true)
-  businessTypeScope String?
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  packages    MemberPackage[]
-}
 
 /// Member package assignments
 model MemberPackage {
   id          Int      @id @default(autoincrement())
   memberId    Int
-  packagePlanId Int
+  planId      Int
   startDate   DateTime
   endDate     DateTime?
-  totalSessionsSnapshot Int
+  totalSessions Int
   remainingSessions Int
-  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, DEPLETED, CANCELED
+  sessionName String?
+  sessionPrice Float?
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, PAUSED, COMPLETED
   createdByEmployeeId Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
   member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  plan        PackagePlan @relation(fields: [packagePlanId], references: [id])
+  plan        SubscriptionPlan @relation(fields: [planId], references: [id])
   createdByEmployee User? @relation("MemberPackageCreatedBy", fields: [createdByEmployeeId], references: [id])
   usages      PackageSessionUsage[]
+  checkInIdempotencyRecords CheckInIdempotency[]
 
   @@index([memberId, status])
+  @@index([planId])
+  @@index([endDate])
 }
 
 /// Ledger of consumed package sessions
@@ -266,6 +258,9 @@ model PackageSessionUsage {
   id              Int      @id @default(autoincrement())
   memberId        Int
   memberPackageId Int
+  checkInId       Int?
+  sessionName     String?
+  sessionPrice    Float?
   dateTime        DateTime @default(now())
   source          String   @default("CHECKIN") // CHECKIN, MANUAL
   createdByEmployeeId Int?
@@ -273,9 +268,12 @@ model PackageSessionUsage {
 
   member          Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
   memberPackage   MemberPackage @relation(fields: [memberPackageId], references: [id], onDelete: Cascade)
+  checkIn         CheckIn? @relation(fields: [checkInId], references: [id], onDelete: SetNull)
   createdByEmployee User? @relation("PackageSessionUsageCreatedBy", fields: [createdByEmployeeId], references: [id])
 
   @@index([memberId, dateTime])
+  @@index([memberPackageId, dateTime])
+  @@index([checkInId])
 }
 
 // ============================================
@@ -296,6 +294,25 @@ model CheckIn {
 
   // Relations
   member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  packageUsages PackageSessionUsage[]
+  idempotencyRecords CheckInIdempotency[]
+}
+
+model CheckInIdempotency {
+  id              Int      @id @default(autoincrement())
+  idempotencyKey  String   @unique
+  memberId        Int
+  memberPackageId Int?
+  checkInId       Int?
+  responseJson    String?
+  createdAt       DateTime @default(now())
+
+  member          Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberPackage   MemberPackage? @relation(fields: [memberPackageId], references: [id], onDelete: SetNull)
+  checkIn         CheckIn?     @relation(fields: [checkInId], references: [id], onDelete: SetNull)
+
+  @@index([memberId, createdAt])
+  @@index([memberPackageId, createdAt])
 }
 
 // ============================================

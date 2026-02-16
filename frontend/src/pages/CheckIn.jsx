@@ -169,7 +169,12 @@ const CheckIn = () => {
                 ? { memberId: selectedMember.id, method: mode, mode: checkInMode }
                 : { query: memberId, method: mode, mode: checkInMode };
 
-            const res = await apiClient.post('/checkin', checkInPayload);
+            const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            const res = await apiClient.post('/checkin', checkInPayload, {
+                headers: { 'Idempotency-Key': idempotencyKey }
+            });
             const visitType = res.data?.data?.visitType;
             const remainingSessions = res.data?.data?.package?.remainingSessions;
             if (visitType === 'PACKAGE' && Number.isFinite(remainingSessions)) {
@@ -537,6 +542,11 @@ const CheckIn = () => {
                                         {selectedMember && eligibility?.eligible && (
                                             <div className="text-xs text-emerald-500 font-bold text-center">
                                                 {tr('checkin.eligible', 'Eligible for check-in')}
+                                            </div>
+                                        )}
+                                        {selectedMember && eligibility?.activePackage && (
+                                            <div className="text-xs text-blue-500 text-center">
+                                                {`${eligibility.activePackage.planName || tr('subscriptions.modePackage', 'Package')} - ${tr('checkin.remainingSessions', 'Remaining Sessions')}: ${eligibility.activePackage.remainingSessions}`}
                                             </div>
                                         )}
 

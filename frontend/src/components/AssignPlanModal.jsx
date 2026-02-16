@@ -43,6 +43,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const [packagePlans, setPackagePlans] = useState([]);
     const [isLoadingPackagePlans, setIsLoadingPackagePlans] = useState(false);
     const [selectedPackage, setSelectedPackage] = useState(null);
+    const [packageSessionName, setPackageSessionName] = useState('');
+    const [packageSessionPrice, setPackageSessionPrice] = useState('');
     const [preferredPlanId, setPreferredPlanId] = useState(null);
     const [paymentDraft, setPaymentDraft] = useState(null);
     const [draftApplied, setDraftApplied] = useState(false);
@@ -95,6 +97,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             setIsSubmitting(false);
             setSelectedPlan(null);
             setSelectedPackage(null);
+            setPackageSessionName('');
+            setPackageSessionPrice('');
             setPreferredPlanId(null);
             setPaymentDraft(null);
             setDraftApplied(false);
@@ -233,7 +237,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const fetchPackagePlans = async () => {
         setIsLoadingPackagePlans(true);
         try {
-            const res = await apiClient.get('/package-plans');
+            const res = await apiClient.get('/packs');
             if (res.data.success) {
                 setPackagePlans(res.data.data || []);
             }
@@ -341,6 +345,11 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const handleSelectPackage = (p) => {
         console.debug('[AssignPlan] Selected Package:', p.id);
         setSelectedPackage(p);
+        const totalSessions = Number(p.packageTotalSessions ?? p.totalSessions ?? 0);
+        const packagePrice = Number(p.price ?? 0);
+        const fallbackSessionPrice = totalSessions > 0 ? (packagePrice / totalSessions) : 0;
+        setPackageSessionName(p.name || '');
+        setPackageSessionPrice(Number.isFinite(fallbackSessionPrice) ? fallbackSessionPrice : 0);
         setStep(3);
     };
     const handleAssignTypeChange = (nextType) => {
@@ -349,6 +358,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         setAssignType(nextType);
         setSelectedPlan(null);
         setSelectedPackage(null);
+        setPackageSessionName('');
+        setPackageSessionPrice('');
         setPaymentMode('full');
         setManualAmount('');
         setTransactionRef('');
@@ -359,6 +370,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         setSelectedMember(null);
         setSelectedPlan(null);
         setSelectedPackage(null);
+        setPackageSessionName('');
+        setPackageSessionPrice('');
         setStep(1); // Go back to start
     };
 
@@ -497,12 +510,22 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                 toast.error(safeT('errors.invalidSelection', 'Invalid member or plan selection'));
                 return;
             }
+            const normalizedSessionPrice = packageSessionPrice === '' || packageSessionPrice === null
+                ? null
+                : Number(packageSessionPrice);
+            if (normalizedSessionPrice !== null && (!Number.isFinite(normalizedSessionPrice) || normalizedSessionPrice < 0)) {
+                toast.error(safeT('errors.invalidAmount', 'Invalid session price'));
+                return;
+            }
             setIsSubmitting(true);
             const payload = {
-                packagePlanId: resolvedPlanId,
-                startDate: new Date().toISOString()
+                memberId: resolvedMemberId,
+                planId: resolvedPlanId,
+                startDate: new Date().toISOString(),
+                sessionName: packageSessionName?.trim() || undefined,
+                sessionPrice: normalizedSessionPrice
             };
-            const res = await apiClient.post(`/members/${resolvedMemberId}/packages`, payload);
+            const res = await apiClient.post('/member-packs', payload);
             if (res.data.success) {
                 toast.success(safeT('packagePlans.assigned', 'Package assigned successfully'));
                 if (onSuccess) onSuccess();
@@ -709,13 +732,13 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                                 </div>
                                 <div className="text-sm text-gray-500 dark:text-gray-400">
                                     {isPackage
-                                        ? `${plan.totalSessions} ${safeT('packagePlans.sessions', 'Sessions')}`
+                                        ? `${plan.packageTotalSessions ?? plan.totalSessions ?? 0} ${safeT('packagePlans.sessions', 'Sessions')}`
                                         : `${plan.duration} ${safeT('common.days', 'Days')}`}
                                 </div>
                                 {isPackage && (
                                     <div className="text-xs text-gray-400 mt-1">
-                                        {plan.validityDays
-                                            ? `${plan.validityDays} ${safeT('common.days', 'Days')}`
+                                        {(plan.packageValidityDays ?? plan.validityDays)
+                                            ? `${plan.packageValidityDays ?? plan.validityDays} ${safeT('common.days', 'Days')}`
                                             : safeT('packagePlans.noValidity', 'No expiry')}
                                     </div>
                                 )}
@@ -742,13 +765,41 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                     </div>
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-gray-500 text-sm">{safeT('packagePlans.totalSessions', 'Total Sessions')}</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{selectedPackage.totalSessions}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">
+                            {selectedPackage.packageTotalSessions ?? selectedPackage.totalSessions}
+                        </span>
                     </div>
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-gray-500 text-sm">{safeT('packagePlans.validityDays', 'Validity Days')}</span>
                         <span className="font-bold text-gray-900 dark:text-white">
-                            {selectedPackage.validityDays ? selectedPackage.validityDays : safeT('packagePlans.noValidity', 'No expiry')}
+                            {(selectedPackage.packageValidityDays ?? selectedPackage.validityDays)
+                                ? (selectedPackage.packageValidityDays ?? selectedPackage.validityDays)
+                                : safeT('packagePlans.noValidity', 'No expiry')}
                         </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                            <span className="text-gray-500 text-sm block mb-1">{safeT('packagePlans.sessionName', 'Session Name')}</span>
+                            <input
+                                type="text"
+                                value={packageSessionName}
+                                onChange={(e) => setPackageSessionName(e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                placeholder={safeT('packagePlans.sessionNamePlaceholder', 'Session')}
+                            />
+                        </div>
+                        <div>
+                            <span className="text-gray-500 text-sm block mb-1">{safeT('packagePlans.sessionPrice', 'Session Price')}</span>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={packageSessionPrice}
+                                onChange={(e) => setPackageSessionPrice(e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                                placeholder="0"
+                            />
+                        </div>
                     </div>
                     <div className="my-2 border-t border-gray-200 dark:border-slate-700"></div>
                     <div className="flex justify-between items-center text-lg">

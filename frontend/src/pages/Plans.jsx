@@ -111,8 +111,8 @@ const Plans = () => {
             setPackageFormData({
                 name: plan.name,
                 price: plan.price,
-                totalSessions: plan.totalSessions,
-                validityDays: plan.validityDays ?? '',
+                totalSessions: plan.packageTotalSessions ?? plan.totalSessions,
+                validityDays: plan.packageValidityDays ?? plan.validityDays ?? '',
                 description: plan.description || '',
                 isActive: plan.isActive
             });
@@ -155,15 +155,15 @@ const Plans = () => {
         const data = {
             name: packageFormData.name,
             price: parseFloat(packageFormData.price),
-            totalSessions: parseInt(packageFormData.totalSessions, 10),
-            validityDays: packageFormData.validityDays === '' ? null : parseInt(packageFormData.validityDays, 10),
+            total_sessions: parseInt(packageFormData.totalSessions, 10),
+            validity_days: packageFormData.validityDays === '' ? null : parseInt(packageFormData.validityDays, 10),
             description: packageFormData.description,
             isActive: packageFormData.isActive
         };
         try {
             const res = editingPackage
-                ? await apiClient.patch(`/package-plans/${editingPackage.id}`, data)
-                : await apiClient.post('/package-plans', data);
+                ? await apiClient.patch(`/packs/${editingPackage.id}`, data)
+                : await apiClient.post('/packs', data);
             if (res.data.success) {
                 toast.success(editingPackage ? t('packagePlans.updated', 'Package updated successfully') : t('packagePlans.created', 'Package created successfully'));
                 setShowPackageModal(false);
@@ -194,7 +194,7 @@ const Plans = () => {
     const fetchPackagePlans = async () => {
         setIsPackageLoading(true);
         try {
-            const res = await apiClient.get('/package-plans?all=true');
+            const res = await apiClient.get('/packs?all=true');
             if (res.data.success) {
                 setPackagePlans(res.data.data || []);
             }
@@ -206,7 +206,7 @@ const Plans = () => {
     };
     const togglePackageStatus = async (plan) => {
         try {
-            const res = await apiClient.patch(`/package-plans/${plan.id}`, { isActive: !plan.isActive });
+            const res = await apiClient.patch(`/packs/${plan.id}`, { isActive: !plan.isActive });
             if (res.data.success) {
                 toast.success(plan.isActive ? t('packagePlans.deactivated', 'Package deactivated') : t('packagePlans.activated', 'Package activated'));
                 fetchPackagePlans();
@@ -480,12 +480,14 @@ const Plans = () => {
                                     <div className="mt-auto space-y-3">
                                         <div className="flex items-center gap-3 text-gray-300 bg-white/5 p-3 rounded-lg border border-white/5">
                                             <Hash className="w-5 h-5 text-indigo-400" />
-                                            <span className="font-medium">{plan.totalSessions} {t('packagePlans.sessions', 'Sessions')}</span>
+                                            <span className="font-medium">{plan.packageTotalSessions ?? plan.totalSessions} {t('packagePlans.sessions', 'Sessions')}</span>
                                         </div>
                                         <div className="flex items-center gap-3 text-gray-300 bg-white/5 p-3 rounded-lg border border-white/5">
                                             <Clock className="w-5 h-5 text-indigo-400" />
                                             <span className="font-medium">
-                                                {plan.validityDays ? `${plan.validityDays} ${t('common.days', 'Days')}` : t('packagePlans.noValidity', 'No expiry')}
+                                                {(plan.packageValidityDays ?? plan.validityDays)
+                                                    ? `${plan.packageValidityDays ?? plan.validityDays} ${t('common.days', 'Days')}`
+                                                    : t('packagePlans.noValidity', 'No expiry')}
                                             </span>
                                         </div>
                                         {plan.description && (

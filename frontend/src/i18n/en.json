@@ -269,6 +269,7 @@
         "todayAttendance": "Today's Attendance",
         "activeNow": "Active Now",
         "history": "Attendance History",
+        "remainingSessions": "Remaining Sessions",
         "notEligibleMembership": "Member has no active subscription or package. Subscribe or buy a package first.",
         "subscribeNow": "Subscribe Now",
         "buyPackageNow": "Buy Package Now"
@@ -591,6 +592,9 @@
         "noValidity": "No expiry",
         "price": "Price",
         "description": "Description",
+        "sessionName": "Session Name",
+        "sessionNamePlaceholder": "Session",
+        "sessionPrice": "Session Price",
         "active": "Active",
         "inactive": "Inactive",
         "activeStatus": "Package is Active & Visible",

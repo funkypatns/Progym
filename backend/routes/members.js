@@ -1095,10 +1095,11 @@ router.get('/:memberId/active-package', requirePermission(PERMISSIONS.MEMBERS_VI
         const activePackage = await req.prisma.memberPackage.findFirst({
             where: {
                 memberId: parsedMemberId,
-                status: 'ACTIVE'
+                status: 'ACTIVE',
+                plan: { type: 'PACKAGE' }
             },
             include: { plan: true },
-            orderBy: { createdAt: 'desc' }
+            orderBy: [{ endDate: 'asc' }, { createdAt: 'desc' }]
         });
 
         if (!activePackage) {
@@ -1108,7 +1109,7 @@ router.get('/:memberId/active-package', requirePermission(PERMISSIONS.MEMBERS_VI
         if ((activePackage.endDate && activePackage.endDate < now) || activePackage.remainingSessions <= 0) {
             await req.prisma.memberPackage.update({
                 where: { id: activePackage.id },
-                data: { status: activePackage.remainingSessions <= 0 ? 'DEPLETED' : 'EXPIRED' }
+                data: { status: activePackage.remainingSessions <= 0 ? 'COMPLETED' : 'EXPIRED' }
             });
             return res.json({ success: true, data: null });
         }
@@ -1127,23 +1128,37 @@ router.get('/:memberId/active-package', requirePermission(PERMISSIONS.MEMBERS_VI
 router.post('/:memberId/packages', requireActiveShift, requirePermission(PERMISSIONS.SUBSCRIPTIONS_CREATE), async (req, res) => {
     try {
         const parsedMemberId = Number.parseInt(req.params.memberId, 10);
-        const { packagePlanId, startDate } = req.body || {};
-        const parsedPlanId = Number.parseInt(packagePlanId, 10);
+        const { planId, packagePlanId, startDate, sessionName, sessionPrice } = req.body || {};
+        const parsedPlanId = Number.parseInt(planId ?? packagePlanId, 10);
 
         if (!Number.isInteger(parsedMemberId) || !Number.isInteger(parsedPlanId)) {
             return res.status(400).json({ success: false, message: 'Invalid member or package plan id' });
         }
 
-        const plan = await req.prisma.packagePlan.findUnique({ where: { id: parsedPlanId } });
-        if (!plan || !plan.isActive) {
+        const plan = await req.prisma.subscriptionPlan.findUnique({ where: { id: parsedPlanId } });
+        if (!plan || !plan.isActive || plan.type !== 'PACKAGE') {
             return res.status(400).json({ success: false, message: 'Package plan not found or inactive' });
+        }
+        const totalSessions = Number.parseInt(plan.packageTotalSessions, 10);
+        if (!Number.isInteger(totalSessions) || totalSessions <= 0) {
+            return res.status(400).json({ success: false, message: 'Invalid package sessions count' });
         }
 
         const start = startDate ? new Date(startDate) : new Date();
         if (Number.isNaN(start.getTime())) {
             return res.status(400).json({ success: false, message: 'Invalid start date' });
         }
-        const endDate = plan.validityDays ? new Date(start.getTime() + plan.validityDays * 24 * 60 * 60 * 1000) : null;
+        const endDate = plan.packageValidityDays ? new Date(start.getTime() + plan.packageValidityDays * 24 * 60 * 60 * 1000) : null;
+        const cleanedSessionName = typeof sessionName === 'string' && sessionName.trim()
+            ? sessionName.trim()
+            : plan.name;
+        const parsedSessionPrice = sessionPrice !== undefined && sessionPrice !== null && sessionPrice !== ''
+            ? Number(sessionPrice)
+            : NaN;
+        const fallbackPrice = Number(plan.price || 0) > 0 && totalSessions > 0 ? Number(plan.price) / totalSessions : 0;
+        const resolvedSessionPrice = Number.isFinite(parsedSessionPrice) && parsedSessionPrice >= 0
+            ? parsedSessionPrice
+            : fallbackPrice;
 
         const created = await req.prisma.$transaction(async (tx) => {
             const existing = await tx.memberPackage.findFirst({
@@ -1161,11 +1176,13 @@ router.post('/:memberId/packages', requireActiveShift, requirePermission(PERMISS
             return tx.memberPackage.create({
                 data: {
                     memberId: parsedMemberId,
-                    packagePlanId: plan.id,
+                    planId: plan.id,
                     startDate: start,
                     endDate,
-                    totalSessionsSnapshot: plan.totalSessions,
-                    remainingSessions: plan.totalSessions,
+                    totalSessions,
+                    remainingSessions: totalSessions,
+                    sessionName: cleanedSessionName,
+                    sessionPrice: resolvedSessionPrice,
                     status: 'ACTIVE',
                     createdByEmployeeId: req.user?.id ?? null
                 },
