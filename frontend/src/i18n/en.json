@@ -221,6 +221,8 @@
         "plans": "Plans",
         "addPlan": "Add Plan",
         "assignSubscription": "Assign Subscription",
+        "modeSubscription": "Subscription",
+        "modePackage": "Package",
         "planName": "Plan Name",
         "duration": "Duration",
         "price": "Price",
@@ -574,6 +576,7 @@
         "title": "Session Packages",
         "subtitle": "Create and manage session packages",
         "addPlan": "Add Package",
+        "assignPackage": "Assign Package",
         "editPlan": "Edit Package",
         "createSubtitle": "New session package",
         "editSubtitle": "Update session package details",
@@ -593,6 +596,7 @@
         "updated": "Package updated successfully",
         "activated": "Package activated",
         "deactivated": "Package deactivated",
+        "assigned": "Package assigned successfully",
         "noPlans": "No packages found. Create your first package!",
         "stats": {
             "total": "Total Packages",
@@ -690,7 +694,8 @@
         "allServices": "All Services",
         "allServices": "All Services",
         "search": "Search...",
-        "refresh": "Refresh"
+        "refresh": "Refresh",
+        "pay": "Pay"
     },
     "errors": {
         "required": "Required",

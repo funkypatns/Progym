@@ -14,7 +14,7 @@ import { PaymentReceipt } from './payments/ReceiptTemplates';
  * 2. Plan Selection (Only after member selected)
  * 3. Payment (Only after plan selected)
  */
-const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isRenewMode = false, initialPlanId = null }) => {
+const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isRenewMode = false, initialPlanId = null, initialMode = 'subscription' }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
     const { getSetting } = useSettingsStore();
@@ -27,6 +27,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
     // -- 1. State Machine --
     const [step, setStep] = useState(1);
+    const [assignType, setAssignType] = useState(initialMode === 'package' ? 'package' : 'subscription');
 
     // Member State
     const [searchTerm, setSearchTerm] = useState('');
@@ -39,6 +40,9 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     const [plans, setPlans] = useState([]);
     const [isLoadingPlans, setIsLoadingPlans] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState(null);
+    const [packagePlans, setPackagePlans] = useState([]);
+    const [isLoadingPackagePlans, setIsLoadingPackagePlans] = useState(false);
+    const [selectedPackage, setSelectedPackage] = useState(null);
     const [preferredPlanId, setPreferredPlanId] = useState(null);
     const [paymentDraft, setPaymentDraft] = useState(null);
     const [draftApplied, setDraftApplied] = useState(false);
@@ -74,6 +78,8 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     useEffect(() => {
         if (isOpen) {
             console.debug('[AssignPlan] Modal Opened - Resetting State');
+            const resolvedMode = isRenewMode ? 'subscription' : (initialMode === 'package' ? 'package' : 'subscription');
+            setAssignType(resolvedMode);
             if (initialMember) {
                 setSelectedMember(initialMember);
                 setStep(2);
@@ -88,6 +94,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             setManualAmount('');
             setIsSubmitting(false);
             setSelectedPlan(null);
+            setSelectedPackage(null);
             setPreferredPlanId(null);
             setPaymentDraft(null);
             setDraftApplied(false);
@@ -96,9 +103,14 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             setShowReceipt(false);
             setLastReceiptError('');
             setAutoPrintReceipt(false);
+            setPackagePlans([]);
+            setIsLoadingPackagePlans(false);
 
             // Pre-fetch plans so they are ready
             fetchPlans();
+            if (resolvedMode === 'package') {
+                fetchPackagePlans();
+            }
         } else {
             // Cleanup on close
             if (searchAbortCtrl.current) searchAbortCtrl.current.abort();
@@ -111,6 +123,13 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             if (searchAbortCtrl.current) searchAbortCtrl.current.abort();
         };
     }, []);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (assignType !== 'package') return;
+        if (packagePlans.length > 0 || isLoadingPackagePlans) return;
+        fetchPackagePlans();
+    }, [assignType, isOpen, packagePlans.length, isLoadingPackagePlans]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -145,6 +164,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
     useEffect(() => {
         if (!isOpen) return;
+        if (assignType !== 'subscription') return;
         if (selectedPlan || plans.length === 0) return;
         const fallbackStored = selectedMember?.id
             ? parseInt(localStorage.getItem(`gym:memberPlanPref:${selectedMember.id}`) || '', 10)
@@ -173,6 +193,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
     useEffect(() => {
         if (!isOpen || !selectedMember || draftApplied) return;
+        if (assignType !== 'subscription') return;
         if (paymentDraft?.method) {
             const normalized = ['cash', 'card', 'transfer', 'other'].includes(paymentDraft.method)
                 ? paymentDraft.method
@@ -207,6 +228,19 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             console.error('[AssignPlan] Fetch Plans Error:', err);
         } finally {
             setIsLoadingPlans(false);
+        }
+    };
+    const fetchPackagePlans = async () => {
+        setIsLoadingPackagePlans(true);
+        try {
+            const res = await apiClient.get('/package-plans');
+            if (res.data.success) {
+                setPackagePlans(res.data.data || []);
+            }
+        } catch (err) {
+            console.error('[AssignPlan] Fetch Package Plans Error:', err);
+        } finally {
+            setIsLoadingPackagePlans(false);
         }
     };
 
@@ -276,7 +310,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     };
 
     const handleSelectMember = (m) => {
-        if (m.isActive) {
+        if (assignType === 'subscription' && m.isActive) {
             toast.error(safeT('members.alreadyActive', 'This member already has an active subscription. You cannot assign a new one while active.'));
             return;
         }
@@ -304,10 +338,27 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         setManualAmount(p.price);
         setStep(3); // Auto-advance optional? User asked to "reveal", but auto-advance is smoother. 
     };
+    const handleSelectPackage = (p) => {
+        console.debug('[AssignPlan] Selected Package:', p.id);
+        setSelectedPackage(p);
+        setStep(3);
+    };
+    const handleAssignTypeChange = (nextType) => {
+        if (isRenewMode) return;
+        if (nextType === assignType) return;
+        setAssignType(nextType);
+        setSelectedPlan(null);
+        setSelectedPackage(null);
+        setPaymentMode('full');
+        setManualAmount('');
+        setTransactionRef('');
+        setStep(selectedMember ? 2 : 1);
+    };
 
     const handleResetMember = () => {
         setSelectedMember(null);
         setSelectedPlan(null);
+        setSelectedPackage(null);
         setStep(1); // Go back to start
     };
 
@@ -436,6 +487,35 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
             setIsSubmitting(false);
         }
     };
+    const handlePackageAssign = async () => {
+        if (!selectedMember || !selectedPackage) return;
+        if (isSubmitting) return;
+        try {
+            const resolvedMemberId = Number.parseInt(selectedMember.id ?? selectedMember.memberId, 10);
+            const resolvedPlanId = Number.parseInt(selectedPackage.id ?? selectedPackage.packagePlanId, 10);
+            if (!Number.isInteger(resolvedMemberId) || !Number.isInteger(resolvedPlanId)) {
+                toast.error(safeT('errors.invalidSelection', 'Invalid member or plan selection'));
+                return;
+            }
+            setIsSubmitting(true);
+            const payload = {
+                packagePlanId: resolvedPlanId,
+                startDate: new Date().toISOString()
+            };
+            const res = await apiClient.post(`/members/${resolvedMemberId}/packages`, payload);
+            if (res.data.success) {
+                toast.success(safeT('packagePlans.assigned', 'Package assigned successfully'));
+                if (onSuccess) onSuccess();
+                onClose();
+            } else {
+                toast.error(res.data.message || safeT('errors.serverError', 'Failed to assign package'));
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || safeT('errors.serverError', 'Failed to assign package'));
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     // -- 4. Render Logic (Guards) --
 
@@ -443,12 +523,15 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
 
     const isNextDisabled = () => {
         if (step === 1) return !selectedMember;
-        if (step === 2) return !selectedPlan;
+        if (step === 2) return assignType === 'package' ? !selectedPackage : !selectedPlan;
         return false;
     };
 
     const isConfirmDisabled = () => {
         if (isSubmitting) return true;
+        if (assignType === 'package') {
+            return !selectedPackage;
+        }
         const totalValue = Number(selectedPlan?.price || 0);
         const amountValue = paymentMode === 'full'
             ? totalValue
@@ -467,7 +550,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         ? totalValue
         : (manualAmount === '' || manualAmount === null ? 0 : Number(manualAmount));
     const hasPayment = Number.isFinite(amountValue) && amountValue > 0;
-    const canPrintLastReceipt = step === 3 && !showReceipt && selectedMember;
+    const canPrintLastReceipt = step === 3 && !showReceipt && selectedMember && assignType === 'subscription';
 
     // Sub-renderers
     const renderMemberSearch = () => (
@@ -496,7 +579,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                         <div
                             key={m.id}
                             onClick={() => handleSelectMember(m)}
-                            className={`p-4 flex justify-between items-center transition-colors group border-b border-gray-100 last:border-0 ${m.isActive
+                            className={`p-4 flex justify-between items-center transition-colors group border-b border-gray-100 last:border-0 ${(assignType === 'subscription' && m.isActive)
                                 ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-slate-800/50 grayscale-[0.5]'
                                 : 'hover:bg-blue-50 dark:hover:bg-slate-700 cursor-pointer'
                                 }`}
@@ -528,7 +611,9 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
     );
 
     const renderPlanSelection = () => {
-        const safePlans = Array.isArray(plans) ? plans : [];
+        const isPackage = assignType === 'package';
+        const planSource = isPackage ? packagePlans : plans;
+        const safePlans = Array.isArray(planSource) ? planSource : [];
         if (!selectedMember) {
             return (
                 <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
@@ -544,6 +629,11 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
         const noPlansFallback = i18n.language === 'ar'
             ? 'لا توجد خطط متاحة حاليًا'
             : 'No active plans available.';
+        const noPackagesFallback = i18n.language === 'ar'
+            ? 'لا توجد باقات متاحة حاليًا'
+            : 'No active packages available.';
+        const isLoadingList = isPackage ? isLoadingPackagePlans : isLoadingPlans;
+        const selectedItem = isPackage ? selectedPackage : selectedPlan;
 
         return (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
@@ -565,31 +655,50 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                     )}
                 </div>
 
+                {!isRenewMode && (
+                    <div className="flex w-fit gap-2 p-1.5 rounded-2xl bg-gray-100 dark:bg-slate-950/50 border border-gray-200 dark:border-white/5">
+                        <button
+                            type="button"
+                            onClick={() => handleAssignTypeChange('subscription')}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${assignType === 'subscription' ? 'bg-white dark:bg-slate-800 shadow-md text-blue-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                        >
+                            {safeT('subscriptions.modeSubscription', 'Subscription')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleAssignTypeChange('package')}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${assignType === 'package' ? 'bg-white dark:bg-slate-800 shadow-md text-blue-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                        >
+                            {safeT('subscriptions.modePackage', 'Package')}
+                        </button>
+                    </div>
+                )}
+
                 {/* Plans Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {isLoadingPlans ? (
+                    {isLoadingList ? (
                         <div className="col-span-2 flex justify-center py-10">
                             <Loader2 className="animate-spin text-blue-500" />
                         </div>
                     ) : safePlans.length === 0 ? (
                         <div className="col-span-2 text-center py-10 text-gray-500">
-                            {safeT('plans.noPlans', noPlansFallback)}
+                            {isPackage ? safeT('packagePlans.noPlans', noPackagesFallback) : safeT('plans.noPlans', noPlansFallback)}
                         </div>
                     ) : (
                         safePlans.map(plan => (
                             <div
                                 key={plan.id}
-                                onClick={() => handleSelectPlan(plan)}
+                                onClick={() => isPackage ? handleSelectPackage(plan) : handleSelectPlan(plan)}
                                 className={`
                                     relative p-4 rounded-xl border-2 cursor-pointer transition-all duration-200
-                                    ${selectedPlan?.id === plan.id
+                                    ${selectedItem?.id === plan.id
                                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md ring-1 ring-blue-500'
                                         : 'border-gray-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-500 bg-white dark:bg-slate-800'}
                                 `}
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="font-bold text-gray-900 dark:text-white">{plan.name}</h3>
-                                    {selectedPlan?.id === plan.id && (
+                                    {selectedItem?.id === plan.id && (
                                         <div className="bg-blue-500 text-white p-1 rounded-full">
                                             <Check size={12} />
                                         </div>
@@ -599,11 +708,53 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                                     {plan.price} <span className="text-sm font-normal text-gray-500">{safeT('common.currency', 'EGP')}</span>
                                 </div>
                                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                                    {plan.duration} {safeT('common.days', 'Days')}
+                                    {isPackage
+                                        ? `${plan.totalSessions} ${safeT('packagePlans.sessions', 'Sessions')}`
+                                        : `${plan.duration} ${safeT('common.days', 'Days')}`}
+                                </div>
+                                {isPackage && (
+                                    <div className="text-xs text-gray-400 mt-1">
+                                        {plan.validityDays
+                                            ? `${plan.validityDays} ${safeT('common.days', 'Days')}`
+                                            : safeT('packagePlans.noValidity', 'No expiry')}
+                                    </div>
                                 </div>
                             </div>
                         ))
                     )}
+                </div>
+            </div>
+        );
+    };
+
+    const renderPackageConfirm = () => {
+        if (!selectedPackage || !selectedMember) return null;
+        return (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-500 text-sm">{safeT('packagePlans.tab', 'Package')}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{selectedPackage.name}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-500 text-sm">{safeT('members.member', 'Member')}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{selectedMember.firstName} {selectedMember.lastName}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-500 text-sm">{safeT('packagePlans.totalSessions', 'Total Sessions')}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{selectedPackage.totalSessions}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-500 text-sm">{safeT('packagePlans.validityDays', 'Validity Days')}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">
+                            {selectedPackage.validityDays ? selectedPackage.validityDays : safeT('packagePlans.noValidity', 'No expiry')}
+                        </span>
+                    </div>
+                    <div className="my-2 border-t border-gray-200 dark:border-slate-700"></div>
+                    <div className="flex justify-between items-center text-lg">
+                        <span className="font-bold text-gray-900 dark:text-white">{safeT('common.total', 'Total')}</span>
+                        <span className="font-bold text-blue-600">{selectedPackage.price} {safeT('common.currency', 'EGP')}</span>
+                    </div>
                 </div>
             </div>
         );
@@ -808,7 +959,11 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                 <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 rounded-t-2xl z-10">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            {isRenewMode ? safeT('subscriptions.renewSubscription', 'Renew Subscription') : safeT('subscriptions.assignSubscription', 'Assign Subscription')}
+                            {isRenewMode
+                                ? safeT('subscriptions.renewSubscription', 'Renew Subscription')
+                                : (assignType === 'package'
+                                    ? safeT('packagePlans.assignPackage', 'Assign Package')
+                                    : safeT('subscriptions.assignSubscription', 'Assign Subscription'))}
                         </h2>
                         <div className="flex items-center gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
                             {!isRenewMode && (
@@ -817,9 +972,13 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                                     <ChevronRight size={14} />
                                 </>
                             )}
-                            <span className={step >= 2 ? 'text-blue-600 font-bold' : ''}>{isRenewMode ? '1' : '2'}. Plan</span>
+                            <span className={step >= 2 ? 'text-blue-600 font-bold' : ''}>
+                                {isRenewMode ? '1' : '2'}. {assignType === 'package' ? safeT('packagePlans.tab', 'Package') : safeT('subscriptions.plan', 'Plan')}
+                            </span>
                             <ChevronRight size={14} />
-                            <span className={step >= 3 ? 'text-blue-600 font-bold' : ''}>{isRenewMode ? '2' : '3'}. Pay</span>
+                            <span className={step >= 3 ? 'text-blue-600 font-bold' : ''}>
+                                {isRenewMode ? '2' : '3'}. {assignType === 'package' ? safeT('common.confirm', 'Confirm') : safeT('common.pay', 'Pay')}
+                            </span>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full">
@@ -831,7 +990,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                 <div className="p-6 overflow-y-auto flex-1 min-h-[400px]">
                     {step === 1 && renderMemberSearch()}
                     {step === 2 && renderPlanSelection()}
-                    {step === 3 && (showReceipt ? renderReceipt() : renderPayment())}
+                    {step === 3 && (assignType === 'package' ? renderPackageConfirm() : (showReceipt ? renderReceipt() : renderPayment()))}
                 </div>
 
                 {/* 3. Footer */}
@@ -876,7 +1035,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                     ) : (
                         <div className="flex flex-col items-end gap-2">
                             <button
-                                onClick={handleSubmit}
+                                onClick={assignType === 'package' ? handlePackageAssign : handleSubmit}
                                 disabled={isConfirmDisabled()}
                                 className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-70 text-white rounded-xl font-bold shadow-lg shadow-green-600/20 transition-all"
                             >
