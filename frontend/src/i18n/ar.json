@@ -503,6 +503,7 @@
         "title": "إدارة الخطط",
         "subtitle": "إنشاء وإدارة باقات الاشتراك",
         "addPlan": "إضافة خطة",
+        "subscriptionsTab": "الاشتراكات",
         "editPlan": "تعديل الخطة",
         "name": "اسم الخطة",
         "duration": "المدة",
@@ -523,6 +524,37 @@
         "stats": {
             "total": "إجمالي الخطط",
             "active": "الخطط النشطة",
+            "avgPrice": "متوسط السعر"
+        }
+    },
+    "packagePlans": {
+        "tab": "الباقات",
+        "title": "باقات الجلسات",
+        "subtitle": "إدارة باقات الجلسات",
+        "addPlan": "إضافة باقة",
+        "editPlan": "تعديل الباقة",
+        "createSubtitle": "باقة جلسات جديدة",
+        "editSubtitle": "تحديث تفاصيل باقة الجلسات",
+        "name": "اسم الباقة",
+        "totalSessions": "عدد الجلسات",
+        "sessions": "جلسة",
+        "validityDays": "مدة الصلاحية (أيام)",
+        "noValidity": "بدون انتهاء",
+        "price": "السعر",
+        "description": "الوصف",
+        "active": "نشط",
+        "inactive": "غير نشط",
+        "activeStatus": "الباقة نشطة ومرئية",
+        "activate": "تفعيل الباقة",
+        "deactivate": "إلغاء تفعيل الباقة",
+        "created": "تم إنشاء الباقة بنجاح",
+        "updated": "تم تحديث الباقة بنجاح",
+        "activated": "تم تفعيل الباقة",
+        "deactivated": "تم إلغاء تفعيل الباقة",
+        "noPlans": "لا توجد باقات. أنشئ أول باقة!",
+        "stats": {
+            "total": "إجمالي الباقات",
+            "active": "الباقات النشطة",
             "avgPrice": "متوسط السعر"
         }
     },

@@ -545,6 +545,7 @@
         "title": "Plans Management",
         "subtitle": "Create and manage subscription packages",
         "addPlan": "Add Plan",
+        "subscriptionsTab": "Subscriptions",
         "editPlan": "Edit Plan",
         "name": "Plan Name",
         "duration": "Duration",
@@ -565,6 +566,37 @@
         "stats": {
             "total": "Total Plans",
             "active": "Active Plans",
+            "avgPrice": "Avg. Price"
+        }
+    },
+    "packagePlans": {
+        "tab": "Packages",
+        "title": "Session Packages",
+        "subtitle": "Create and manage session packages",
+        "addPlan": "Add Package",
+        "editPlan": "Edit Package",
+        "createSubtitle": "New session package",
+        "editSubtitle": "Update session package details",
+        "name": "Package Name",
+        "totalSessions": "Total Sessions",
+        "sessions": "Sessions",
+        "validityDays": "Validity Days",
+        "noValidity": "No expiry",
+        "price": "Price",
+        "description": "Description",
+        "active": "Active",
+        "inactive": "Inactive",
+        "activeStatus": "Package is Active & Visible",
+        "activate": "Activate Package",
+        "deactivate": "Deactivate Package",
+        "created": "Package created successfully",
+        "updated": "Package updated successfully",
+        "activated": "Package activated",
+        "deactivated": "Package deactivated",
+        "noPlans": "No packages found. Create your first package!",
+        "stats": {
+            "total": "Total Packages",
+            "active": "Active Packages",
             "avgPrice": "Avg. Price"
         }
     },
