@@ -30,6 +30,7 @@ const CheckIn = () => {
     const [selectedMember, setSelectedMember] = useState(null);
     const [showSubscribeModal, setShowSubscribeModal] = useState(false);
     const [subscribeMember, setSubscribeMember] = useState(null);
+    const [subscribeMode, setSubscribeMode] = useState('subscription');
     const [eligibility, setEligibility] = useState(null);
     const [isSearching, setIsSearching] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
@@ -82,7 +83,7 @@ const CheckIn = () => {
             if (modeValue === 'session') {
                 return 'العميل غير مسجّل له حجز اليوم. احجز له جلسة أولًا.';
             }
-            return 'العميل غير مشترك حاليًا. اشترك له أولًا.';
+            return tr('checkin.notEligibleMembership', 'Member has no active subscription or package. Subscribe or buy a package first.');
         }
         return '';
     };
@@ -168,8 +169,17 @@ const CheckIn = () => {
                 ? { memberId: selectedMember.id, method: mode, mode: checkInMode }
                 : { query: memberId, method: mode, mode: checkInMode };
 
-            await apiClient.post('/checkin', checkInPayload);
-            toast.success(tr('checkin.success', 'SUCCESS: Access Granted'));
+            const res = await apiClient.post('/checkin', checkInPayload);
+            const visitType = res.data?.data?.visitType;
+            const remainingSessions = res.data?.data?.package?.remainingSessions;
+            if (visitType === 'PACKAGE' && Number.isFinite(remainingSessions)) {
+                const msg = t('checkin.packageSuccess', { count: remainingSessions });
+                toast.success(msg && msg !== 'checkin.packageSuccess'
+                    ? msg
+                    : `تم تسجيل الدخول - المتبقي ${remainingSessions} جلسة`);
+            } else {
+                toast.success(tr('checkin.success', 'SUCCESS: Access Granted'));
+            }
             setMemberId('');
             setSelectedMember(null);
             setEligibility(null);
@@ -276,6 +286,16 @@ const CheckIn = () => {
             toast.error(tr('errors.invalidSelection', 'Select a member first'));
             return;
         }
+        setSubscribeMode('subscription');
+        setSubscribeMember(selectedMember);
+        setShowSubscribeModal(true);
+    };
+    const handleBuyPackageNow = () => {
+        if (!selectedMember?.id) {
+            toast.error(tr('errors.invalidSelection', 'Select a member first'));
+            return;
+        }
+        setSubscribeMode('package');
         setSubscribeMember(selectedMember);
         setShowSubscribeModal(true);
     };
@@ -601,13 +621,21 @@ const CheckIn = () => {
                                                 </div>
                                             )}
                                             {checkInMode === 'membership' && errorCode === 'NOT_ELIGIBLE' && eligibility && eligibility.hasActiveSubscription === false && (
-                                                <div className="mt-4">
+                                                <div className="mt-4 flex flex-col gap-2 items-center">
                                                     <button
                                                         onClick={handleSubscribeNow}
                                                         className="inline-flex items-center gap-2 px-6 py-2 border border-blue-500/40 text-blue-600 dark:text-blue-400 rounded-xl font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition"
                                                     >
-                                                        اشترك الآن
+                                                        {tr('checkin.subscribeNow', 'Subscribe Now')}
                                                     </button>
+                                                    {eligibility.hasActivePackage === false && (
+                                                        <button
+                                                            onClick={handleBuyPackageNow}
+                                                            className="inline-flex items-center gap-2 px-6 py-2 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 rounded-xl font-bold hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition"
+                                                        >
+                                                            {tr('checkin.buyPackageNow', 'Buy Package Now')}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -656,6 +684,7 @@ const CheckIn = () => {
                 onClose={handleSubscribeClose}
                 onSuccess={handleSubscribeSuccess}
                 initialMember={subscribeMember}
+                initialMode={subscribeMode}
             />
 
         </div>

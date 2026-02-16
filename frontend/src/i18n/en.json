@@ -264,10 +264,14 @@
         "checkIn": "Check In",
         "checkOut": "Check Out",
         "success": "Check-in successful!",
+        "packageSuccess": "Check-in successful. Remaining sessions: {{count}}",
         "welcome": "Welcome",
         "todayAttendance": "Today's Attendance",
         "activeNow": "Active Now",
-        "history": "Attendance History"
+        "history": "Attendance History",
+        "notEligibleMembership": "Member has no active subscription or package. Subscribe or buy a package first.",
+        "subscribeNow": "Subscribe Now",
+        "buyPackageNow": "Buy Package Now"
     },
     "payments": {
         "title": "Payments",
