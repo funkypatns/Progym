@@ -203,3 +203,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 791b7c5 | Fix invalid en.json syntax causing Vite i18n import 500. |
 | 2026-02-10 | 955a3f5 | Remove undo completion feature across UI, permissions, and backend routes. |
 | 2026-02-10 | 7f2cf24 | Gym income sessions report now derives original/final/diff from appointment price/finalPrice with adjustment metadata. |
+| 2026-02-16 | ff5da1e | Add session package schema models and migration. |
