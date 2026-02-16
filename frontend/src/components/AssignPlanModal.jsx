@@ -718,7 +718,7 @@ const AssignPlanModal = ({ isOpen, onClose, onSuccess, initialMember = null, isR
                                             ? `${plan.validityDays} ${safeT('common.days', 'Days')}`
                                             : safeT('packagePlans.noValidity', 'No expiry')}
                                     </div>
-                                </div>
+                                )}
                             </div>
                         ))
                     )}
