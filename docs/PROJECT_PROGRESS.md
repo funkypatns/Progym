@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Session packages (plan type + member package assignment + check-in consumption + attendance endpoint + UI wiring). Status: done, needs manual verification.
 - Quick payment in Assign Subscription flow, receipt fix, and reports refresh. Status: done, needs manual verification.
 - Payments list cancelled badge. Status: done, needs manual verification.
 - Record Payment modal embedded receipt + print. Status: done, needs manual verification.
@@ -124,6 +125,8 @@ Phase 4 - Receipts system
 - Verify Record Payment modal stays on receipt after partial payment.
 - Verify partial payments dedupe using stable idempotency key.
  - Verify transactionRef idempotency prevents duplicate partial payments.
+- Run session package smoke test: create package plan, assign to member, verify check-in decrements remaining sessions.
+- Verify `/api/attendance` shows session name/price history for package usage.
 
 ## Notes for new sessions
 - If there are uncommitted changes, capture them in "Current Focus" and do not redo work.
@@ -210,3 +213,4 @@ Phase 4 - Receipts system
 | 2026-02-16 | 42d67b0 | Add package assignment flow to AssignPlanModal. |
 | 2026-02-16 | 0ecaf0b | Add package CTAs and success messaging in Check-in. |
 | 2026-02-16 | 0b87516 | Fix package selection JSX parse error. |
+| 2026-02-16 | 558ebc5 | Add session package sales/consumption flow with package routes, migrations, idempotent check-in deduction, and UI wiring. |
