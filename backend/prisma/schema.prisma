@@ -49,6 +49,8 @@ model User {
   payments     Payment[]  @relation("PaymentCreator")
   creditLedgerEntries MemberCreditLedger[]
   sessionPriceAdjustments SessionPriceAdjustment[]
+  memberPackages MemberPackage[] @relation("MemberPackageCreatedBy")
+  packageSessionUsages PackageSessionUsage[] @relation("PackageSessionUsageCreatedBy")
   
   // Closing & Audit Relations
   closings        CashClosing[] @relation("EmployeeClosings")
@@ -133,6 +135,8 @@ model Member {
   appointmentRecords AppointmentFinancialRecord[]
   appointments  Appointment[]
   creditLedgerEntries MemberCreditLedger[]
+  packages      MemberPackage[]
+  packageSessionUsages PackageSessionUsage[]
 
   @@index([gender])
 }
@@ -208,6 +212,70 @@ model Subscription {
   plan     SubscriptionPlan @relation(fields: [planId], references: [id])
   payments Payment[]
   reminders Reminder[]
+}
+
+// ============================================
+// SESSION PACKAGES (SESSION-BASED PLANS)
+// ============================================
+
+/// Package plans available (session-based)
+model PackagePlan {
+  id          Int      @id @default(autoincrement())
+  name        String
+  nameAr      String?
+  price       Float
+  totalSessions Int
+  validityDays Int?
+  description String?
+  descriptionAr String?
+  isActive    Boolean  @default(true)
+  businessTypeScope String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  packages    MemberPackage[]
+}
+
+/// Member package assignments
+model MemberPackage {
+  id          Int      @id @default(autoincrement())
+  memberId    Int
+  packagePlanId Int
+  startDate   DateTime
+  endDate     DateTime?
+  totalSessionsSnapshot Int
+  remainingSessions Int
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, DEPLETED, CANCELED
+  createdByEmployeeId Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  plan        PackagePlan @relation(fields: [packagePlanId], references: [id])
+  createdByEmployee User? @relation("MemberPackageCreatedBy", fields: [createdByEmployeeId], references: [id])
+  usages      PackageSessionUsage[]
+
+  @@index([memberId, status])
+}
+
+/// Ledger of consumed package sessions
+model PackageSessionUsage {
+  id              Int      @id @default(autoincrement())
+  memberId        Int
+  memberPackageId Int
+  dateTime        DateTime @default(now())
+  source          String   @default("CHECKIN") // CHECKIN, MANUAL
+  createdByEmployeeId Int?
+  notes           String?
+
+  member          Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberPackage   MemberPackage @relation(fields: [memberPackageId], references: [id], onDelete: Cascade)
+  createdByEmployee User? @relation("PackageSessionUsageCreatedBy", fields: [createdByEmployeeId], references: [id])
+
+  @@index([memberId, dateTime])
 }
 
 // ============================================
