@@ -206,3 +206,4 @@ Phase 4 - Receipts system
 | 2026-02-16 | ff5da1e | Add session package schema models and migration. |
 | 2026-02-16 | 2859b47 | Add package plan/member package endpoints and consume package sessions on check-in. |
 | 2026-02-16 | 5ba50f9 | Ignore local runtime artifacts in git status. |
+| 2026-02-16 | cc1749c | Add session package plans tab and i18n labels. |
