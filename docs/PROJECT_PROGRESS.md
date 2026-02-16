@@ -208,3 +208,4 @@ Phase 4 - Receipts system
 | 2026-02-16 | 5ba50f9 | Ignore local runtime artifacts in git status. |
 | 2026-02-16 | cc1749c | Add session package plans tab and i18n labels. |
 | 2026-02-16 | 42d67b0 | Add package assignment flow to AssignPlanModal. |
+| 2026-02-16 | 0ecaf0b | Add package CTAs and success messaging in Check-in. |
