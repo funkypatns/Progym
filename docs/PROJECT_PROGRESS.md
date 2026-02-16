@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-02-02
+Last updated: 2026-02-16
 
 Purpose:
 This file is the single source of truth for plans, tasks, and progress tracking. It is meant to help resume work after context compaction or a new chat session, and to prevent duplicate work.
@@ -205,3 +205,4 @@ Phase 4 - Receipts system
 | 2026-02-10 | 7f2cf24 | Gym income sessions report now derives original/final/diff from appointment price/finalPrice with adjustment metadata. |
 | 2026-02-16 | ff5da1e | Add session package schema models and migration. |
 | 2026-02-16 | 2859b47 | Add package plan/member package endpoints and consume package sessions on check-in. |
+| 2026-02-16 | 5ba50f9 | Ignore local runtime artifacts in git status. |
