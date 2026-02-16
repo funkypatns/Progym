@@ -11,3 +11,9 @@ data/backups/
 *.sqlite3
 *.pem
 *.key
+# Local runtime artifacts (keep untracked)
+backend/data/license_cache.enc
+license-server/data/licenses.db
+backend/prisma/gym.db
+backend/prisma/gym.db-journal
+backend/debug_license_v3.js
