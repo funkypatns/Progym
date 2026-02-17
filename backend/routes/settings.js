@@ -200,6 +200,7 @@ router.post('/reset', authorize('admin'), async (req, res) => {
         const openedAtFilter = dateObj ? { openedAt: { lt: dateObj } } : {};
         const timestampFilter = dateObj ? { timestamp: { lt: dateObj } } : {};
         const paidAtFilter = dateObj ? { paidAt: { lt: dateObj } } : {};
+        const dateTimeFilter = dateObj ? { dateTime: { lt: dateObj } } : {};
         const saleItemDateFilter = dateObj ? { transaction: { createdAt: { lt: dateObj } } } : {};
         const isFullReset = targets.includes('all');
 
@@ -241,22 +242,32 @@ router.post('/reset', authorize('admin'), async (req, res) => {
 
             // 5. Coach Earnings & Appointments (Must delete before Members and Users)
             if (isFullReset || targets.includes('payments') || targets.includes('members')) {
-                // Delete coach earnings first (references Appointment)
+                // Delete legacy rows by timestamp first
                 await tx.coachEarning.deleteMany({ where: createdAtFilter });
-                // Delete trainer earnings first (references Appointment)
                 await tx.trainerEarning.deleteMany({ where: createdAtFilter });
-                // Delete financial records (references Appointment) -- FIX FOR RESET CRASH
-                // Note: AppointmentFinancialRecord relies on appointmentId, must be deleted BEFORE appointment
-                // However, we need to map dateFilter (createdAt) correctly or if it uses completedAt?
-                // Schema says createdAt exists.
                 await tx.appointmentFinancialRecord.deleteMany({ where: createdAtFilter });
+
+                // Delete appointment-linked entities by parent appointment IDs to avoid FK failures
+                // when child createdAt differs from appointment createdAt.
+                const appointmentIds = (await tx.appointment.findMany({
+                    where: createdAtFilter,
+                    select: { id: true }
+                })).map((row) => row.id);
+
+                if (appointmentIds.length > 0) {
+                    const appointmentIdFilter = { appointmentId: { in: appointmentIds } };
+                    await tx.sessionPriceAdjustment.deleteMany({ where: appointmentIdFilter });
+                    await tx.appointmentFinancialRecord.deleteMany({ where: appointmentIdFilter });
+                    await tx.coachEarning.deleteMany({ where: appointmentIdFilter });
+                    await tx.trainerEarning.deleteMany({ where: appointmentIdFilter });
+                    await tx.payment.deleteMany({ where: appointmentIdFilter });
+                    await tx.appointment.deleteMany({ where: { id: { in: appointmentIds } } });
+                }
 
                 // Delete settlements (references Expense and Coach)
                 await tx.coachSettlement.deleteMany({ where: createdAtFilter });
                 // Delete trainer payouts (references StaffTrainer)
                 await tx.trainerPayout.deleteMany({ where: paidAtFilter });
-                // Delete appointments (references Member and Coach)
-                await tx.appointment.deleteMany({ where: createdAtFilter });
             }
 
             // 6. Cash Closings (Reconciliation)
@@ -279,7 +290,11 @@ router.post('/reset', authorize('admin'), async (req, res) => {
 
             // 7. Member Child Entities
             if (isFullReset || targets.includes('members')) {
+                await tx.packageSessionUsage.deleteMany({ where: dateTimeFilter });
+                await tx.checkInIdempotency.deleteMany({ where: createdAtFilter });
+                await tx.memberPackage.deleteMany({ where: createdAtFilter });
                 await tx.checkIn.deleteMany({ where: createdAtFilter });
+                await tx.lead.deleteMany({ where: createdAtFilter });
             }
 
             // 8. Subscriptions (Depend on Member, Plan)
