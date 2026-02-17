@@ -29,6 +29,17 @@ const parseContentDispositionFilename = (contentDispositionValue, fallbackName) 
     return match?.[1] || fallbackName;
 };
 
+const getCashClosingErrorMessage = (error, t, fallbackKey = 'cashClosing.historyLoadFailed', fallbackText = 'Failed to load close history') => {
+    const errorCode = error?.response?.data?.errorCode;
+    if (errorCode === 'DB_SCHEMA_MISMATCH') {
+        return t('cashClosing.errors.schemaMismatch', 'قاعدة البيانات غير محدثة. يرجى التواصل مع الدعم.');
+    }
+    if (errorCode === 'DB_ERROR') {
+        return t('cashClosing.errors.dbError', 'حدث خطأ بقاعدة البيانات أثناء التقفيل');
+    }
+    return error?.response?.data?.message || t(fallbackKey, fallbackText);
+};
+
 const CashClosingReport = ({ data, refreshKey = 0 }) => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
@@ -55,7 +66,12 @@ const CashClosingReport = ({ data, refreshKey = 0 }) => {
                 console.error('Failed to load cash close history', error);
                 if (isMounted) {
                     setServerData(fallbackData);
-                    toast.error(t('cashClosing.historyLoadFailed', 'Failed to load close history'));
+                    toast.error(getCashClosingErrorMessage(
+                        error,
+                        t,
+                        'cashClosing.historyLoadFailed',
+                        'Failed to load close history'
+                    ));
                 }
             } finally {
                 if (isMounted) setIsLoading(false);

@@ -99,8 +99,106 @@ const PERIOD_STATUS = {
     CLOSED: 'CLOSED'
 };
 
+const CASH_CLOSE_ERROR_CODES = {
+    VALIDATION_ERROR: 'VALIDATION_ERROR',
+    OPEN_PERIOD_EXISTS: 'OPEN_PERIOD_EXISTS',
+    CLOSE_END_BEFORE_PERIOD_START: 'CLOSE_END_BEFORE_PERIOD_START',
+    DB_SCHEMA_MISMATCH: 'DB_SCHEMA_MISMATCH',
+    DB_ERROR: 'DB_ERROR'
+};
+
 const CLOSE_EXPORT_VERSION = 1;
 const COMPLETED_PAYMENT_STATUSES = ['completed', 'paid', 'partial_refund', 'Partial Refund', 'refunded'];
+const isDevelopment = process.env.NODE_ENV !== 'production';
+
+function createRouteError(code, message, details = null) {
+    const error = new Error(message || code);
+    error.code = code;
+    if (details) error.details = details;
+    return error;
+}
+
+function getCashClosePeriodDelegate(prisma) {
+    if (!prisma?.cashClosePeriod) {
+        throw createRouteError(
+            CASH_CLOSE_ERROR_CODES.DB_SCHEMA_MISMATCH,
+            'CashClosePeriod model is not available in Prisma client. Run prisma generate.',
+            { missingDelegate: 'cashClosePeriod' }
+        );
+    }
+    return prisma.cashClosePeriod;
+}
+
+function mapCashCloseError(error, fallbackMessage) {
+    if (!error) {
+        return {
+            statusCode: 500,
+            errorCode: CASH_CLOSE_ERROR_CODES.DB_ERROR,
+            message: fallbackMessage || 'Failed to process cash close request'
+        };
+    }
+
+    const rawCode = String(error.code || '').toUpperCase();
+
+    if (rawCode === CASH_CLOSE_ERROR_CODES.VALIDATION_ERROR || rawCode === CASH_CLOSE_ERROR_CODES.CLOSE_END_BEFORE_PERIOD_START) {
+        return {
+            statusCode: 400,
+            errorCode: CASH_CLOSE_ERROR_CODES.VALIDATION_ERROR,
+            message: error.message || 'Validation failed'
+        };
+    }
+
+    if (rawCode === CASH_CLOSE_ERROR_CODES.OPEN_PERIOD_EXISTS) {
+        return {
+            statusCode: 409,
+            errorCode: CASH_CLOSE_ERROR_CODES.OPEN_PERIOD_EXISTS,
+            message: error.message || 'Open cash period already exists'
+        };
+    }
+
+    if (rawCode === CASH_CLOSE_ERROR_CODES.DB_SCHEMA_MISMATCH || rawCode === 'P2021' || rawCode === 'P2022') {
+        return {
+            statusCode: 500,
+            errorCode: CASH_CLOSE_ERROR_CODES.DB_SCHEMA_MISMATCH,
+            message: 'Cash closing database schema is not synchronized'
+        };
+    }
+
+    if (rawCode === 'P2002') {
+        const target = Array.isArray(error?.meta?.target)
+            ? error.meta.target.join(',')
+            : String(error?.meta?.target || '');
+        if (target.includes('CashClosePeriod_single_open_idx') || target.toLowerCase().includes('status')) {
+            return {
+                statusCode: 409,
+                errorCode: CASH_CLOSE_ERROR_CODES.OPEN_PERIOD_EXISTS,
+                message: 'Open cash period already exists'
+            };
+        }
+    }
+
+    return {
+        statusCode: 500,
+        errorCode: CASH_CLOSE_ERROR_CODES.DB_ERROR,
+        message: fallbackMessage || 'Failed to process cash close request'
+    };
+}
+
+function respondWithCashCloseError(res, routeName, error, fallbackMessage) {
+    const mapped = mapCashCloseError(error, fallbackMessage);
+    console.error(`[CashClosing][${routeName}] ${mapped.errorCode}: ${mapped.message}`);
+    if (isDevelopment) {
+        if (error?.details) {
+            console.error('[CashClosing][dev][details]', error.details);
+        }
+        console.error(error?.stack || error);
+    }
+    return res.status(mapped.statusCode).json({
+        success: false,
+        errorCode: mapped.errorCode,
+        message: mapped.message
+    });
+}
 
 function normalizePeriodType(value) {
     const normalized = String(value || 'MANUAL').trim().toUpperCase();
@@ -298,7 +396,8 @@ function buildExportCsv(payload) {
 }
 
 async function ensureOpenPeriod(prisma, userId = null) {
-    const openPeriods = await prisma.cashClosePeriod.findMany({
+    const cashClosePeriod = getCashClosePeriodDelegate(prisma);
+    const openPeriods = await cashClosePeriod.findMany({
         where: { status: PERIOD_STATUS.OPEN },
         orderBy: { startAt: 'asc' }
     });
@@ -308,7 +407,7 @@ async function ensureOpenPeriod(prisma, userId = null) {
     }
 
     if (openPeriods.length === 0) {
-        return prisma.cashClosePeriod.create({
+        return cashClosePeriod.create({
             data: {
                 status: PERIOD_STATUS.OPEN,
                 periodType: 'MANUAL',
@@ -318,26 +417,11 @@ async function ensureOpenPeriod(prisma, userId = null) {
         });
     }
 
-    const [primary, ...duplicates] = openPeriods;
-    const duplicateIds = duplicates.map((item) => item.id);
-    if (duplicateIds.length > 0) {
-        const now = new Date();
-        await prisma.cashClosePeriod.updateMany({
-            where: { id: { in: duplicateIds } },
-            data: {
-                status: PERIOD_STATUS.CLOSED,
-                endAt: now,
-                closedAt: now,
-                closedBy: userId || null,
-                notes: 'Auto-closed duplicate open period',
-                snapshotJson: JSON.stringify({
-                    reason: 'AUTO_CLOSED_DUPLICATE_OPEN_PERIOD'
-                })
-            }
-        });
-    }
-
-    return primary;
+    throw createRouteError(
+        CASH_CLOSE_ERROR_CODES.OPEN_PERIOD_EXISTS,
+        'Multiple OPEN cash periods detected. Resolve data integrity before closing cash.',
+        { openPeriodIds: openPeriods.map((period) => period.id) }
+    );
 }
 
 async function resolveRangeFromQueryOrOpenPeriod(prisma, query, userId) {
@@ -814,22 +898,12 @@ router.get('/period/current', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('[CashClosing][period/current] Failed to load current period preview');
-        if (process.env.NODE_ENV !== 'production') {
-            console.error(error?.stack || error);
-        }
-        return res.json({
-            success: true,
-            data: {
-                openPeriod: null,
-                range: {
-                    startAt: null,
-                    endAt: null
-                },
-                expected: buildZeroExpectedStats(),
-                summary: buildZeroFinancialPreviewSummary()
-            }
-        });
+        return respondWithCashCloseError(
+            res,
+            'period/current',
+            error,
+            'Failed to load current cash close period'
+        );
     }
 });
 
@@ -1023,6 +1097,8 @@ router.post('/', [
         if (!errors.isEmpty()) {
             return res.status(400).json({
                 success: false,
+                errorCode: CASH_CLOSE_ERROR_CODES.VALIDATION_ERROR,
+                message: 'Validation failed',
                 errors: errors.array()
             });
         }
@@ -1036,18 +1112,22 @@ router.post('/', [
         if (Number.isNaN(requestedEndAt.getTime())) {
             return res.status(400).json({
                 success: false,
+                errorCode: CASH_CLOSE_ERROR_CODES.VALIDATION_ERROR,
                 message: 'Invalid endAt date format'
             });
         }
 
         const closeResult = await req.prisma.$transaction(async (tx) => {
+            const cashClosePeriod = getCashClosePeriodDelegate(tx);
             const openPeriod = await ensureOpenPeriod(tx, req.user?.id || null);
             const periodStartAt = openPeriod.startAt;
             const periodEndAt = requestedEndAt;
 
             if (periodEndAt < periodStartAt) {
-                const rangeError = new Error('CLOSE_END_BEFORE_PERIOD_START');
-                rangeError.code = 'CLOSE_END_BEFORE_PERIOD_START';
+                const rangeError = createRouteError(
+                    CASH_CLOSE_ERROR_CODES.CLOSE_END_BEFORE_PERIOD_START,
+                    'Close end time cannot be before current open period start time'
+                );
                 throw rangeError;
             }
 
@@ -1067,7 +1147,7 @@ router.post('/', [
             const snapshot = await buildCloseSnapshot(tx, periodStartAt, periodEndAt, stats, financialSnapshot);
             const closedAt = new Date();
 
-            const closedPeriod = await tx.cashClosePeriod.update({
+            const closedPeriod = await cashClosePeriod.update({
                 where: { id: openPeriod.id },
                 data: {
                     periodType,
@@ -1109,7 +1189,7 @@ router.post('/', [
             });
 
             const nextPeriodStartAt = new Date(periodEndAt.getTime() + 1000);
-            const newOpenPeriod = await tx.cashClosePeriod.create({
+            const newOpenPeriod = await cashClosePeriod.create({
                 data: {
                     periodType: 'MANUAL',
                     status: PERIOD_STATUS.OPEN,
@@ -1153,21 +1233,12 @@ router.post('/', [
             }
         });
     } catch (error) {
-        if (error?.code === 'CLOSE_END_BEFORE_PERIOD_START' || error?.message === 'CLOSE_END_BEFORE_PERIOD_START') {
-            return res.status(400).json({
-                success: false,
-                message: 'Close end time cannot be before current open period start time'
-            });
-        }
-
-        console.error('[CashClosing][create] Failed to create close period');
-        if (process.env.NODE_ENV !== 'production') {
-            console.error(error?.stack || error);
-        }
-        return res.status(500).json({
-            success: false,
-            message: 'Failed to create cash close period'
-        });
+        return respondWithCashCloseError(
+            res,
+            'create',
+            error,
+            'Failed to create cash close period'
+        );
     }
 });
 
@@ -1213,6 +1284,7 @@ function parseDateOrNull(value) {
  */
 router.get('/history', async (req, res) => {
     try {
+        const cashClosePeriod = getCashClosePeriodDelegate(req.prisma);
         const {
             page = 1,
             limit = 20,
@@ -1242,7 +1314,7 @@ router.get('/history', async (req, res) => {
         }
 
         const [periods, total] = await Promise.all([
-            req.prisma.cashClosePeriod.findMany({
+            cashClosePeriod.findMany({
                 where,
                 skip,
                 take: limitNumber,
@@ -1256,7 +1328,7 @@ router.get('/history', async (req, res) => {
                     }
                 }
             }),
-            req.prisma.cashClosePeriod.count({ where })
+            cashClosePeriod.count({ where })
         ]);
 
         const closings = periods.map(normalizePeriodRow);
@@ -1278,14 +1350,12 @@ router.get('/history', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[CashClosing][history] Failed to fetch close history');
-        if (process.env.NODE_ENV !== 'production') {
-            console.error(error?.stack || error);
-        }
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch close history'
-        });
+        return respondWithCashCloseError(
+            res,
+            'history',
+            error,
+            'Failed to fetch close history'
+        );
     }
 });
 
@@ -1295,6 +1365,7 @@ router.get('/history', async (req, res) => {
  */
 router.get('/', async (req, res) => {
     try {
+        const cashClosePeriod = getCashClosePeriodDelegate(req.prisma);
         const {
             page = 1,
             limit = 20,
@@ -1328,7 +1399,7 @@ router.get('/', async (req, res) => {
         }
 
         const [periods, total] = await Promise.all([
-            req.prisma.cashClosePeriod.findMany({
+            cashClosePeriod.findMany({
                 where,
                 skip,
                 take: limitNumber,
@@ -1342,7 +1413,7 @@ router.get('/', async (req, res) => {
                     }
                 }
             }),
-            req.prisma.cashClosePeriod.count({ where })
+            cashClosePeriod.count({ where })
         ]);
 
         const closings = periods.map(normalizePeriodRow);
@@ -1363,14 +1434,12 @@ router.get('/', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('[CashClosing][list] Failed to fetch cash close periods');
-        if (process.env.NODE_ENV !== 'production') {
-            console.error(error?.stack || error);
-        }
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch cash close periods'
-        });
+        return respondWithCashCloseError(
+            res,
+            'list',
+            error,
+            'Failed to fetch cash close periods'
+        );
     }
 });
 

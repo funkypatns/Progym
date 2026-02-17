@@ -29,6 +29,17 @@ const emptyCurrent = {
     }
 };
 
+const getCashClosingErrorMessage = (error, t, fallbackKey = 'cashClosing.loadPreviewFailed', fallbackText = 'Failed to load close preview') => {
+    const errorCode = error?.response?.data?.errorCode;
+    if (errorCode === 'DB_SCHEMA_MISMATCH') {
+        return t('cashClosing.errors.schemaMismatch', 'قاعدة البيانات غير محدثة. يرجى التواصل مع الدعم.');
+    }
+    if (errorCode === 'DB_ERROR') {
+        return t('cashClosing.errors.dbError', 'حدث خطأ بقاعدة البيانات أثناء التقفيل');
+    }
+    return error?.response?.data?.message || t(fallbackKey, fallbackText);
+};
+
 const CashClosingReportPage = () => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
@@ -61,7 +72,12 @@ const CashClosingReportPage = () => {
                 console.error('Failed to load current cash close period', error);
                 if (isMounted) {
                     setCurrentPreview(emptyCurrent);
-                    toast.error(t('cashClosing.loadPreviewFailed', 'Failed to load close preview'));
+                    toast.error(getCashClosingErrorMessage(
+                        error,
+                        t,
+                        'cashClosing.loadPreviewFailed',
+                        'Failed to load close preview'
+                    ));
                 }
             } finally {
                 if (isMounted) setIsLoadingCurrent(false);

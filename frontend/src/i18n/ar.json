@@ -901,6 +901,12 @@
             "overage": "زيادة",
             "balanced": "متوازن"
         },
+        "errors": {
+            "openPeriodExists": "يوجد تقفيل مفتوح بالفعل",
+            "validationError": "بيانات التقفيل غير صحيحة",
+            "schemaMismatch": "هيكل بيانات التقفيل غير متزامن. راجع الدعم الفني.",
+            "dbError": "حدث خطأ في قاعدة البيانات أثناء التقفيل"
+        },
         "immutableWarning": "⚠ لا يمكن التعديل بعد الحفظ",
         "confirmCreate": "إنشاء",
         "closingCreated": "تم الإنشاء بنجاح",

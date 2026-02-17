@@ -271,6 +271,61 @@ test('GET /financial-preview returns zero summary when no data exists', async ()
     });
 });
 
+test('GET /period/current returns DB_SCHEMA_MISMATCH when cashClosePeriod delegate is unavailable', async () => {
+    const handler = getRouteHandler('get', '/period/current');
+    const req = {
+        user: { id: 1, role: 'admin' },
+        prisma: createNoDataPrisma()
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 500);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.errorCode, 'DB_SCHEMA_MISMATCH');
+});
+
+test('POST / returns DB_SCHEMA_MISMATCH when cashClosePeriod delegate is unavailable', async () => {
+    const handler = getRouteHandler('post', '/');
+    const prisma = createNoDataPrisma();
+    prisma.$transaction = async (callback) => callback(prisma);
+    const req = {
+        user: { id: 1, role: 'admin' },
+        body: {
+            declaredCashAmount: 0,
+            declaredNonCashAmount: 0
+        },
+        prisma
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 500);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.errorCode, 'DB_SCHEMA_MISMATCH');
+});
+
+test('GET /history returns DB_SCHEMA_MISMATCH when cashClosePeriod delegate is unavailable', async () => {
+    const handler = getRouteHandler('get', '/history');
+    const req = {
+        user: { id: 1, role: 'admin' },
+        query: {
+            page: 1,
+            limit: 20
+        },
+        prisma: createNoDataPrisma()
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 500);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.errorCode, 'DB_SCHEMA_MISMATCH');
+});
+
 test('payout and cash-in are included in expected cash calculation', async () => {
     const prisma = {
         payment: {

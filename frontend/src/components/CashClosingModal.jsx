@@ -42,6 +42,23 @@ const parseContentDispositionFilename = (contentDispositionValue, fallbackName) 
     return match?.[1] || fallbackName;
 };
 
+const getCashClosingErrorMessage = (error, t, fallbackKey = 'cashClosing.closingFailed', fallbackText = 'Failed to create closing') => {
+    const errorCode = error?.response?.data?.errorCode;
+    if (errorCode === 'OPEN_PERIOD_EXISTS') {
+        return t('cashClosing.errors.openPeriodExists', 'يوجد فترة تقفيل مفتوحة بالفعل');
+    }
+    if (errorCode === 'VALIDATION_ERROR') {
+        return error?.response?.data?.message || t('cashClosing.errors.validationError', 'بيانات التقفيل غير صحيحة');
+    }
+    if (errorCode === 'DB_SCHEMA_MISMATCH') {
+        return t('cashClosing.errors.schemaMismatch', 'قاعدة البيانات غير محدثة. يرجى التواصل مع الدعم.');
+    }
+    if (errorCode === 'DB_ERROR') {
+        return t('cashClosing.errors.dbError', 'حدث خطأ بقاعدة البيانات أثناء التقفيل');
+    }
+    return error?.response?.data?.message || t(fallbackKey, fallbackText);
+};
+
 const roundToTwo = (value) => {
     const numericValue = Number(value);
     if (!Number.isFinite(numericValue)) return 0;
@@ -144,7 +161,12 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
             } catch (error) {
                 console.error('Failed to load cash close preview', error);
                 setPreview(EMPTY_PREVIEW);
-                toast.error(t('cashClosing.loadPreviewFailed', 'Failed to load close preview'));
+                toast.error(getCashClosingErrorMessage(
+                    error,
+                    t,
+                    'cashClosing.loadPreviewFailed',
+                    'Failed to load close preview'
+                ));
             } finally {
                 if (isMounted) setIsLoadingPreview(false);
             }
@@ -195,7 +217,12 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
             toast.success(t('cashClosing.closingCreated', 'Closing created successfully'));
         } catch (error) {
             console.error('Failed to create cash close', error);
-            toast.error(error?.response?.data?.message || t('cashClosing.closingFailed', 'Failed to create closing'));
+            toast.error(getCashClosingErrorMessage(
+                error,
+                t,
+                'cashClosing.closingFailed',
+                'Failed to create closing'
+            ));
         } finally {
             setIsSubmitting(false);
         }

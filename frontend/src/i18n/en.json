@@ -864,6 +864,12 @@
             "overage": "Overage",
             "balanced": "Balanced"
         },
+        "errors": {
+            "openPeriodExists": "An open cash period already exists.",
+            "validationError": "Cash close data is invalid.",
+            "schemaMismatch": "Cash close database schema is out of sync. Please contact support.",
+            "dbError": "Database error while processing cash close."
+        },
         "immutableWarning": "âš ï¸ Cannot edit closing after saving",
         "confirmCreate": "Confirm Create",
         "closingCreated": "Closing created successfully",
