@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Cash Close now uses POS-style periods (single OPEN period, immutable CLOSED snapshot, export CSV/JSON, auto-open new period, and close history tab in reports). Status: done, needs manual verification.
 - Session Packs assign-member autocomplete now requires at least 2 letters, shows matching members, and writes the selected member name into the input on click. Status: done, needs manual verification.
 - Trainer Report UI refreshed for cleaner readability (modern summary cards, clearer table header/value formatting, status badges in list/details) and Arabic labels restored for Trainer Report + Pending Completion. Status: done, needs manual verification.
 - Trainer Report commissions integration build/parsing regression fixed in `TrainerReportPage.jsx` map closure. Status: done.
@@ -74,6 +75,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | c0c492f  | Implement POS-style Cash Close periods with immutable snapshot close + CSV/JSON export, auto-open next period baseline, backend history/export endpoints, refreshed close modal/history UI, and period lifecycle tests. |
 | 2026-02-17 | 4145293  | Fix Settings reset FK crash by deleting appointment-linked children (including `SessionPriceAdjustment`) before appointments and add regression test for reset order. |
 | 2026-02-17 | 0aedc11  | Fix frontend quality command reliability by replacing missing-ESLint lint script with a working validation chain (`check:i18n` + production build). |
 | 2026-02-17 | 1c5b89a  | Unblock Electron release build by removing missing icon references (fallback to default icon), add `electron/assets` build-resources directory, and align deployment docs to `prisma db push`. |
