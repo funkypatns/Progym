@@ -77,6 +77,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 926a659  | Map integrity-related activation failures to HTTP 403 so tamper/signature/release-manifest blocks return explicit security status codes instead of generic 400. |
 | 2026-02-17 | 31d329f  | Permanently fix recurring integrity mismatch by replacing source-file/token manifest checks with release-artifact SHA-256 manifests, RSA signature verification via embedded public key, versioned `/api/integrity/manifest` endpoint, production-only enforcement with dev warn mode, and updated integrity tests/docs. |
 | 2026-02-17 | a6c3256  | Implement full post-licensing security layer: machine-id device fingerprint binding and approval workflow, RS256 activation token signing/verification, 24h revalidation with 72h offline grace, signed integrity manifest checks, audited device/license management endpoints, admin device dashboard page, and baseline security tests/docs. |
 | 2026-02-17 | c0c492f  | Implement POS-style Cash Close periods with immutable snapshot close + CSV/JSON export, auto-open next period baseline, backend history/export endpoints, refreshed close modal/history UI, and period lifecycle tests. |
