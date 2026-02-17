@@ -21,8 +21,9 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Device management architecture refactored: removed gym-app device admin UI/APIs, added dedicated license-server `/admin` dashboard and separate license-admin JWT auth (`LICENSE_ADMIN_JWT_SECRET`). Status: done.
 - Recurring `INTEGRITY_MISMATCH` fixed with release-only signed manifest validation (versioned `/api/integrity/manifest`, RSA signature verification with embedded public key, production-only strict enforcement, and dev warn mode). Status: done.
-- Post-licensing security layer implemented (device fingerprint binding, approved-device enforcement, RS256 activation tokens, 24h validation + 72h grace, integrity manifest verification, admin device management APIs/UI, and baseline security tests/docs). Status: done, needs manual verification.
+- Post-licensing security layer implemented (device fingerprint binding, approved-device enforcement, RS256 activation tokens, 24h validation + 72h grace, integrity manifest verification, and baseline security tests/docs). Status: done, needs manual verification.
 - Cash Close now uses POS-style periods (single OPEN period, immutable CLOSED snapshot, export CSV/JSON, auto-open new period, and close history tab in reports). Status: done, needs manual verification.
 - Session Packs assign-member autocomplete now requires at least 2 letters, shows matching members, and writes the selected member name into the input on click. Status: done, needs manual verification.
 - Trainer Report UI refreshed for cleaner readability (modern summary cards, clearer table header/value formatting, status badges in list/details) and Arabic labels restored for Trainer Report + Pending Completion. Status: done, needs manual verification.
@@ -77,6 +78,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 2a67571  | Move device management out of gym client into license-server only: remove gym-side device routes/UI, add `/api/licenses/heartbeat`, add dedicated license-server `/admin` dashboard routes (`/admin/licenses`, `/admin/licenses/:id/devices`, approve/revoke/reset), and enforce separate license-admin JWT auth secret. |
 | 2026-02-17 | 926a659  | Map integrity-related activation failures to HTTP 403 so tamper/signature/release-manifest blocks return explicit security status codes instead of generic 400. |
 | 2026-02-17 | 31d329f  | Permanently fix recurring integrity mismatch by replacing source-file/token manifest checks with release-artifact SHA-256 manifests, RSA signature verification via embedded public key, versioned `/api/integrity/manifest` endpoint, production-only enforcement with dev warn mode, and updated integrity tests/docs. |
 | 2026-02-17 | a6c3256  | Implement full post-licensing security layer: machine-id device fingerprint binding and approval workflow, RS256 activation token signing/verification, 24h revalidation with 72h offline grace, signed integrity manifest checks, audited device/license management endpoints, admin device dashboard page, and baseline security tests/docs. |
