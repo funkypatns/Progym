@@ -132,6 +132,7 @@ const alertsRoutes = require('./routes/alerts');
 const receiptsRoutes = require('./routes/receipts');
 const staffTrainersRoutes = require('./routes/staffTrainers');
 const trainerRoutes = require('./routes/trainers');
+const commissionsRoutes = require('./routes/commissions');
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -164,6 +165,7 @@ app.use('/api/alerts', alertsRoutes);
 app.use('/api/receipts', receiptsRoutes);
 app.use('/api/staff-trainers', staffTrainersRoutes);
 app.use('/api/trainers', trainerRoutes);
+app.use('/api/commissions', commissionsRoutes);
 app.use('/api/subscription-alerts', require('./routes/subscription-alerts'));
 app.use('/api/cash-movements', require('./routes/cash-movements'));
 app.use('/api/products', require('./routes/products'));

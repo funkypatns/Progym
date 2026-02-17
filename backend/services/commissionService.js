@@ -144,10 +144,10 @@ const CommissionService = {
         // Calculate (Reuse logic)
         const calc = await this.calculateCommissionPreview(appointmentId, tx);
 
-        // Fetch memberId safely for creation (needed for foreign key)
+        // Fetch member/trainer safely for creation (needed for foreign keys)
         const appointment = await tx.appointment.findUnique({
             where: { id: parseInt(appointmentId) },
-            select: { memberId: true }
+            select: { memberId: true, trainerId: true }
         });
 
         if (!appointment) return; // Should not happen given calc succeeded
@@ -192,6 +192,36 @@ const CommissionService = {
                 // Ideally we check status first.
             }
         });
+
+        // Canonical commission transaction for trainer report/settlement reconciliation.
+        // Idempotent via unique appointmentId on TrainerEarning.
+        if (appointment.trainerId) {
+            const existingTrainerEarning = await tx.trainerEarning.findUnique({
+                where: { appointmentId: parseInt(calc.appointmentId) }
+            });
+
+            const earningPayload = {
+                trainerId: appointment.trainerId,
+                appointmentId: parseInt(calc.appointmentId),
+                baseAmount: calc.sessionPrice,
+                commissionPercent: calc.commissionPercentUsed,
+                commissionAmount: calc.commissionAmount
+            };
+
+            if (!existingTrainerEarning) {
+                await tx.trainerEarning.create({
+                    data: {
+                        ...earningPayload,
+                        status: 'UNPAID'
+                    }
+                });
+            } else if (existingTrainerEarning.status !== 'PAID') {
+                await tx.trainerEarning.update({
+                    where: { appointmentId: parseInt(calc.appointmentId) },
+                    data: earningPayload
+                });
+            }
+        }
     },
 
     /**

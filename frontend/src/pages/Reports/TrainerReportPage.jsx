@@ -211,6 +211,7 @@ const TrainerPayoutModal = ({ isOpen, onClose, trainer, pendingEarnings, onConfi
     const handleConfirm = () => {
         const numericAmount = amount !== '' ? parseFloat(amount) : effectiveTotal;
         onConfirm({
+            settleAll: payAll,
             earningIds: effectiveIds,
             amount: Number.isNaN(numericAmount) ? effectiveTotal : numericAmount,
             method,
@@ -553,80 +554,73 @@ const TrainerReportPage = () => {
         const endDate = toEndOfDay(normalized.to);
         params.append('startDate', startDate);
         params.append('endDate', endDate);
-        if (statusFilter && statusFilter !== 'ALL') params.append('status', statusFilter);
 
         setLoading(true);
         try {
-            const [earningsRes, payoutsRes] = await Promise.all([
-                apiClient.get(`/staff-trainers/${selectedTrainerId}/earnings?${params.toString()}`),
-                apiClient.get(`/staff-trainers/${selectedTrainerId}/payouts?startDate=${startDate}&endDate=${endDate}`)
+            params.append('trainerId', selectedTrainerId);
+            if (serviceFilter) params.append('serviceId', serviceFilter);
+            if (search.trim()) params.append('q', search.trim());
+            if (statusFilter === 'PAID') params.append('status', 'SETTLED');
+            if (statusFilter === 'UNPAID') params.append('status', 'UNSETTLED');
+
+            const [summaryRes, transactionsRes] = await Promise.all([
+                apiClient.get(`/commissions/summary?${params.toString()}`),
+                apiClient.get(`/commissions/transactions?${params.toString()}`)
             ]);
 
-            const earningsData = earningsRes.data?.data;
-            const payoutList = Array.isArray(payoutsRes.data?.data) ? payoutsRes.data.data : [];
+            const summaryData = summaryRes.data?.data || {};
+            const transactionsData = transactionsRes.data?.data || {};
+            const transactionRows = Array.isArray(transactionsData.rows) ? transactionsData.rows : [];
+            const settlementRows = Array.isArray(transactionsData.settlements) ? transactionsData.settlements : [];
 
-            const serviceName = serviceFilter
-                ? (services.find(item => String(item.id) === String(serviceFilter))?.name || '')
-                : '';
-            const normalizedSearch = search.trim().toLowerCase();
-
-            const normalizedEarnings = (Array.isArray(earningsData?.earnings) ? earningsData.earnings : [])
+            const normalizedEarnings = transactionRows
                 .map((item) => ({
                     id: item.id,
-                    appointmentId: item.appointmentId,
-                    sessionDate: item.date,
+                    appointmentId: item.sourceId || item.appointmentId,
+                    sessionDate: item.sessionDate || item.occurredAt,
                     customerName: item.customerName || '',
                     customerCode: item.customerCode || '',
-                    serviceName: item.sourceRef || '',
-                    baseAmount: item.basisAmount || 0,
-                    ruleText: item.ruleText || '',
-                    commissionAmount: item.earningAmount || 0,
-                    status: item.status === 'paid' ? 'PAID' : 'UNPAID',
+                    serviceName: item.serviceName || '',
+                    baseAmount: item.grossAmount || 0,
+                    ruleText: item.commissionPercent !== null && item.commissionPercent !== undefined
+                        ? `${item.commissionPercent}% of ${item.grossAmount || 0}`
+                        : '',
+                    commissionAmount: item.commissionAmount || 0,
+                    status: item.status === 'SETTLED' ? 'PAID' : 'UNPAID',
                     employeeName: item.employeeName || '',
                     trainerName: selectedTrainer?.name || '',
-                    originalPrice: item.originalPrice ?? item.price ?? 0,
-                    finalPrice: item.finalPrice ?? item.basisAmount ?? 0,
-                    adjustmentDifference: item.adjustmentDifference ?? 0,
+                    originalPrice: item.originalPrice ?? item.grossAmount ?? 0,
+                    finalPrice: item.finalPrice ?? item.grossAmount ?? 0,
+                    adjustmentDifference: (item.finalPrice ?? item.grossAmount ?? 0) - (item.originalPrice ?? item.grossAmount ?? 0),
                     adjustmentReason: item.adjustmentReason || '',
                     adjustedBy: item.adjustedBy || '',
                     adjustedAt: item.adjustedAt || null,
                     paymentStatus: item.paymentStatus || '',
                     dueAmount: item.dueAmount ?? 0,
-                    overpaidAmount: item.overpaidAmount ?? 0
-                }))
-                .filter((item) => {
-                    if (serviceName && !String(item.serviceName || '').toLowerCase().includes(serviceName.toLowerCase())) {
-                        return false;
-                    }
-                    if (normalizedSearch) {
-                        const haystack = `${item.customerName} ${item.customerCode} ${item.serviceName}`.toLowerCase();
-                        if (!haystack.includes(normalizedSearch)) return false;
-                    }
-                    return true;
+                    overpaidAmount: item.overpaidAmount ?? 0,
+                    appointmentStatus: item.appointmentStatus || '',
+                    appointment: item.appointment || null
                 });
 
-            const filteredPayouts = payoutList.filter((payout) => {
-                if (!payout?.paidAt) return false;
-                const paidAt = new Date(payout.paidAt);
-                if (Number.isNaN(paidAt.getTime())) return false;
-                return paidAt >= new Date(startDate) && paidAt <= new Date(endDate);
-            });
+            const normalizedPayouts = settlementRows.map((row) => ({
+                ...row,
+                trainer: { id: row.trainerId, name: row.trainerName || selectedTrainer?.name || '' }
+            }));
 
-            const unpaidTotal = normalizedEarnings
-                .filter(item => item.status === 'UNPAID')
-                .reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
-            const paidTotal = normalizedEarnings
-                .filter(item => item.status === 'PAID')
-                .reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+            const unpaidTotal = Number(summaryData.outstanding_total ?? summaryData.outstandingTotal ?? 0) || 0;
+            const commissionTotal = Number(summaryData.commission_total ?? summaryData.commissionTotal ?? 0) || 0;
+            const paidTotal = Math.max(0, commissionTotal - unpaidTotal);
+            const sessionsCount = Number(summaryData.sessions_count ?? summaryData.sessionsCount ?? normalizedEarnings.length) || normalizedEarnings.length;
+            const payoutsTotal = Number(summaryData.settled_total ?? summaryData.settledTotal ?? 0) || 0;
 
             setEarnings(normalizedEarnings);
-            setPayouts(filteredPayouts);
+            setPayouts(normalizedPayouts);
 
             setSummary({
                 unpaidTotal,
                 paidTotal,
-                sessionsCount: normalizedEarnings.length,
-                payoutsTotal: filteredPayouts.reduce((sum, item) => sum + (item.totalAmount || 0), 0)
+                sessionsCount,
+                payoutsTotal
             });
         } catch (error) {
             toast.error(language === 'ar' ? 'فشل تحميل تقرير المدربين' : 'Failed to load trainer report');
@@ -867,19 +861,29 @@ const TrainerReportPage = () => {
         }
     ]), [isRTL, language, selectedTrainer?.name]);
 
-    const handlePayoutConfirm = async ({ earningIds, amount, method, note }) => {
+    const handlePayoutConfirm = async ({ settleAll, amount, method, note }) => {
         if (!selectedTrainerId) return;
         setPayoutLoading(true);
         try {
-            await apiClient.post(`/staff-trainers/${selectedTrainerId}/payout`, {
-                earningIds,
-                amount,
-                method,
-                note
-            });
-            toast.success(language === 'ar' ? 'تم السداد بنجاح' : 'Payout completed');
+            const payload = {
+                trainerId: Number(selectedTrainerId),
+                settleAll: Boolean(settleAll),
+                method: String(method || 'CASH').toLowerCase(),
+                note,
+                dateRange: {
+                    startDate: toStartOfDay(dateRange.from),
+                    endDate: toEndOfDay(dateRange.to)
+                }
+            };
+            if (!settleAll) {
+                payload.amount = Number(amount) || 0;
+            }
+
+            await apiClient.post('/commissions/settle', payload);
+            setRefreshSeed((prev) => prev + 1);
             setPayoutModalOpen(false);
-            fetchReport();
+            await fetchReport();
+            toast.success(language === 'ar' ? 'تم السداد بنجاح' : 'Payout completed');
         } catch (error) {
             toast.error(error.response?.data?.message || (language === 'ar' ? 'فشل تسوية العمولات' : 'Failed to payout'));
         } finally {
