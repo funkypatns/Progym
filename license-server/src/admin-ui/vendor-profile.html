@@ -24,6 +24,7 @@
         .preview { background: #020617; border: 1px dashed #334155; border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.6; }
         .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
         .link { color: #93c5fd; text-decoration: none; }
+        .warning { display: none; margin-bottom: 14px; padding: 10px; border-radius: 8px; border: 1px solid #b45309; background: #451a03; color: #fdba74; font-size: 13px; }
         @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -38,6 +39,10 @@
                 <a class="btn btn-muted" href="/admin">Device Dashboard</a>
                 <button id="logoutBtn" class="btn btn-muted">Logout</button>
             </div>
+        </div>
+
+        <div id="protocolWarning" class="warning">
+            This page must be opened from the running license-server URL, not directly from files.
         </div>
 
         <div class="card">
@@ -87,6 +92,7 @@
         </div>
     </div>
 
+    <script src="./vendor-profile.js"></script>
     <script src="/admin/static/vendor-profile.js"></script>
 </body>
 </html>

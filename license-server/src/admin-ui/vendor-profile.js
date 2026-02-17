@@ -1,10 +1,9 @@
-(function () {
-    const token = localStorage.getItem('licenseAdminToken');
-    if (!token) {
-        window.location.replace('/admin/login');
-        return;
-    }
+if (!window.__licenseAdminVendorBootstrapped) {
+    window.__licenseAdminVendorBootstrapped = true;
+    document.addEventListener('DOMContentLoaded', () => {
+    console.info('[license-admin-ui] vendor-profile.js loaded');
 
+    const TOKEN_KEY = 'licenseAdminToken';
     const form = document.getElementById('vendorForm');
     const messageEl = document.getElementById('message');
     const previewEl = document.getElementById('preview');
@@ -12,6 +11,7 @@
     const saveBtn = document.getElementById('saveBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const logoutBtn = document.getElementById('logoutBtn');
+    const protocolWarningEl = document.getElementById('protocolWarning');
 
     const fields = {
         displayName: document.getElementById('displayName'),
@@ -22,6 +22,37 @@
         supportHours: document.getElementById('supportHours'),
         whatsappTemplate: document.getElementById('whatsappTemplate')
     };
+
+    let isBusy = false;
+
+    function clearToken() {
+        sessionStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+    }
+
+    function saveToken(token) {
+        sessionStorage.setItem(TOKEN_KEY, token);
+        localStorage.removeItem(TOKEN_KEY);
+    }
+
+    function getToken() {
+        const sessionToken = sessionStorage.getItem(TOKEN_KEY);
+        if (sessionToken) return sessionToken;
+        const legacyToken = localStorage.getItem(TOKEN_KEY);
+        if (legacyToken) {
+            saveToken(legacyToken);
+            return legacyToken;
+        }
+        return '';
+    }
+
+    function setBusy(nextBusy) {
+        isBusy = nextBusy;
+        saveBtn.disabled = nextBusy;
+        reloadBtn.disabled = nextBusy;
+        logoutBtn.disabled = nextBusy;
+        saveBtn.textContent = nextBusy ? 'Saving...' : 'Save';
+    }
 
     function setMessage(text, isError) {
         messageEl.style.color = isError ? '#fda4af' : '#86efac';
@@ -79,53 +110,79 @@
         };
     }
 
-    async function apiRequest(path, options) {
+    async function apiRequest(path, options = {}) {
+        const token = getToken();
         const response = await fetch(path, {
             ...options,
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-                ...(options && options.headers ? options.headers : {})
+                Authorization: token ? `Bearer ${token}` : '',
+                ...(options.headers || {})
             }
         });
 
         if (response.status === 401) {
-            localStorage.removeItem('licenseAdminToken');
-            window.location.replace('/admin/login');
+            clearToken();
+            window.location.replace('/admin/login?error=SESSION_EXPIRED');
             return null;
         }
 
-        const payload = await response.json();
-        if (!response.ok || !payload.success) {
-            throw new Error(payload.message || 'Request failed');
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_) {
+            payload = null;
+        }
+
+        if (!response.ok || !payload?.success) {
+            const code = payload?.code || `HTTP_${response.status}`;
+            const message = payload?.message || 'Request failed';
+            throw new Error(`${code}: ${message}`);
         }
 
         return payload;
     }
 
     async function loadProfile() {
-        const payload = await apiRequest('/admin/vendor-profile');
+        const payload = await apiRequest('/api/admin/vendor-profile');
         if (!payload) return;
         setFormValues(payload.data || {});
     }
 
+    if (window.location.protocol === 'file:') {
+        if (protocolWarningEl) {
+            protocolWarningEl.style.display = 'block';
+        }
+        setMessage('Open this page from http://localhost:4000/admin/vendor-profile (not file://).', true);
+        form.querySelectorAll('input, textarea, button').forEach((el) => { el.disabled = true; });
+        logoutBtn.disabled = true;
+        return;
+    }
+
+    if (!getToken()) {
+        window.location.replace('/admin/login?error=SESSION_EXPIRED');
+        return;
+    }
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (isBusy) return;
         setMessage('', false);
-        saveBtn.disabled = true;
-
         try {
+            setBusy(true);
             const values = readFormValues();
-            const payload = await apiRequest('/admin/vendor-profile', {
+            const payload = await apiRequest('/api/admin/vendor-profile', {
                 method: 'PUT',
                 body: JSON.stringify(values)
             });
-            setFormValues(payload.data || values);
+            setFormValues(payload?.data || values);
             setMessage('Vendor profile saved.', false);
         } catch (error) {
+            console.error('[license-admin-ui] save vendor profile failed', error);
             setMessage(error.message || 'Failed to save vendor profile.', true);
         } finally {
-            saveBtn.disabled = false;
+            setBusy(false);
         }
     });
 
@@ -136,23 +193,34 @@
     });
 
     reloadBtn.addEventListener('click', async () => {
+        if (isBusy) return;
         try {
+            setBusy(true);
             await loadProfile();
             setMessage('Profile reloaded.', false);
         } catch (error) {
+            console.error('[license-admin-ui] reload vendor profile failed', error);
             setMessage(error.message, true);
+        } finally {
+            setBusy(false);
         }
     });
 
     logoutBtn.addEventListener('click', async () => {
         try {
-            await apiRequest('/admin/auth/logout', { method: 'POST', body: '{}' });
-        } catch (_) {
-            // no-op
+            setBusy(true);
+            await apiRequest('/api/admin/logout', { method: 'POST', body: '{}' });
+        } catch (error) {
+            console.error('[license-admin-ui] logout failed', error);
+        } finally {
+            clearToken();
+            window.location.replace('/admin/login');
         }
-        localStorage.removeItem('licenseAdminToken');
-        window.location.replace('/admin/login');
     });
 
-    loadProfile().catch((error) => setMessage(error.message, true));
-})();
+    loadProfile().catch((error) => {
+        console.error('[license-admin-ui] initial vendor profile load failed', error);
+        setMessage(error.message, true);
+    });
+    });
+}

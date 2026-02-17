@@ -75,6 +75,9 @@ function mapVendorProfile(profile) {
 }
 
 function expectsHtmlPage(req) {
+    if (req.baseUrl !== '/admin') {
+        return false;
+    }
     const hasAuthHeader = Boolean(req.headers.authorization);
     const accepts = String(req.headers.accept || '').toLowerCase();
     return !hasAuthHeader && accepts.includes('text/html');
@@ -82,6 +85,10 @@ function expectsHtmlPage(req) {
 
 function getLicenseById(licenseId) {
     return getOne('SELECT * FROM licenses WHERE id = ?', [licenseId]);
+}
+
+function getLicenseByKey(licenseKey) {
+    return getOne('SELECT * FROM licenses WHERE license_key = ?', [licenseKey]);
 }
 
 function getDeviceById(deviceId) {
@@ -103,7 +110,7 @@ router.get('/vendor-profile', (req, res, next) => {
     return next();
 });
 
-router.post('/auth/login', (req, res) => {
+function handleAdminLogin(req, res) {
     try {
         const username = String(req.body?.username || '').trim();
         const password = String(req.body?.password || '');
@@ -142,11 +149,17 @@ router.post('/auth/login', (req, res) => {
             message: 'Failed to login'
         });
     }
-});
+}
 
-router.post('/auth/logout', requireLicenseAdminAuth, (req, res) => {
+router.post('/auth/login', handleAdminLogin);
+router.post('/login', handleAdminLogin);
+
+function handleAdminLogout(req, res) {
     return res.json({ success: true });
-});
+}
+
+router.post('/auth/logout', requireLicenseAdminAuth, handleAdminLogout);
+router.post('/logout', requireLicenseAdminAuth, handleAdminLogout);
 
 router.get('/vendor-profile', requireLicenseAdminAuth, (req, res) => {
     try {
@@ -213,7 +226,7 @@ router.get('/licenses', requireLicenseAdminAuth, (req, res) => {
     }
 });
 
-router.get('/licenses/:id/devices', requireLicenseAdminAuth, (req, res) => {
+router.get('/licenses/:id(\\d+)/devices', requireLicenseAdminAuth, (req, res) => {
     try {
         const licenseId = Number.parseInt(req.params.id, 10);
         if (!Number.isInteger(licenseId)) {
@@ -244,6 +257,45 @@ router.get('/licenses/:id/devices', requireLicenseAdminAuth, (req, res) => {
         });
     } catch (error) {
         console.error('[ADMIN] List devices error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'ADMIN_LIST_DEVICES_ERROR',
+            message: 'Failed to list devices'
+        });
+    }
+});
+
+router.get('/licenses/:licenseKey/devices', requireLicenseAdminAuth, (req, res) => {
+    try {
+        const licenseKey = String(req.params.licenseKey || '').trim();
+        if (!licenseKey) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_LICENSE_KEY',
+                message: 'Invalid license key'
+            });
+        }
+
+        const license = getLicenseByKey(licenseKey);
+        if (!license) {
+            return res.status(404).json({
+                success: false,
+                code: 'LICENSE_NOT_FOUND',
+                message: 'License not found'
+            });
+        }
+
+        const devices = getAll(
+            'SELECT * FROM license_devices WHERE license_id = ? ORDER BY datetime(last_seen_at) DESC, datetime(first_activated_at) DESC',
+            [license.id]
+        );
+
+        return res.json({
+            success: true,
+            data: devices.map(mapDevice)
+        });
+    } catch (error) {
+        console.error('[ADMIN] List devices by key error:', error);
         return res.status(500).json({
             success: false,
             code: 'ADMIN_LIST_DEVICES_ERROR',
@@ -370,7 +422,7 @@ router.post('/devices/:id/revoke', requireLicenseAdminAuth, (req, res) => {
     }
 });
 
-router.post('/licenses/:id/reset', requireLicenseAdminAuth, (req, res) => {
+router.post('/licenses/:id(\\d+)/reset', requireLicenseAdminAuth, (req, res) => {
     try {
         const licenseId = Number.parseInt(req.params.id, 10);
         if (!Number.isInteger(licenseId)) {
@@ -403,6 +455,47 @@ router.post('/licenses/:id/reset', requireLicenseAdminAuth, (req, res) => {
         });
     } catch (error) {
         console.error('[ADMIN] Reset devices error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'ADMIN_RESET_DEVICES_ERROR',
+            message: 'Failed to reset devices'
+        });
+    }
+});
+
+router.post('/licenses/:licenseKey/reset-devices', requireLicenseAdminAuth, (req, res) => {
+    try {
+        const licenseKey = String(req.params.licenseKey || '').trim();
+        if (!licenseKey) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_LICENSE_KEY',
+                message: 'Invalid license key'
+            });
+        }
+
+        const license = getLicenseByKey(licenseKey);
+        if (!license) {
+            return res.status(404).json({
+                success: false,
+                code: 'LICENSE_NOT_FOUND',
+                message: 'License not found'
+            });
+        }
+
+        const changed = getAll('SELECT id FROM license_devices WHERE license_id = ? AND status <> ?', [license.id, 'revoked']).length;
+        LicenseModel.resetDevicesByKey(license.license_key);
+        LicenseModel.logActivity(license.id, 'DEVICES_RESET', null, getRequestIp(req), {
+            changed
+        });
+
+        return res.json({
+            success: true,
+            message: 'License devices reset',
+            changed
+        });
+    } catch (error) {
+        console.error('[ADMIN] Reset devices by key error:', error);
         return res.status(500).json({
             success: false,
             code: 'ADMIN_RESET_DEVICES_ERROR',

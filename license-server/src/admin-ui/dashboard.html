@@ -26,6 +26,7 @@
         .status.revoked { background: #7f1d1d; color: #fecaca; }
         .message { min-height: 18px; color: #fda4af; font-size: 13px; margin-top: 8px; }
         .muted { color: #94a3b8; }
+        .warning { display: none; margin-bottom: 14px; padding: 10px; border-radius: 8px; border: 1px solid #b45309; background: #451a03; color: #fdba74; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -39,6 +40,10 @@
                 <a href="/admin/vendor-profile" class="btn btn-muted" style="text-decoration:none; display:inline-flex; align-items:center;">Vendor Profile</a>
                 <button id="logoutBtn" class="btn btn-muted">Logout</button>
             </div>
+        </div>
+
+        <div id="protocolWarning" class="warning">
+            This page must be opened from the running license-server URL, not directly from files.
         </div>
 
         <div class="card">
@@ -73,6 +78,7 @@
         </div>
     </div>
 
+    <script src="./dashboard.js"></script>
     <script src="/admin/static/dashboard.js"></script>
 </body>
 </html>

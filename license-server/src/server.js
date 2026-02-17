@@ -16,7 +16,7 @@ const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
 
 const licenseRoutes = require('./routes/licenses');
-const adminRoutes = require('./routes/admin');
+const legacyAdminRoutes = require('./routes/admin');
 const integrityRoutes = require('./routes/integrity');
 const licenseAdminRoutes = require('./routes/licenseAdmin');
 const publicRoutes = require('./routes/public');
@@ -70,14 +70,21 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Admin UI aliases (HTTP access only)
+app.get('/admin-ui', (req, res) => res.redirect('/admin'));
+app.get('/admin-ui/login', (req, res) => res.redirect('/admin/login'));
+app.get('/admin-ui/dashboard', (req, res) => res.redirect('/admin'));
+app.get('/admin-ui/vendor-profile', (req, res) => res.redirect('/admin/vendor-profile'));
+
 // License validation routes (public)
 app.use('/api/licenses', licenseRoutes);
 app.use('/api/integrity', integrityRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/admin', licenseAdminRoutes);
+app.use('/api/admin', licenseAdminRoutes);
 
-// Admin routes (protected)
-app.use('/api/admin', adminRoutes);
+// Legacy admin routes (kept for backward compatibility)
+app.use('/api/admin/legacy', legacyAdminRoutes);
 
 // ============================================
 // ERROR HANDLING
@@ -123,8 +130,11 @@ async function startServer() {
             console.log('  GET  /api/public/vendor-profile - Public vendor support profile');
             console.log('  GET  /api/integrity/manifest?version=... - Get signed integrity manifest');
             console.log('  GET  /admin                   - License admin dashboard');
-            console.log('  POST /api/admin/login         - Admin login');
-            console.log('  GET  /api/admin/licenses      - Legacy admin list licenses');
+            console.log('  GET  /admin/login             - License admin login');
+            console.log('  GET  /admin/vendor-profile    - Vendor profile admin page');
+            console.log('  POST /api/admin/login         - License admin API login');
+            console.log('  GET  /api/admin/licenses      - License admin API list licenses');
+            console.log('  GET  /api/admin/legacy/*      - Legacy admin API routes');
             console.log('');
         });
     } catch (error) {
