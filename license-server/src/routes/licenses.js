@@ -10,9 +10,8 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
-const { LicenseModel, getAll, getOne, run } = require('../database');
+const { LicenseModel, getAll, getOne } = require('../database');
 const { getPublicKeyBundle, signToken } = require('../security/jwt');
-const { getManifestForVersion, signManifestPayload } = require('../security/manifest');
 
 const ADMIN_TOKEN = process.env.LICENSE_ADMIN_TOKEN || '';
 const JWT_SECRET = process.env.JWT_SECRET || 'license-secret';
@@ -115,51 +114,6 @@ router.get('/public-key', (req, res) => {
     res.json({
         success: true,
         ...bundle
-    });
-});
-
-router.get('/manifest/:appVersion', (req, res) => {
-    const appVersion = req.params.appVersion;
-    const licenseKey = req.query.licenseKey;
-    const fingerprint = req.query.deviceFingerprint;
-
-    if (!licenseKey || !fingerprint) {
-        return res.status(400).json({
-            success: false,
-            code: 'MISSING_PARAMS',
-            message: 'licenseKey and deviceFingerprint are required'
-        });
-    }
-
-    const validation = LicenseModel.validate({
-        key: licenseKey,
-        fingerprint,
-        appVersion,
-        ipAddress: getRequestIp(req),
-        ...getDeviceInfo(req)
-    });
-
-    if (!validation.valid) {
-        return res.status(mapValidationStatus(validation.code)).json({
-            success: false,
-            code: validation.code,
-            message: validation.message
-        });
-    }
-
-    const manifest = getManifestForVersion(appVersion);
-    if (!manifest) {
-        return res.status(404).json({
-            success: false,
-            code: 'MANIFEST_NOT_FOUND',
-            message: `No integrity manifest found for appVersion ${appVersion}`
-        });
-    }
-
-    const signed = signManifestPayload(manifest);
-    return res.json({
-        success: true,
-        ...signed
     });
 });
 

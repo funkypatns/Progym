@@ -20,10 +20,12 @@ const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'http://localhost:4
 const USER_DATA_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '../data');
 const CACHE_FILE = path.join(USER_DATA_PATH, 'license_cache.enc');
 const APP_ROOT_PATH = path.join(__dirname, '..', '..');
+const INTEGRITY_PUBLIC_KEY_PATH = process.env.INTEGRITY_PUBLIC_KEY_PATH || path.join(__dirname, '..', 'security', 'integrity-public.pem');
+const INTEGRITY_UI_MESSAGE = 'Integrity mismatch. Please reinstall or update to the latest build.';
+const INTEGRITY_SIGNATURE_UI_MESSAGE = 'Integrity signature invalid. Please reinstall or update to the latest build.';
 
 const DEFAULT_VALIDATE_INTERVAL_HOURS = Number.parseInt(process.env.LICENSE_VALIDATE_INTERVAL_HOURS || '24', 10);
 const DEFAULT_OFFLINE_GRACE_HOURS = Number.parseInt(process.env.LICENSE_OFFLINE_GRACE_HOURS || '72', 10);
-const INTEGRITY_ENFORCE = String(process.env.LICENSE_ENFORCE_INTEGRITY || '').toLowerCase() === 'true';
 
 let encryptionKey = null;
 let backgroundTimer = null;
@@ -37,6 +39,39 @@ function safeReadJson(filePath) {
     } catch (_) {
         return null;
     }
+}
+
+function safeReadText(filePath) {
+    try {
+        if (!fs.existsSync(filePath)) {
+            return '';
+        }
+        return fs.readFileSync(filePath, 'utf8');
+    } catch (_) {
+        return '';
+    }
+}
+
+function normalizePem(value) {
+    if (!value || typeof value !== 'string') {
+        return '';
+    }
+    return value.replace(/\\n/g, '\n').trim();
+}
+
+function getIntegrityPublicKey() {
+    const fromEnv = normalizePem(process.env.INTEGRITY_PUBLIC_KEY || '');
+    if (fromEnv) {
+        return fromEnv;
+    }
+    return normalizePem(safeReadText(INTEGRITY_PUBLIC_KEY_PATH));
+}
+
+function isIntegrityStrictMode() {
+    const override = String(process.env.LICENSE_ENFORCE_INTEGRITY || '').toLowerCase();
+    if (override === 'true') return true;
+    if (override === 'false') return false;
+    return process.env.NODE_ENV === 'production';
 }
 
 function getAppVersion() {
@@ -56,6 +91,20 @@ function getAppVersion() {
     }
 
     return '0.0.0';
+}
+
+function getBuildId() {
+    const envBuildId = process.env.BUILD_ID || process.env.APP_BUILD_ID;
+    if (envBuildId && envBuildId.trim()) {
+        return envBuildId.trim();
+    }
+
+    const rootPackage = safeReadJson(path.join(APP_ROOT_PATH, 'package.json'));
+    if (rootPackage?.buildId) {
+        return String(rootPackage.buildId);
+    }
+
+    return '';
 }
 
 function runCommand(command) {
@@ -292,136 +341,283 @@ function verifyActivationToken(token, publicKeyBundle, expectedFingerprint, expe
     }
 }
 
-function verifyManifestToken(manifestToken, publicKeyBundle) {
-    if (!manifestToken) {
-        return { valid: false, code: 'MISSING_MANIFEST_TOKEN', message: 'Manifest token missing' };
-    }
-
-    try {
-        const payload = jwt.verify(manifestToken, publicKeyBundle.publicKey, {
-            algorithms: [publicKeyBundle.algorithm || 'RS256'],
-            issuer: publicKeyBundle.issuer,
-            audience: publicKeyBundle.audience
-        });
-
-        if (payload?.typ !== 'integrity_manifest' || !payload?.manifest) {
-            return { valid: false, code: 'INVALID_MANIFEST_TOKEN', message: 'Invalid manifest token payload' };
-        }
-
-        return { valid: true, manifest: payload.manifest };
-    } catch (error) {
-        return {
-            valid: false,
-            code: 'INVALID_MANIFEST_SIGNATURE',
-            message: error.message || 'Manifest signature verification failed'
-        };
-    }
-}
-
 function sha256File(filePath) {
     const fileBuffer = fs.readFileSync(filePath);
     return crypto.createHash('sha256').update(fileBuffer).digest('hex');
 }
 
+function stableStringify(value) {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value);
+    }
+
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+    }
+
+    const keys = Object.keys(value).sort();
+    const entries = keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+    return `{${entries.join(',')}}`;
+}
+
+function normalizeRelativePath(input) {
+    return String(input || '')
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+        .replace(/\/+/g, '/')
+        .trim();
+}
+
+function isUnsafeRelativePath(relativePath) {
+    const normalized = normalizeRelativePath(relativePath);
+    if (!normalized) {
+        return true;
+    }
+    return normalized.split('/').some((part) => !part || part === '.' || part === '..');
+}
+
+function isPathInside(basePath, targetPath) {
+    const relative = path.relative(basePath, targetPath);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function verifyManifestSignature(manifestPayload, signatureBase64, options = {}) {
+    const strict = options.strict ?? isIntegrityStrictMode();
+    const integrityPublicKey = getIntegrityPublicKey();
+
+    if (!integrityPublicKey) {
+        if (strict) {
+            return {
+                valid: false,
+                code: 'INTEGRITY_PUBLIC_KEY_MISSING',
+                message: INTEGRITY_SIGNATURE_UI_MESSAGE
+            };
+        }
+        console.warn('[INTEGRITY] Public key not configured. Skipping strict signature validation in non-production mode.');
+        return { valid: true, mode: 'dev_warning', code: 'INTEGRITY_PUBLIC_KEY_MISSING_WARN' };
+    }
+
+    if (!manifestPayload || !signatureBase64) {
+        if (strict) {
+            return {
+                valid: false,
+                code: 'INTEGRITY_SIGNATURE_MISSING',
+                message: INTEGRITY_SIGNATURE_UI_MESSAGE
+            };
+        }
+        return { valid: true, mode: 'dev_warning', code: 'INTEGRITY_SIGNATURE_MISSING_WARN' };
+    }
+
+    try {
+        const verifier = crypto.createVerify('RSA-SHA256');
+        verifier.update(String(manifestPayload));
+        verifier.end();
+
+        const valid = verifier.verify(integrityPublicKey, String(signatureBase64).trim(), 'base64');
+        if (!valid) {
+            return {
+                valid: false,
+                code: 'INTEGRITY_SIGNATURE_INVALID',
+                message: INTEGRITY_SIGNATURE_UI_MESSAGE
+            };
+        }
+
+        return { valid: true };
+    } catch (error) {
+        return {
+            valid: false,
+            code: 'INTEGRITY_SIGNATURE_ERROR',
+            message: INTEGRITY_SIGNATURE_UI_MESSAGE,
+            detail: error.message
+        };
+    }
+}
+
 function normalizeManifest(manifest) {
-    if (!manifest || !Array.isArray(manifest.files)) {
+    if (!manifest || !Array.isArray(manifest.artifacts)) {
         return null;
     }
+
+    const normalizedArtifacts = manifest.artifacts
+        .filter((artifact) => artifact && artifact.basePath && Array.isArray(artifact.files))
+        .map((artifact) => ({
+            basePath: normalizeRelativePath(artifact.basePath),
+            files: artifact.files
+                .filter((entry) => entry && entry.path && entry.sha256)
+                .map((entry) => ({
+                    path: normalizeRelativePath(entry.path),
+                    sha256: String(entry.sha256).toLowerCase()
+                }))
+                .filter((entry) => entry.path && !isUnsafeRelativePath(entry.path))
+        }))
+        .filter((artifact) => artifact.basePath && !isUnsafeRelativePath(artifact.basePath) && artifact.files.length > 0);
+
+    if (normalizedArtifacts.length === 0) {
+        return null;
+    }
+
     return {
         appVersion: manifest.appVersion,
+        buildId: manifest.buildId,
         generatedAt: manifest.generatedAt,
-        required: manifest.required !== false,
-        files: manifest.files
-            .filter((entry) => entry && entry.path && entry.sha256)
-            .map((entry) => ({
-                path: String(entry.path),
-                sha256: String(entry.sha256).toLowerCase()
-            }))
+        hashAlgorithm: String(manifest.hashAlgorithm || '').toUpperCase(),
+        artifacts: normalizedArtifacts
     };
 }
 
-function runIntegrityVerification(manifest) {
+function runIntegrityVerification(manifest, options = {}) {
+    const strict = options.strict ?? isIntegrityStrictMode();
     const normalized = normalizeManifest(manifest);
     if (!normalized) {
-        return { valid: !INTEGRITY_ENFORCE, code: 'MANIFEST_INVALID', message: 'Integrity manifest is invalid' };
+        if (strict) {
+            return { valid: false, code: 'MANIFEST_INVALID', message: INTEGRITY_UI_MESSAGE };
+        }
+        return { valid: true, code: 'MANIFEST_INVALID_WARN', mode: 'dev_warning' };
     }
 
-    for (const fileEntry of normalized.files) {
-        const absolute = path.resolve(APP_ROOT_PATH, fileEntry.path);
-        if (!fs.existsSync(absolute)) {
-            if (normalized.required) {
+    if (normalized.hashAlgorithm && normalized.hashAlgorithm !== 'SHA-256') {
+        if (strict) {
+            return { valid: false, code: 'UNSUPPORTED_HASH_ALGORITHM', message: INTEGRITY_UI_MESSAGE };
+        }
+        return { valid: true, code: 'UNSUPPORTED_HASH_ALGORITHM_WARN', mode: 'dev_warning' };
+    }
+
+    for (const artifact of normalized.artifacts) {
+        const artifactAbsoluteBase = path.resolve(APP_ROOT_PATH, artifact.basePath);
+        if (!isPathInside(APP_ROOT_PATH, artifactAbsoluteBase)) {
+            console.error('[INTEGRITY] Rejected manifest artifact outside app root:', artifact.basePath);
+            if (strict) {
                 return {
                     valid: false,
-                    code: 'INTEGRITY_FILE_MISSING',
-                    message: `Integrity Check Failed: missing file ${fileEntry.path}`
+                    code: 'INTEGRITY_INVALID_PATH',
+                    message: INTEGRITY_UI_MESSAGE
                 };
             }
-            continue;
+            return { valid: true, code: 'INTEGRITY_INVALID_PATH_WARN', mode: 'dev_warning' };
         }
 
-        const actualHash = sha256File(absolute).toLowerCase();
-        if (actualHash !== fileEntry.sha256) {
-            return {
-                valid: false,
-                code: 'INTEGRITY_MISMATCH',
-                message: `Integrity Check Failed: hash mismatch in ${fileEntry.path}`
-            };
+        for (const fileEntry of artifact.files) {
+            const absolute = path.resolve(artifactAbsoluteBase, fileEntry.path);
+            const relativeManifestPath = `${artifact.basePath}/${fileEntry.path}`.replace(/\/+/g, '/');
+
+            if (!isPathInside(artifactAbsoluteBase, absolute)) {
+                console.error('[INTEGRITY] Rejected manifest file path traversal:', relativeManifestPath);
+                if (strict) {
+                    return {
+                        valid: false,
+                        code: 'INTEGRITY_INVALID_PATH',
+                        message: INTEGRITY_UI_MESSAGE
+                    };
+                }
+                return { valid: true, code: 'INTEGRITY_INVALID_PATH_WARN', mode: 'dev_warning' };
+            }
+
+            if (!fs.existsSync(absolute)) {
+                console.error(`[INTEGRITY] File missing: ${relativeManifestPath}`);
+                if (strict) {
+                    return {
+                        valid: false,
+                        code: 'INTEGRITY_FILE_MISSING',
+                        message: INTEGRITY_UI_MESSAGE
+                    };
+                }
+                return { valid: true, code: 'INTEGRITY_FILE_MISSING_WARN', mode: 'dev_warning' };
+            }
+
+            const actualHash = sha256File(absolute).toLowerCase();
+            if (actualHash !== fileEntry.sha256) {
+                console.error(
+                    `[INTEGRITY] Hash mismatch in ${relativeManifestPath}. expected=${fileEntry.sha256}, got=${actualHash}`
+                );
+                if (strict) {
+                    return {
+                        valid: false,
+                        code: 'INTEGRITY_MISMATCH',
+                        message: INTEGRITY_UI_MESSAGE
+                    };
+                }
+                return { valid: true, code: 'INTEGRITY_MISMATCH_WARN', mode: 'dev_warning' };
+            }
         }
     }
 
     return { valid: true, code: 'INTEGRITY_OK' };
 }
 
-async function fetchAndVerifyManifest({ licenseKey, fingerprint, appVersion, publicKeyBundle, timeout = 8000 }) {
-    const response = await axios.get(`${LICENSE_SERVER_URL}/api/licenses/manifest/${encodeURIComponent(appVersion)}`, {
+function parseManifestPayload(manifestPayload) {
+    try {
+        return JSON.parse(String(manifestPayload || ''));
+    } catch (_) {
+        return null;
+    }
+}
+
+async function fetchAndVerifyManifest({ appVersion, buildId, timeout = 8000 }) {
+    const response = await axios.get(`${LICENSE_SERVER_URL}/api/integrity/manifest`, {
         timeout,
         params: {
-            licenseKey,
-            deviceFingerprint: fingerprint
+            version: appVersion,
+            ...(buildId ? { buildId } : {})
         }
     });
 
-    if (!response?.data?.success || !response?.data?.manifestToken) {
+    if (!response?.data?.success || !response?.data?.signature || (!response?.data?.manifest && !response?.data?.manifestPayload)) {
         throw new Error('Manifest endpoint returned invalid response');
     }
 
-    const manifestVerification = verifyManifestToken(response.data.manifestToken, publicKeyBundle);
-    if (!manifestVerification.valid) {
-        return manifestVerification;
+    const manifestPayload = typeof response.data.manifestPayload === 'string'
+        ? response.data.manifestPayload
+        : stableStringify(response.data.manifest || {});
+
+    const signatureVerification = verifyManifestSignature(manifestPayload, response.data.signature);
+    if (!signatureVerification.valid) {
+        return signatureVerification;
     }
 
-    const integrity = runIntegrityVerification(manifestVerification.manifest);
+    const manifest = response.data.manifest || parseManifestPayload(manifestPayload);
+    if (!manifest) {
+        return {
+            valid: false,
+            code: 'MANIFEST_PARSE_FAILED',
+            message: INTEGRITY_UI_MESSAGE
+        };
+    }
+
+    const integrity = runIntegrityVerification(manifest);
     return {
         ...integrity,
-        manifestToken: response.data.manifestToken,
-        manifest: manifestVerification.manifest
+        manifest,
+        signature: String(response.data.signature).trim(),
+        buildId: response.data.buildId || manifest.buildId || null
     };
 }
 
 async function evaluateIntegrity({
-    licenseKey,
-    fingerprint,
     appVersion,
-    publicKeyBundle,
+    buildId,
     cached
 }) {
-    const cachedManifestToken = cached?.integrity?.manifestToken;
-    if (cachedManifestToken) {
-        const manifestVerification = verifyManifestToken(cachedManifestToken, publicKeyBundle);
-        if (manifestVerification.valid) {
-            const cachedIntegrity = runIntegrityVerification(manifestVerification.manifest);
-            if (!cachedIntegrity.valid) {
-                return cachedIntegrity;
-            }
+    const strict = isIntegrityStrictMode();
+    const cachedManifest = cached?.integrity?.manifest;
+    const cachedSignature = cached?.integrity?.signature;
+    const cachedPayload = cachedManifest ? stableStringify(cachedManifest) : '';
+
+    if (cachedManifest && cachedSignature) {
+        const cachedSignatureVerification = verifyManifestSignature(cachedPayload, cachedSignature, { strict });
+        if (!cachedSignatureVerification.valid) {
+            return cachedSignatureVerification;
+        }
+
+        const cachedIntegrity = runIntegrityVerification(cachedManifest, { strict });
+        if (!cachedIntegrity.valid) {
+            return cachedIntegrity;
         }
     }
 
     try {
         const fresh = await fetchAndVerifyManifest({
-            licenseKey,
-            fingerprint,
             appVersion,
-            publicKeyBundle
+            buildId
         });
 
         if (!fresh.valid) {
@@ -430,18 +626,22 @@ async function evaluateIntegrity({
 
         return {
             valid: true,
-            manifestToken: fresh.manifestToken,
+            manifest: fresh.manifest,
+            signature: fresh.signature,
+            buildId: fresh.buildId || buildId || null,
             manifestCheckedAt: new Date().toISOString()
         };
     } catch (error) {
-        if (cachedManifestToken) {
-            const cachedManifest = verifyManifestToken(cachedManifestToken, publicKeyBundle);
-            if (cachedManifest.valid) {
-                const fallbackIntegrity = runIntegrityVerification(cachedManifest.manifest);
+        if (cachedManifest && cachedSignature) {
+            const fallbackSignatureVerification = verifyManifestSignature(cachedPayload, cachedSignature, { strict });
+            if (fallbackSignatureVerification.valid) {
+                const fallbackIntegrity = runIntegrityVerification(cachedManifest, { strict });
                 if (fallbackIntegrity.valid) {
                     return {
                         valid: true,
-                        manifestToken: cachedManifestToken,
+                        manifest: cachedManifest,
+                        signature: cachedSignature,
+                        buildId: cached?.integrity?.buildId || null,
                         manifestCheckedAt: new Date().toISOString(),
                         mode: 'cached'
                     };
@@ -450,14 +650,15 @@ async function evaluateIntegrity({
             }
         }
 
-        if (INTEGRITY_ENFORCE) {
+        if (strict) {
             return {
                 valid: false,
                 code: 'INTEGRITY_MANIFEST_UNAVAILABLE',
-                message: 'Integrity Check Failed: manifest unavailable'
+                message: INTEGRITY_UI_MESSAGE
             };
         }
 
+        console.warn('[INTEGRITY] Manifest unavailable in non-production mode:', error.message);
         return {
             valid: true,
             mode: 'skipped',
@@ -508,7 +709,7 @@ async function validateOnline({ licenseKey, fingerprint, appVersion, publicKeyBu
     return response.data;
 }
 
-async function enforceTokenAndIntegrity({ cached, licenseKey, fingerprint, appVersion, requireIntegrity = true }) {
+async function enforceTokenAndIntegrity({ cached, licenseKey, fingerprint, appVersion, buildId, requireIntegrity = true }) {
     const publicKeyBundle = await resolvePublicKeyBundle(cached);
 
     const tokenVerification = verifyActivationToken(
@@ -531,10 +732,8 @@ async function enforceTokenAndIntegrity({ cached, licenseKey, fingerprint, appVe
     }
 
     const integrity = await evaluateIntegrity({
-        licenseKey,
-        fingerprint,
         appVersion,
-        publicKeyBundle,
+        buildId,
         cached
     });
 
@@ -572,6 +771,7 @@ const licenseService = {
 
         const fingerprint = generateDeviceFingerprint();
         const appVersion = getAppVersion();
+        const buildId = getBuildId();
 
         safeClearCorruptCache();
 
@@ -649,6 +849,7 @@ const licenseService = {
                 licenseKey: normalizedKey,
                 deviceFingerprint: fingerprint,
                 appVersion,
+                buildId: buildId || null,
                 license: payload.license,
                 activationToken: payload.activationToken,
                 publicKey: publicKeyBundle,
@@ -658,10 +859,8 @@ const licenseService = {
             });
 
             const integrity = await evaluateIntegrity({
-                licenseKey: normalizedKey,
-                fingerprint,
                 appVersion,
-                publicKeyBundle,
+                buildId,
                 cached: nextCache
             });
 
@@ -675,7 +874,9 @@ const licenseService = {
 
             mergeAndPersistCache(nextCache, {
                 integrity: {
-                    manifestToken: integrity.manifestToken || nextCache?.integrity?.manifestToken || null,
+                    manifest: integrity.manifest || nextCache?.integrity?.manifest || null,
+                    signature: integrity.signature || nextCache?.integrity?.signature || null,
+                    buildId: integrity.buildId || buildId || nextCache?.integrity?.buildId || null,
                     lastCheckedAt: new Date().toISOString()
                 }
             });
@@ -728,6 +929,7 @@ const licenseService = {
             const appVersion = getAppVersion();
             const cached = loadLicenseCache();
             const resolvedKey = licenseKey || cached?.licenseKey;
+            const buildId = cached?.integrity?.buildId || cached?.buildId || getBuildId();
 
             if (!resolvedKey) {
                 return {
@@ -750,6 +952,7 @@ const licenseService = {
                 licenseKey: resolvedKey,
                 fingerprint,
                 appVersion,
+                buildId,
                 requireIntegrity: true
             });
 
@@ -820,6 +1023,7 @@ const licenseService = {
                     licenseKey: resolvedKey,
                     deviceFingerprint: fingerprint,
                     appVersion,
+                    buildId: buildId || online.buildId || null,
                     license: online.license,
                     activationToken: online.activationToken,
                     publicKey: localEnforcement.publicKeyBundle,
@@ -829,10 +1033,8 @@ const licenseService = {
                 });
 
                 const integrity = await evaluateIntegrity({
-                    licenseKey: resolvedKey,
-                    fingerprint,
                     appVersion,
-                    publicKeyBundle: localEnforcement.publicKeyBundle,
+                    buildId,
                     cached: nextCache
                 });
 
@@ -846,7 +1048,9 @@ const licenseService = {
 
                 mergeAndPersistCache(nextCache, {
                     integrity: {
-                        manifestToken: integrity.manifestToken || nextCache?.integrity?.manifestToken || null,
+                        manifest: integrity.manifest || nextCache?.integrity?.manifest || null,
+                        signature: integrity.signature || nextCache?.integrity?.signature || null,
+                        buildId: integrity.buildId || buildId || nextCache?.integrity?.buildId || null,
                         lastCheckedAt: new Date().toISOString()
                     }
                 });
@@ -966,8 +1170,9 @@ const licenseService = {
 licenseService.__private = {
     generateDeviceFingerprint,
     verifyActivationToken,
-    verifyManifestToken,
+    verifyManifestSignature,
     runIntegrityVerification,
+    stableStringify,
     getAppVersion
 };
 

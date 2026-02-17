@@ -25,7 +25,9 @@ This project now enforces license-device binding with signed tokens and periodic
 On startup (`/api/license/status`):
 1. Load encrypted local cache.
 2. Verify activation token signature and fingerprint locally.
-3. Validate integrity manifest signatures and critical file hashes.
+3. Request signed integrity manifest for current app version/build.
+4. Verify manifest signature with embedded integrity public key.
+5. Validate only release artifacts listed in manifest (for example `frontend/dist/**`), never backend source files.
 4. Attempt online validation with license server.
 5. If offline, allow run only within offline grace window.
 
@@ -55,12 +57,18 @@ Gym backend exposes admin-protected endpoints:
 License server persists audit logs for all state-changing actions.
 
 ## Integrity Manifest
-- License server serves signed manifest via:
-  - `GET /api/licenses/manifest/:appVersion`
-- Manifest file source:
-  - `license-server/data/integrity-manifests.json`
-- Regenerate manifest hashes after critical code updates:
-  - `cd license-server && npm run manifest:generate`
+- Integrity is strict by default in production (`NODE_ENV=production`), warn-only in development.
+- Build step generates a versioned manifest from release artifacts:
+  - `npm run build:integrity-manifest`
+- License server signs manifest with private key:
+  - `cd license-server && npm run integrity:sign -- <appVersion>`
+- License server serves versioned signed manifests:
+  - `GET /api/integrity/manifest?version=<appVersion>&buildId=<optionalBuildId>`
+- Manifest storage:
+  - `license-server/data/integrity-manifests/<appVersion>/integrity-manifest.json`
+  - `license-server/data/integrity-manifests/<appVersion>/integrity-manifest.sig`
+- On hash mismatch, UI message is:
+  - `Integrity mismatch. Please reinstall or update to the latest build.`
 
 ## Server-side Key Rules
 - Keep `LICENSE_PRIVATE_KEY` only on license server.

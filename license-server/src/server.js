@@ -17,6 +17,7 @@ const jwt = require('jsonwebtoken');
 
 const licenseRoutes = require('./routes/licenses');
 const adminRoutes = require('./routes/admin');
+const integrityRoutes = require('./routes/integrity');
 const { initDatabase } = require('./database');
 
 const app = express();
@@ -54,7 +55,7 @@ app.get('/', (req, res) => {
             validate: '/api/licenses/validate',
             status: '/api/licenses/status/:key',
             publicKey: '/api/licenses/public-key',
-            manifest: '/api/licenses/manifest/:appVersion'
+            manifest: '/api/integrity/manifest?version=...'
         }
     });
 });
@@ -66,6 +67,7 @@ app.get('/health', (req, res) => {
 
 // License validation routes (public)
 app.use('/api/licenses', licenseRoutes);
+app.use('/api/integrity', integrityRoutes);
 
 // Admin routes (protected)
 app.use('/api/admin', adminRoutes);
@@ -110,7 +112,7 @@ async function startServer() {
             console.log('  POST /api/licenses/validate   - Validate license');
             console.log('  GET  /api/licenses/status/:key - Check status');
             console.log('  GET  /api/licenses/public-key - Get RS256 public key');
-            console.log('  GET  /api/licenses/manifest/:appVersion - Get signed integrity manifest');
+            console.log('  GET  /api/integrity/manifest?version=... - Get signed integrity manifest');
             console.log('  GET  /api/licenses            - Admin list licenses');
             console.log('  POST /api/admin/login         - Admin login');
             console.log('  GET  /api/admin/licenses      - Legacy admin list licenses');
