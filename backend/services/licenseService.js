@@ -159,7 +159,7 @@ function detectClockTampering(cachedData) {
 
     // If current time is significantly before cached time, clock was rolled back
     if (currentTime < cachedTime - 60000) { // 1 minute tolerance
-        console.warn('⚠️ Clock tampering detected!');
+        console.warn('Clock tampering detected!');
         return true;
     }
 
@@ -184,6 +184,8 @@ const licenseService = {
     activate: async (licenseKey, gymName = null) => {
         const normalizedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
         const normalizedGymName = typeof gymName === 'string' ? gymName.trim() : '';
+        const isDev = process.env.NODE_ENV === 'development';
+        const licenseBypass = String(process.env.LICENSE_BYPASS || '').toLowerCase() === 'true';
         if (!normalizedKey) {
             return { success: false, code: 'INVALID_KEY', message: 'License key is required' };
         }
@@ -195,13 +197,14 @@ const licenseService = {
         // Clear corrupt cache before activation so we can rebuild safely
         safeClearCorruptCache();
 
-        // DEV MODE: Accept special dev key for testing without license server
-        if (normalizedKey === 'DEV-MODE-TEST-1234' || normalizedKey === 'GYM-DEV-TEST-1234' || (normalizedKey.startsWith('GYM-') && normalizedKey.endsWith('-V7UM'))) {
-            console.log('???? DEV MODE: Activating with development/recovery license');
+        // DEV MODE: bypass only when explicitly enabled in development
+        const isDevTestKey = normalizedKey === 'DEV-MODE-TEST-1234' || normalizedKey === 'GYM-DEV-TEST-1234';
+        if (isDev && licenseBypass && isDevTestKey) {
+            console.log('[LICENSE] DEV MODE: activating with development license');
             const devLicense = {
                 type: 'premium',
                 maxMembers: 9999,
-                gymName: normalizedGymName || 'Gym (Recovery Mode)',
+                gymName: normalizedGymName || 'Gym (Development Mode)',
                 expiresAt: null // Never expires
             };
 
@@ -278,7 +281,7 @@ const licenseService = {
             return {
                 success: false,
                 code: 'NETWORK_ERROR',
-                message: 'Cannot connect to license server. Please ensure the license server is running, or use DEV-MODE-TEST-1234 for testing.',
+                message: 'Cannot connect to license server. Please ensure the license server is running.',
                 details: { message: error?.message }
             };
         }
@@ -293,14 +296,14 @@ const licenseService = {
             const isDev = process.env.NODE_ENV === 'development';
             const licenseBypass = String(process.env.LICENSE_BYPASS || '').toLowerCase() === 'true';
 
-            // 🔓 DEV MODE BYPASS: Only when explicitly enabled OR if using a specific recovery key
-            if ((isDev && licenseBypass) || (licenseKey && licenseKey.startsWith('GYM-') && licenseKey.endsWith('-V7UM'))) {
+            // DEV MODE BYPASS: only when explicitly enabled in development
+            if (isDev && licenseBypass) {
                 return {
                     valid: true,
                     license: {
                         type: 'premium',
                         maxMembers: 9999,
-                        gymName: 'Gym (Recovery Mode)',
+                        gymName: 'Gym (Development Mode)',
                         expiresAt: null,
                         features: ['all']
                     },
@@ -482,4 +485,3 @@ const licenseService = {
 };
 
 module.exports = licenseService;
-
