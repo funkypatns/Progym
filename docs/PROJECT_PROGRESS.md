@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Session ledger panel UI refactor (essential-only fields, cleaner hierarchy, simplified payments row with paid-by alignment). Status: done, needs manual verification.
 - Gym Income - Sessions ledger drawer (eye action + detailed right-side ledger with payment timeline and adjustment history). Status: done, needs manual verification.
 - Gym Income - Sessions report now uses dedicated backend endpoint so adjusted price details appear (original/final/diff/reason/adjusted-by). Status: done, needs manual verification.
 - Tentative booking appointment flow (book tentative, complete with payment, convert to member, auto no-show after 3 days). Status: done, needs manual verification.
@@ -65,6 +66,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 964414d  | Refactor Session Ledger drawer UI to essential information only, simplify pricing section, and streamline payment rows with cleaner paid-by alignment. |
 | 2026-02-17 | 010ffc6  | Add Gym Income - Sessions ledger drawer UI with row action, backend ledger details endpoint, payment timeline, adjustment history, and AR/EN i18n keys. |
 | 2026-02-17 | 10733a6  | Route Gym Income - Sessions report through `/reports/gym-income-sessions`, include adjustment details/phone in backend rows, and polish report formatting/export labels. |
 | 2026-02-17 | a4ec6da  | Refactor appointments to tentative booking flow with direct appointment fullName/phone, hourly auto no-show scanner, and UI badges/actions updates. |
@@ -134,9 +136,10 @@ Phase 4 - Receipts system
 - Verify partial payment no-repeat behavior in Record Payment modal.
 - Verify Record Payment modal stays on receipt after partial payment.
 - Verify partial payments dedupe using stable idempotency key.
- - Verify transactionRef idempotency prevents duplicate partial payments.
+- Verify transactionRef idempotency prevents duplicate partial payments.
 - Verify adjusted price details (original/final/diff/reason/adjusted-by) render in `Gym Income - Sessions` after appointment price adjustment.
 - Verify Gym Income - Sessions `View Ledger` drawer opens from row action and shows session info, price breakdown, payment timeline, and adjustment history without horizontal table scrolling.
+- Verify Session Ledger drawer visual cleanup: essential-only header fields, simplified price strip, and one-line payment row with `Paid By` aligned to far-left in RTL.
 - Run session package smoke test: create package plan, assign to member, verify check-in decrements remaining sessions.
 - Verify `/api/attendance` shows session name/price history for package usage.
 
