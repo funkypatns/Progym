@@ -13,6 +13,8 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.use(authenticate);
 router.use(authorize('admin'));
 
+const isSqliteDatabase = () => (process.env.DATABASE_URL || '').trim().startsWith('file:');
+
 const resolveDbPath = (userDataPath) => {
     const candidates = [];
     const defaultPath = path.join(userDataPath, 'data', 'gym.db');
@@ -88,6 +90,13 @@ router.get('/list', async (req, res) => {
  */
 router.post('/create', async (req, res) => {
     try {
+        if (!isSqliteDatabase()) {
+            return res.status(400).json({
+                success: false,
+                message: 'File backup is only supported for SQLite databases.'
+            });
+        }
+
         const backupDir = path.join(req.userDataPath, 'backups');
         const dbPathResult = resolveDbPath(req.userDataPath);
 
@@ -144,6 +153,13 @@ router.post('/create', async (req, res) => {
  */
 router.post('/restore', async (req, res) => {
     try {
+        if (!isSqliteDatabase()) {
+            return res.status(400).json({
+                success: false,
+                message: 'File restore is only supported for SQLite databases.'
+            });
+        }
+
         const { backupName } = req.body;
 
         if (!backupName) {

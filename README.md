@@ -4,8 +4,11 @@
 
 ### Backend
 ```powershell
+docker compose up -d postgres
 cd backend
 npm install
+npm run prisma:generate
+npm run prisma:migrate
 npm run dev
 ```
 Server runs on: http://localhost:3001

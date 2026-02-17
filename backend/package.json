@@ -9,7 +9,8 @@
         "build": "npm run prisma:generate",
         "test": "node --test tests/*.test.js",
         "prisma:generate": "prisma generate",
-        "prisma:migrate": "prisma migrate dev",
+        "prisma:migrate": "prisma db push",
+        "prisma:migrate:dev": "prisma migrate dev",
         "prisma:studio": "prisma studio",
         "seed": "node prisma/seed.js"
     },

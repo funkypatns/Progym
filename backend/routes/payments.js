@@ -41,7 +41,7 @@ function generateReceiptNumber() {
     return `RCP-${year}${month}-${time}-${random}`;
 }
 
-const RECEIPT_INIT_MESSAGE = 'Receipts tables are not initialized. Run prisma migrate dev & prisma generate.';
+const RECEIPT_INIT_MESSAGE = 'Receipts tables are not initialized. Run prisma db push & prisma generate.';
 
 const buildPaymentResponsePayload = async (payment, prisma, receiptError = null) => {
     const transactionId = buildTransactionId('payment', payment.id);

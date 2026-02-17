@@ -3,10 +3,10 @@
 // ============================================
 // 
 // This Prisma schema defines all database tables and relationships
-// Using SQLite for local, offline-first operation
+// Using PostgreSQL
 //
 // To generate client: npx prisma generate
-// To migrate: npx prisma migrate dev
+// To sync schema: npx prisma db push
 // To seed: npm run seed
 
 generator client {
@@ -15,7 +15,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
