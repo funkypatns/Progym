@@ -4,17 +4,12 @@
  * ============================================
  *
  * API endpoints for license management in the gym app.
- * Connects to the license server for validation and device management.
+ * Connects to the license server for activation, validation, and heartbeat.
  */
 
 const express = require('express');
-const axios = require('axios');
 const router = express.Router();
 const licenseService = require('../services/licenseService');
-const { authenticate, authorize } = require('../middleware/auth');
-
-const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'http://localhost:4000';
-const LICENSE_ADMIN_TOKEN = process.env.LICENSE_ADMIN_TOKEN || '';
 
 function mapActivationCodeToStatus(code) {
     if (code === 'NETWORK_ERROR') return 503;
@@ -28,27 +23,6 @@ function mapActivationCodeToStatus(code) {
     if (code === 'UNAUTHORIZED') return 401;
     if (code === 'SUSPENDED') return 403;
     return 400;
-}
-
-async function proxyAdminRequest({ method, endpoint, data, params, authHeader }) {
-    const headers = {};
-
-    if (LICENSE_ADMIN_TOKEN) {
-        headers['x-license-admin-token'] = LICENSE_ADMIN_TOKEN;
-    } else if (authHeader) {
-        headers.Authorization = authHeader;
-    }
-
-    const response = await axios({
-        method,
-        url: `${LICENSE_SERVER_URL}${endpoint}`,
-        data,
-        params,
-        headers,
-        timeout: 10000
-    });
-
-    return response.data;
 }
 
 /**
@@ -200,167 +174,23 @@ router.post('/validate', async (req, res) => {
 });
 
 /**
- * DELETE /api/license/cache
- * Clear license cache (admin only - troubleshooting)
+ * POST /api/license/heartbeat
+ * Send heartbeat to license server to refresh lastSeen metadata.
  */
-router.delete('/cache', authenticate, authorize('admin'), (req, res) => {
+router.post('/heartbeat', async (req, res) => {
     try {
-        const cleared = licenseService.clearCache();
+        const { licenseKey } = req.body || {};
+        const heartbeat = await licenseService.heartbeat(licenseKey);
         return res.json({
             success: true,
-            message: cleared ? 'Cache cleared' : 'No cache to clear'
+            data: heartbeat
         });
     } catch (error) {
-        console.error('Clear cache error:', error);
-        return res.status(500).json({
+        console.error('Heartbeat error:', error);
+        return res.status(400).json({
             success: false,
-            message: 'Failed to clear cache'
-        });
-    }
-});
-
-/**
- * GET /api/licenses
- * Admin: list all licenses and device usage.
- */
-router.get('/licenses', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'GET',
-            endpoint: '/api/licenses',
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'LICENSES_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to fetch licenses'
-        });
-    }
-});
-
-/**
- * GET /api/licenses/:key/devices
- */
-router.get('/licenses/:key/devices', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'GET',
-            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/devices`,
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'LICENSE_DEVICES_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to fetch devices'
-        });
-    }
-});
-
-/**
- * POST /api/licenses/:key/devices/:deviceId/approve
- */
-router.post('/licenses/:key/devices/:deviceId/approve', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'POST',
-            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/devices/${encodeURIComponent(req.params.deviceId)}/approve`,
-            data: req.body || {},
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'APPROVE_DEVICE_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to approve device'
-        });
-    }
-});
-
-/**
- * POST /api/licenses/:key/devices/:deviceId/revoke
- */
-router.post('/licenses/:key/devices/:deviceId/revoke', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'POST',
-            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/devices/${encodeURIComponent(req.params.deviceId)}/revoke`,
-            data: req.body || {},
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'REVOKE_DEVICE_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to revoke device'
-        });
-    }
-});
-
-/**
- * POST /api/licenses/:key/reset-devices
- */
-router.post('/licenses/:key/reset-devices', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'POST',
-            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/reset-devices`,
-            data: req.body || {},
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'RESET_DEVICES_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to reset devices'
-        });
-    }
-});
-
-/**
- * PATCH /api/licenses/:key
- */
-router.patch('/licenses/:key', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'PATCH',
-            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}`,
-            data: req.body || {},
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'PATCH_LICENSE_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to update license'
-        });
-    }
-});
-
-/**
- * POST /api/licenses/:key/revoke
- */
-router.post('/licenses/:key/revoke', authenticate, authorize('admin'), async (req, res) => {
-    try {
-        const payload = await proxyAdminRequest({
-            method: 'POST',
-            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/revoke`,
-            data: req.body || {},
-            authHeader: req.headers.authorization
-        });
-        return res.json(payload);
-    } catch (error) {
-        return res.status(error.response?.status || 500).json({
-            success: false,
-            code: error.response?.data?.code || 'REVOKE_LICENSE_PROXY_ERROR',
-            message: error.response?.data?.message || 'Failed to revoke license'
+            code: 'HEARTBEAT_ERROR',
+            message: error.message || 'Failed to send heartbeat'
         });
     }
 });

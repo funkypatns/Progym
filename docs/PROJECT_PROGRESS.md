@@ -155,7 +155,7 @@ Phase 4 - Receipts system
 
 ## Next Actions
 - Run end-to-end licensing security smoke tests: first activation, blocked copied device, admin approve second device, revoked device/license blocking, offline grace expiry, and integrity mismatch.
-- Ensure production secrets are configured on license server (`LICENSE_PRIVATE_KEY`, `LICENSE_PUBLIC_KEY`, `LICENSE_ADMIN_TOKEN`) and rotate defaults before deployment.
+- Ensure production secrets are configured on license server (`LICENSE_PRIVATE_KEY`, `LICENSE_PUBLIC_KEY`, `LICENSE_ADMIN_JWT_SECRET`) and rotate defaults before deployment.
 - Regenerate and sign integrity manifests for each release build (`npm run build:integrity-manifest` then `cd license-server && npm run integrity:sign -- <appVersion>`).
 - Run manual tests for full and partial subscription payments.
 - Confirm receipt page opens without auth error.

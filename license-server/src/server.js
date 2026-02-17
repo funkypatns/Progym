@@ -18,6 +18,7 @@ const jwt = require('jsonwebtoken');
 const licenseRoutes = require('./routes/licenses');
 const adminRoutes = require('./routes/admin');
 const integrityRoutes = require('./routes/integrity');
+const licenseAdminRoutes = require('./routes/licenseAdmin');
 const { initDatabase } = require('./database');
 
 const app = express();
@@ -53,9 +54,11 @@ app.get('/', (req, res) => {
             health: '/health',
             activate: '/api/licenses/activate',
             validate: '/api/licenses/validate',
+            heartbeat: '/api/licenses/heartbeat',
             status: '/api/licenses/status/:key',
             publicKey: '/api/licenses/public-key',
-            manifest: '/api/integrity/manifest?version=...'
+            manifest: '/api/integrity/manifest?version=...',
+            licenseAdmin: '/admin'
         }
     });
 });
@@ -68,6 +71,7 @@ app.get('/health', (req, res) => {
 // License validation routes (public)
 app.use('/api/licenses', licenseRoutes);
 app.use('/api/integrity', integrityRoutes);
+app.use('/admin', licenseAdminRoutes);
 
 // Admin routes (protected)
 app.use('/api/admin', adminRoutes);
@@ -110,10 +114,11 @@ async function startServer() {
             console.log('Endpoints:');
             console.log('  POST /api/licenses/activate   - Activate license');
             console.log('  POST /api/licenses/validate   - Validate license');
+            console.log('  POST /api/licenses/heartbeat  - Heartbeat device');
             console.log('  GET  /api/licenses/status/:key - Check status');
             console.log('  GET  /api/licenses/public-key - Get RS256 public key');
             console.log('  GET  /api/integrity/manifest?version=... - Get signed integrity manifest');
-            console.log('  GET  /api/licenses            - Admin list licenses');
+            console.log('  GET  /admin                   - License admin dashboard');
             console.log('  POST /api/admin/login         - Admin login');
             console.log('  GET  /api/admin/licenses      - Legacy admin list licenses');
             console.log('');

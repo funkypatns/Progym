@@ -18,15 +18,26 @@ Server runs on: `http://localhost:4000`
 
 - **Username:** admin
 - **Password:** LicenseAdmin123!
+- Set `LICENSE_ADMIN_JWT_SECRET` in production for `/admin/*` routes.
 
 ## API Endpoints
 
 ### Public (Client)
 - `POST /api/licenses/activate` - Activate a license
 - `POST /api/licenses/validate` - Validate license + hardware
+- `POST /api/licenses/heartbeat` - Heartbeat (last seen update)
 - `GET /api/licenses/status/:key` - Quick status check
 
-### Admin (Protected)
+### License Admin Dashboard (Separate Auth)
+- `GET /admin/login` - Dashboard login page
+- `POST /admin/auth/login` - License admin login
+- `GET /admin/licenses` - List licenses with device counts
+- `GET /admin/licenses/:id/devices` - List devices for a license
+- `POST /admin/devices/:id/approve` - Approve a device
+- `POST /admin/devices/:id/revoke` - Revoke a device
+- `POST /admin/licenses/:id/reset` - Reset all devices for a license
+
+### Legacy Admin API (Protected)
 - `POST /api/admin/login` - Admin login
 - `GET /api/admin/licenses` - List all licenses
 - `POST /api/admin/licenses` - Create new license

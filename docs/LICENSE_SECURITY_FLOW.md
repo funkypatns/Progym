@@ -31,6 +31,11 @@ On startup (`/api/license/status`):
 4. Attempt online validation with license server.
 5. If offline, allow run only within offline grace window.
 
+Gym application scope is limited to:
+- `POST /api/license/activate`
+- `POST /api/license/validate`
+- `POST /api/license/heartbeat`
+
 Blocking conditions include:
 - `DEVICE_NOT_APPROVED`
 - `LICENSE_REVOKED`
@@ -44,15 +49,13 @@ Blocking conditions include:
 - Background validation loop runs hourly and revalidates when due.
 
 ## Device Management APIs
-Gym backend exposes admin-protected endpoints:
+Device management is handled only inside `license-server` admin routes:
 
-- `GET /api/licenses`
-- `GET /api/licenses/:key/devices`
-- `POST /api/licenses/:key/devices/:deviceId/approve`
-- `POST /api/licenses/:key/devices/:deviceId/revoke`
-- `POST /api/licenses/:key/reset-devices`
-- `PATCH /api/licenses/:key` (`device_limit`, `status`)
-- `POST /api/licenses/:key/revoke`
+- `GET /admin/licenses`
+- `GET /admin/licenses/:id/devices`
+- `POST /admin/devices/:id/approve`
+- `POST /admin/devices/:id/revoke`
+- `POST /admin/licenses/:id/reset`
 
 License server persists audit logs for all state-changing actions.
 
@@ -73,4 +76,5 @@ License server persists audit logs for all state-changing actions.
 ## Server-side Key Rules
 - Keep `LICENSE_PRIVATE_KEY` only on license server.
 - Clients verify only with `LICENSE_PUBLIC_KEY` / public key endpoint.
-- Use `LICENSE_ADMIN_TOKEN` to authorize device-management endpoints.
+- License admin dashboard auth uses separate JWT secret: `LICENSE_ADMIN_JWT_SECRET`.
+- Gym system auth tokens are not accepted for license-server admin endpoints.

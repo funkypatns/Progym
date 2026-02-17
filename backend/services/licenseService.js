@@ -709,6 +709,22 @@ async function validateOnline({ licenseKey, fingerprint, appVersion, publicKeyBu
     return response.data;
 }
 
+async function sendHeartbeatOnline({ licenseKey, fingerprint, appVersion }) {
+    const deviceMeta = getDeviceMetadata();
+    const response = await axios.post(
+        `${LICENSE_SERVER_URL}/api/licenses/heartbeat`,
+        {
+            licenseKey,
+            deviceFingerprint: fingerprint,
+            appVersion,
+            deviceName: deviceMeta.deviceName,
+            platform: deviceMeta.platform
+        },
+        { timeout: 10000 }
+    );
+    return response.data;
+}
+
 async function enforceTokenAndIntegrity({ cached, licenseKey, fingerprint, appVersion, buildId, requireIntegrity = true }) {
     const publicKeyBundle = await resolvePublicKeyBundle(cached);
 
@@ -1089,6 +1105,41 @@ const licenseService = {
         }
     },
 
+    heartbeat: async (licenseKey = null) => {
+        const cached = loadLicenseCache();
+        const resolvedKey = licenseKey || cached?.licenseKey;
+        if (!resolvedKey) {
+            throw new Error('No license key configured');
+        }
+
+        const fingerprint = generateDeviceFingerprint();
+        const appVersion = getAppVersion();
+
+        const result = await sendHeartbeatOnline({
+            licenseKey: resolvedKey,
+            fingerprint,
+            appVersion
+        });
+
+        if (!result?.success || !result?.valid) {
+            const code = result?.code || 'HEARTBEAT_FAILED';
+            const message = result?.message || 'License heartbeat failed';
+            const error = new Error(message);
+            error.code = code;
+            throw error;
+        }
+
+        mergeAndPersistCache(cached, {
+            lastHeartbeatAt: new Date().toISOString()
+        });
+
+        return {
+            valid: true,
+            mode: 'online',
+            lastSeenAt: result?.lastSeenAt || null
+        };
+    },
+
     getStatus: async () => {
         try {
             const cached = loadLicenseCache();
@@ -1147,6 +1198,11 @@ const licenseService = {
                 const cached = loadLicenseCache();
                 if (!cached?.licenseKey) {
                     return;
+                }
+                try {
+                    await licenseService.heartbeat(cached.licenseKey);
+                } catch (_) {
+                    // Heartbeat is best-effort; validation decides online/offline grace.
                 }
                 await licenseService.validate(cached.licenseKey, { forceOnline: false });
             } catch (error) {

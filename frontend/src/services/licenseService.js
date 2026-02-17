@@ -116,6 +116,19 @@ export const licenseService = {
                 message: error.response?.data?.message || 'Validation failed'
             };
         }
+    },
+
+    heartbeat: async (licenseKey = null) => {
+        try {
+            const response = await api.post('/license/heartbeat', { licenseKey });
+            return response.data?.data || { valid: false };
+        } catch (error) {
+            return {
+                valid: false,
+                code: error.response?.data?.code || 'HEARTBEAT_ERROR',
+                message: error.response?.data?.message || 'Heartbeat failed'
+            };
+        }
     }
 };
 

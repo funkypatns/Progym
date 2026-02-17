@@ -62,7 +62,6 @@ import Sales from './pages/Sales';
 import Appointments from './pages/Appointments';
 import Coaches from './pages/Coaches';
 import SessionNotificationsPage from './pages/Notifications/SessionNotificationsPage';
-import LicenseDevices from './pages/LicenseDevices';
 
 // Protected Route Component (Exists)
 const ProtectedRoute = ({ children }) => {
@@ -312,10 +311,6 @@ function App() {
                     <Route path="/permissions" element={
                         <PermissionGuard requireAdmin={true}><PermissionsManagement /></PermissionGuard>
                     } />
-                    <Route path="/license-devices" element={
-                        <PermissionGuard requireAdmin={true}><LicenseDevices /></PermissionGuard>
-                    } />
-
                     {/* Packages (Hidden/Admin?) */}
                     <Route path="/packages" element={
                         <PermissionGuard requireAdmin={true}><Packages /></PermissionGuard>
