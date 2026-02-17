@@ -29,6 +29,28 @@ const parseIdempotencyKey = (req) => {
     return raw ? raw.slice(0, 128) : '';
 };
 
+const getRouteErrorResponse = (error, fallbackMessage) => {
+    if (error?.code === 'P2022') {
+        return {
+            status: 503,
+            body: {
+                success: false,
+                reason: 'SCHEMA_MISMATCH',
+                message: 'Database schema is out of date. Run migrations and retry.'
+            }
+        };
+    }
+
+    return {
+        status: 500,
+        body: {
+            success: false,
+            reason: 'SERVER_ERROR',
+            message: fallbackMessage
+        }
+    };
+};
+
 const mapStatusFilter = (status) => {
     const normalized = String(status || 'all').toLowerCase();
     if (normalized === 'all') return null;
@@ -123,7 +145,8 @@ router.get('/', requirePermission(PERMISSIONS.SUBSCRIPTIONS_VIEW), async (req, r
         return res.json({ success: true, data: rows.map(formatAssignment) });
     } catch (error) {
         console.error('List pack assignments error:', error);
-        return res.status(500).json({ success: false, reason: 'SERVER_ERROR', message: 'Failed to fetch pack assignments' });
+        const response = getRouteErrorResponse(error, 'Failed to fetch pack assignments');
+        return res.status(response.status).json(response.body);
     }
 });
 
