@@ -30,6 +30,7 @@
         "bookAppointment": "حجز موعد",
         "legend": "المفتاح",
         "scheduled": "مجدول",
+        "arrived": "حضر",
         "completed": "مكتمل",
         "cancelled": "ملغي",
         "recentAutoActions": "الإجراءات التلقائية الأخيرة",

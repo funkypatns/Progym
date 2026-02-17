@@ -63,6 +63,28 @@ const Appointments = () => {
         return Number.isFinite(parsed) ? parsed : fallback;
     };
 
+    const getAppointmentPerson = (apt) => {
+        if (!apt) return { name: '', phone: '', memberCode: '', isLead: false };
+        if (apt.member) {
+            const name = `${apt.member.firstName || ''} ${apt.member.lastName || ''}`.trim();
+            return {
+                name,
+                phone: apt.member.phone || '',
+                memberCode: apt.member.memberId || '',
+                isLead: false
+            };
+        }
+        if (apt.lead) {
+            return {
+                name: apt.lead.fullName || '',
+                phone: apt.lead.phone || '',
+                memberCode: '',
+                isLead: true
+            };
+        }
+        return { name: '', phone: '', memberCode: '', isLead: false };
+    };
+
     const appointmentAlertsEnabled = parseBoolean(getSetting('appointment_alerts_enabled', true), true);
     const appointmentAlertIntervalMinutes = parseNumber(getSetting('appointment_alert_interval_minutes', 0), 0);
     const appointmentAlertRepeatIntervalMs = Math.max(0, appointmentAlertIntervalMinutes * 60 * 1000);
@@ -218,7 +240,8 @@ const Appointments = () => {
                             playPendingCompletionSound();
                         }
                         if (appointmentAlertUiEnabled) {
-                            const name = [item.member?.firstName, item.member?.lastName].filter(Boolean).join(' ').trim();
+                            const person = getAppointmentPerson(item);
+                            const name = person.name;
                             const timeLabel = item.end ? `${formatDate(item.end, i18n.language)} ${formatTime(item.end, i18n.language)}` : '';
                             const needsLabel = i18n.language === 'ar' ? 'جلسة انتهت وتحتاج إكمال' : 'Needs completion';
                             toast.success([name, timeLabel, needsLabel].filter(Boolean).join(' • '));
@@ -326,8 +349,9 @@ const Appointments = () => {
 
         if (!confirm(`Mark session as ${status.replace('_', ' ')}?`)) return;
 
+        const normalizedStatus = status === 'scheduled' ? 'booked' : status;
         try {
-            await apiClient.put(`/appointments/${apt.id}`, { status });
+            await apiClient.patch(`/appointments/${apt.id}/status`, { status: normalizedStatus });
             if (status === 'completed') {
                 toast.success('Session completed');
             } else {
@@ -363,21 +387,27 @@ const Appointments = () => {
                 </div>
             )}
             {pendingCompletion.map((apt) => {
-                const memberName = [apt.member?.firstName, apt.member?.lastName].filter(Boolean).join(' ').trim();
+                const person = getAppointmentPerson(apt);
+                const memberName = person.name;
                 const trainerName = apt.trainer?.name || '';
-                const serviceName = apt.title || '';
+                const serviceName = apt.sessionName || apt.title || '';
                 const startLabel = apt.start ? `${formatDate(apt.start, i18n.language)} ${formatTime(apt.start, i18n.language)}` : '';
                 const endLabel = apt.end ? `${formatDate(apt.end, i18n.language)} ${formatTime(apt.end, i18n.language)}` : '';
                 const rangeLabel = startLabel && endLabel
                     ? `${startLabel} - ${formatTime(apt.end, i18n.language)}`
                     : (endLabel || startLabel);
-                const priceValue = Number.isFinite(apt.price) ? apt.price : null;
+                const priceValue = Number.isFinite(apt.sessionPrice) ? apt.sessionPrice : (Number.isFinite(apt.price) ? apt.price : null);
                 const paymentStatus = apt.paymentStatus ? String(apt.paymentStatus).toUpperCase() : '';
                 return (
                     <div key={apt.id} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-slate-800/50 border border-white/5 rounded-2xl">
                         <div>
                             <div className="text-sm font-bold text-white">
                                 {memberName || t('appointments.member', 'Member')}
+                                {person.isLead ? (
+                                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 uppercase tracking-widest">
+                                        {isRtl ? 'زائر' : 'Lead'}
+                                    </span>
+                                ) : null}
                             </div>
                             <div className="text-xs text-slate-400 mt-1">
                                 {rangeLabel}
@@ -438,7 +468,7 @@ const Appointments = () => {
                         const isPastDay = isPastDate(dayItem);
 
                         const hasCompleted = dayApts.some(a => a.status === 'completed' || a.status === 'auto_completed');
-                        const hasScheduled = dayApts.some(a => a.status === 'scheduled');
+                        const hasScheduled = dayApts.some(a => ['scheduled', 'booked', 'arrived'].includes(a.status));
                         const hasCancelled = dayApts.some(a => a.status === 'cancelled');
                         const hasNoShow = dayApts.some(a => a.status === 'no_show');
 
@@ -530,7 +560,7 @@ const Appointments = () => {
                                             </div>
                                             <div className="flex items-center gap-1.5 mt-0.5">
                                                 <User size={12} className="flex-shrink-0" />
-                                                <span className="truncate font-medium">{apt.member?.firstName}</span>
+                                                <span className="truncate font-medium">{getAppointmentPerson(apt).name || '-'}</span>
                                             </div>
                                             {apt.trainer?.name && (
                                                 <div className="text-[11px] text-slate-500 mt-0.5">
@@ -600,7 +630,7 @@ const Appointments = () => {
                             </div>
                         </div>
                         <div className="text-sm text-slate-400 mt-1">
-                            {apt.member?.firstName} {apt.member?.lastName} {t('appointments.with')} {apt.coach?.firstName}
+                            {getAppointmentPerson(apt).name || t('appointments.member', 'Member')} {t('appointments.with')} {apt.coach?.firstName}
                         </div>
                         <div className="text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">
                             {t('appointments.scheduledAt')}: {formatDateTime(apt.start, i18n.language)}
@@ -620,6 +650,7 @@ const Appointments = () => {
     const renderList = () => (
         <div className="space-y-2">
             {appointments.map(apt => {
+                const person = getAppointmentPerson(apt);
                 const hasEnded = apt?.end ? isBefore(parseISO(apt.end), new Date()) : false;
                 const isOverdue = hasEnded && !isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status);
                 return (
@@ -645,7 +676,9 @@ const Appointments = () => {
                                 </div>
                             </div>
                             <div className="text-sm text-slate-400 mt-0.5">
-                                {formatTime(apt.start, i18n.language)} - {formatTime(apt.end, i18n.language)} • {apt.member?.firstName} {apt.member?.lastName}
+                                {formatTime(apt.start, i18n.language)} - {formatTime(apt.end, i18n.language)} • {person.name || t('appointments.member', 'Member')}
+                                {person.phone ? ` • ${person.phone}` : ''}
+                                {person.isLead ? ` • ${isRtl ? 'زائر' : 'Lead'}` : ''}
                             </div>
                             {apt.trainer?.name && (
                                 <div className="text-[11px] text-slate-500 mt-0.5">
@@ -701,7 +734,8 @@ const Appointments = () => {
 
     const filters = [
         { id: 'all', label: t('common.all') },
-        { id: 'scheduled', label: t('appointments.scheduled') },
+        { id: 'booked', label: t('appointments.booked', 'Booked') },
+        { id: 'arrived', label: t('appointments.arrived', 'Arrived') },
         { id: 'completed', label: t('appointments.completed') },
         { id: 'no_show', label: t('appointments.noShow') },
         { id: 'cancelled', label: t('appointments.cancelled') },

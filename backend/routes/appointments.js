@@ -91,6 +91,7 @@ router.get('/pending-completion', authenticate, async (req, res) => {
                 createdByEmployeeId: true,
                 isCompleted: true,
                 member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
+                lead: { select: { id: true, fullName: true, phone: true, notes: true } },
                 coach: { select: { firstName: true, lastName: true } },
                 trainer: { select: { id: true, name: true } },
                 createdByEmployee: { select: { id: true, firstName: true, lastName: true } }
@@ -118,10 +119,27 @@ router.put('/:id', authenticate, async (req, res) => {
     }
 });
 
+// Quick Status Update
+router.patch('/:id/status', authenticate, async (req, res) => {
+    try {
+        const updated = await AppointmentService.updateAppointmentStatus(req.params.id, req.body?.status, {
+            notes: req.body?.notes
+        });
+        return res.json({ success: true, data: updated });
+    } catch (error) {
+        const statusCode = error.status || 400;
+        return res.status(statusCode).json({
+            success: false,
+            reason: statusCode === 404 ? 'NOT_FOUND' : 'BAD_REQUEST',
+            message: error.message || 'Failed to update status'
+        });
+    }
+});
+
 // Complete (Transactional)
 router.post('/:id/complete', authenticate, async (req, res) => {
     try {
-        const { payment, sessionPrice, commissionPercent, paymentMethod } = req.body || {};
+        const { payment, sessionPrice, commissionPercent, paymentMethod, memberDetails, paymentStatus, amount } = req.body || {};
         const rawSessionPrice = sessionPrice ?? payment?.sessionPrice;
         const parsedSessionPrice = Number(rawSessionPrice);
         const rawCommission = commissionPercent ?? payment?.commissionPercent;
@@ -132,11 +150,16 @@ router.post('/:id/complete', authenticate, async (req, res) => {
             ? {
                 ...payment,
                 sessionPrice: Number.isFinite(parsedSessionPrice) ? parsedSessionPrice : undefined,
-                commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined
+                commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined,
+                memberDetails,
+                paymentStatus
             }
             : {
                 sessionPrice: Number.isFinite(parsedSessionPrice) ? parsedSessionPrice : undefined,
-                commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined
+                commissionPercent: Number.isFinite(parsedCommission) ? parsedCommission : undefined,
+                memberDetails,
+                paymentStatus,
+                amount
             };
         if (paymentMethod && !paymentPayload.method) {
             paymentPayload.method = paymentMethod;
@@ -145,6 +168,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
         const appointment = result?.appointment ?? result;
         const sessionPayment = result?.sessionPayment ?? null;
         const trainer = result?.trainer ?? null;
+        const member = result?.member ?? null;
         const alreadyCompleted = Boolean(result?.alreadyCompleted);
         res.json({
             success: true,
@@ -152,6 +176,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
             appointment,
             sessionPayment,
             trainer,
+            member,
             alreadyCompleted,
             appliedCredit: result?.appliedCredit ?? 0,
             dueAmount: result?.dueAmount ?? appointment?.dueAmount,
@@ -181,6 +206,22 @@ router.post('/:id/complete', authenticate, async (req, res) => {
                 ok: false,
                 reason: 'CONFLICT',
                 message: 'Duplicate session payment detected'
+            });
+        }
+        if (error?.reason === 'PHONE_EXISTS') {
+            return res.status(409).json({
+                success: false,
+                ok: false,
+                reason: 'PHONE_EXISTS',
+                message: error.message || 'رقم الهاتف مسجل بالفعل.'
+            });
+        }
+        if (error?.status === 400 || error?.status === 404 || error?.status === 409) {
+            return res.status(error.status).json({
+                success: false,
+                ok: false,
+                reason: error.reason || (error.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST'),
+                message: error.message || 'Failed to complete session'
             });
         }
         // Handle missing coach/trainer errors

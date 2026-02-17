@@ -30,6 +30,7 @@
         "bookAppointment": "Book Appointment",
         "legend": "Legend",
         "scheduled": "Scheduled",
+        "arrived": "Arrived",
         "completed": "Completed",
         "noShow": "No Show",
         "cancelled": "Cancelled",

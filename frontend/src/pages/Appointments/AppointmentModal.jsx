@@ -52,6 +52,21 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [showCompletionPreview, setShowCompletionPreview] = useState(false);
     const [completionData, setCompletionData] = useState(null);
     const [completionLoading, setCompletionLoading] = useState(false);
+    const [showLeadPaymentStep, setShowLeadPaymentStep] = useState(false);
+    const [showLeadDetailsStep, setShowLeadDetailsStep] = useState(false);
+    const [leadCompletionPayment, setLeadCompletionPayment] = useState({
+        amount: '',
+        method: 'cash',
+        status: 'paid',
+        notes: ''
+    });
+    const [leadMemberDetails, setLeadMemberDetails] = useState({
+        fullName: '',
+        phone: '',
+        address: '',
+        gender: '',
+        notes: ''
+    });
     const [showAdjustPrice, setShowAdjustPrice] = useState(false);
     const [adjustForm, setAdjustForm] = useState({ price: '', reason: '' });
     const [adjustPreview, setAdjustPreview] = useState(null);
@@ -63,7 +78,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         title: 'PT Session',
         price: '0',
         notes: '',
-        status: 'scheduled'
+        status: 'booked'
     });
 
     const [loading, setLoading] = useState(false);
@@ -96,6 +111,21 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     notes: appointment.notes || '',
                     status: appointment.status
                 });
+                setLeadCompletionPayment({
+                    amount: (appointment.sessionPrice ?? appointment.finalPrice ?? appointment.price ?? 0).toString(),
+                    method: 'cash',
+                    status: 'paid',
+                    notes: ''
+                });
+                setLeadMemberDetails({
+                    fullName: appointment.lead?.fullName || '',
+                    phone: appointment.lead?.phone || '',
+                    address: '',
+                    gender: '',
+                    notes: appointment.lead?.notes || ''
+                });
+                setShowLeadPaymentStep(false);
+                setShowLeadDetailsStep(false);
                 setAdjustForm({
                     price: (appointment.finalPrice ?? appointment.price ?? 0).toString(),
                     reason: ''
@@ -126,8 +156,23 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     title: 'PT Session',
                     price: '0',
                     notes: '',
-                    status: 'scheduled'
+                    status: 'booked'
                 });
+                setLeadCompletionPayment({
+                    amount: '0',
+                    method: 'cash',
+                    status: 'paid',
+                    notes: ''
+                });
+                setLeadMemberDetails({
+                    fullName: '',
+                    phone: '',
+                    address: '',
+                    gender: '',
+                    notes: ''
+                });
+                setShowLeadPaymentStep(false);
+                setShowLeadDetailsStep(false);
                 setBookedRanges([]);
 
                 // Clear completion state
@@ -351,7 +396,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 start: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
                 end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
                 coachId: parseInt(user.id),
-                price: parseFloat(form.price)
+                price: parseFloat(form.price),
+                sessionName: form.title,
+                sessionPrice: parseFloat(form.price)
             };
             payload.durationMinutes = durationNumber;
             payload.startTime = selectedTime;
@@ -475,6 +522,21 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 : 'Session has not ended yet. Are you sure you want to complete it?';
             if (!window.confirm(confirmMessage)) return;
         }
+        if (isLeadAppointment) {
+            const defaultAmount = Number(appointment.sessionPrice ?? appointment.finalPrice ?? appointment.price ?? form.price ?? 0);
+            setLeadCompletionPayment((prev) => ({
+                ...prev,
+                amount: Number.isFinite(defaultAmount) && defaultAmount > 0 ? String(defaultAmount) : '0'
+            }));
+            setLeadMemberDetails((prev) => ({
+                ...prev,
+                fullName: prev.fullName || appointment?.lead?.fullName || '',
+                phone: prev.phone || appointment?.lead?.phone || '',
+                notes: prev.notes || appointment?.lead?.notes || ''
+            }));
+            setShowLeadPaymentStep(true);
+            return;
+        }
         setCompletionLoading(true);
         try {
             // First, get preview
@@ -508,6 +570,75 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 
     const [showReceipt, setShowReceipt] = useState(false);
     const [receiptData, setReceiptData] = useState(null);
+
+    const handleLeadPaymentNext = () => {
+        const amountValue = Number(leadCompletionPayment.amount);
+        if (!Number.isFinite(amountValue) || amountValue <= 0) {
+            toast.error(isRtl ? 'قيمة الدفع غير صالحة' : 'Invalid payment amount');
+            return;
+        }
+        if (!leadCompletionPayment.method) {
+            toast.error(isRtl ? 'اختر طريقة الدفع' : 'Select payment method');
+            return;
+        }
+        setShowLeadPaymentStep(false);
+        setShowLeadDetailsStep(true);
+    };
+
+    const handleLeadCompletionSubmit = async () => {
+        if (!appointment || !isLeadAppointment || isAlreadyCompleted) return;
+        if (!leadMemberDetails.fullName.trim()) {
+            toast.error(t('appointments.visitorFullNameRequired', 'Visitor full name is required'));
+            return;
+        }
+        if (!leadMemberDetails.phone.trim()) {
+            toast.error(t('appointments.visitorPhoneRequired', 'Visitor phone is required'));
+            return;
+        }
+
+        const amountValue = Number(leadCompletionPayment.amount);
+        if (!Number.isFinite(amountValue) || amountValue <= 0) {
+            toast.error(isRtl ? 'قيمة الدفع غير صالحة' : 'Invalid payment amount');
+            return;
+        }
+
+        setCompletionLoading(true);
+        try {
+            const payload = {
+                sessionPrice: amountValue,
+                paymentMethod: leadCompletionPayment.method,
+                paymentStatus: leadCompletionPayment.status,
+                amount: amountValue,
+                payment: {
+                    amount: amountValue,
+                    method: leadCompletionPayment.method,
+                    status: leadCompletionPayment.status,
+                    notes: leadCompletionPayment.notes?.trim() || undefined
+                },
+                memberDetails: {
+                    fullName: leadMemberDetails.fullName.trim(),
+                    phone: leadMemberDetails.phone.trim(),
+                    address: leadMemberDetails.address?.trim() || undefined,
+                    gender: leadMemberDetails.gender || undefined,
+                    notes: leadMemberDetails.notes?.trim() || undefined
+                }
+            };
+
+            const res = await apiClient.post(`/appointments/${appointment.id}/complete`, payload);
+            if (!res.data?.success) {
+                throw new Error(res.data?.message || 'Failed to complete appointment');
+            }
+            toast.success(isRtl ? 'تم إكمال الجلسة وتحويل الزائر إلى عضو' : 'Session completed and visitor converted to member');
+            setShowLeadDetailsStep(false);
+            setShowLeadPaymentStep(false);
+            onSuccess();
+            onClose();
+        } catch (error) {
+            toast.error(error.response?.data?.message || (isRtl ? 'فشل إكمال الجلسة' : 'Failed to complete appointment'));
+        } finally {
+            setCompletionLoading(false);
+        }
+    };
 
     const confirmCompletion = async (payload) => {
         if (!appointment || isAlreadyCompleted) {
@@ -596,6 +727,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const hasEnded = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
+    const isLeadAppointment = Boolean(appointment?.leadId && !appointment?.memberId);
     const isCompletableStatus = appointment && !['cancelled', 'no_show', 'completed', 'auto_completed'].includes(appointment.status);
     const isAlreadyCompleted = Boolean(appointment && (appointment.isCompleted || appointment.status === 'completed' || appointment.status === 'auto_completed' || appointment.completedAt));
     const canComplete = appointment && !isAlreadyCompleted && isCompletableStatus;
@@ -790,7 +922,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                 onChange={e => setForm({ ...form, status: e.target.value })}
                                                 className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
                                             >
-                                                <option value="scheduled">{t('appointments.scheduled')}</option>
+                                                <option value="booked">{t('appointments.booked', 'Booked')}</option>
+                                                <option value="arrived">{t('appointments.arrived', 'Arrived')}</option>
                                                 <option value="completed">{t('appointments.completed')}</option>
                                                 <option value="no_show">{t('appointments.noShow')}</option>
                                                 <option value="cancelled">{t('appointments.cancelled')}</option>
@@ -1107,6 +1240,172 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     data={completionData}
                     loading={completionLoading}
                 />
+
+                {/* Lead Completion - Step 1: Payment */}
+                <Transition show={showLeadPaymentStep} as={Fragment}>
+                    <Dialog as="div" className="relative z-[70]" onClose={() => setShowLeadPaymentStep(false)}>
+                        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
+                        <div className="fixed inset-0 overflow-y-auto">
+                            <div className="flex min-h-full items-center justify-center p-4">
+                                <Dialog.Panel className="w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 p-5 shadow-xl">
+                                    <Dialog.Title className="text-lg font-black text-white mb-4">
+                                        {isRtl ? 'تأكيد التحصيل' : 'Confirm Payment'}
+                                    </Dialog.Title>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'المبلغ' : 'Amount'}</label>
+                                            <input
+                                                type="number"
+                                                min="0.01"
+                                                step="0.01"
+                                                value={leadCompletionPayment.amount}
+                                                onChange={(e) => setLeadCompletionPayment(prev => ({ ...prev, amount: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'طريقة الدفع' : 'Payment Method'}</label>
+                                            <select
+                                                value={leadCompletionPayment.method}
+                                                onChange={(e) => setLeadCompletionPayment(prev => ({ ...prev, method: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            >
+                                                <option value="cash">{isRtl ? 'نقدي' : 'Cash'}</option>
+                                                <option value="card">{isRtl ? 'بطاقة' : 'Card'}</option>
+                                                <option value="transfer">{isRtl ? 'تحويل' : 'Transfer'}</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'حالة الدفع' : 'Payment Status'}</label>
+                                            <select
+                                                value={leadCompletionPayment.status}
+                                                onChange={(e) => setLeadCompletionPayment(prev => ({ ...prev, status: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            >
+                                                <option value="paid">{isRtl ? 'مدفوع' : 'Paid'}</option>
+                                                <option value="partial">{isRtl ? 'جزئي' : 'Partial'}</option>
+                                                <option value="unpaid">{isRtl ? 'غير مدفوع' : 'Unpaid'}</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'ملاحظات الدفع' : 'Payment Notes'}</label>
+                                            <textarea
+                                                rows={2}
+                                                value={leadCompletionPayment.notes}
+                                                onChange={(e) => setLeadCompletionPayment(prev => ({ ...prev, notes: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mt-5 flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowLeadPaymentStep(false)}
+                                            className="flex-1 py-2 rounded-xl bg-slate-700 text-white font-bold"
+                                        >
+                                            {t('common.cancel', 'Cancel')}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleLeadPaymentNext}
+                                            className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                                        >
+                                            {isRtl ? 'متابعة' : 'Next'}
+                                        </button>
+                                    </div>
+                                </Dialog.Panel>
+                            </div>
+                        </div>
+                    </Dialog>
+                </Transition>
+
+                {/* Lead Completion - Step 2: Member Details */}
+                <Transition show={showLeadDetailsStep} as={Fragment}>
+                    <Dialog as="div" className="relative z-[70]" onClose={() => setShowLeadDetailsStep(false)}>
+                        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
+                        <div className="fixed inset-0 overflow-y-auto">
+                            <div className="flex min-h-full items-center justify-center p-4">
+                                <Dialog.Panel className="w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 p-5 shadow-xl">
+                                    <Dialog.Title className="text-lg font-black text-white mb-4">
+                                        {isRtl ? 'إكمال بيانات العضو' : 'Complete Member Details'}
+                                    </Dialog.Title>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.visitorFullName', 'Full Name')}</label>
+                                            <input
+                                                type="text"
+                                                value={leadMemberDetails.fullName}
+                                                onChange={(e) => setLeadMemberDetails(prev => ({ ...prev, fullName: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.visitorPhone', 'Phone')}</label>
+                                            <input
+                                                type="text"
+                                                value={leadMemberDetails.phone}
+                                                onChange={(e) => setLeadMemberDetails(prev => ({ ...prev, phone: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                                dir="ltr"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'العنوان' : 'Address'}</label>
+                                            <input
+                                                type="text"
+                                                value={leadMemberDetails.address}
+                                                onChange={(e) => setLeadMemberDetails(prev => ({ ...prev, address: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'النوع' : 'Gender'}</label>
+                                            <select
+                                                value={leadMemberDetails.gender}
+                                                onChange={(e) => setLeadMemberDetails(prev => ({ ...prev, gender: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            >
+                                                <option value="">{isRtl ? 'غير محدد' : 'Unspecified'}</option>
+                                                <option value="male">{isRtl ? 'ذكر' : 'Male'}</option>
+                                                <option value="female">{isRtl ? 'أنثى' : 'Female'}</option>
+                                                <option value="unknown">{isRtl ? 'غير معروف' : 'Unknown'}</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.notes', 'Notes')}</label>
+                                            <textarea
+                                                rows={2}
+                                                value={leadMemberDetails.notes}
+                                                onChange={(e) => setLeadMemberDetails(prev => ({ ...prev, notes: e.target.value }))}
+                                                className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mt-5 flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowLeadDetailsStep(false);
+                                                setShowLeadPaymentStep(true);
+                                            }}
+                                            className="flex-1 py-2 rounded-xl bg-slate-700 text-white font-bold"
+                                        >
+                                            {isRtl ? 'رجوع' : 'Back'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleLeadCompletionSubmit}
+                                            disabled={completionLoading}
+                                            className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50"
+                                        >
+                                            {completionLoading ? t('common.processing', 'Processing...') : (isRtl ? 'تأكيد الإكمال' : 'Confirm Complete')}
+                                        </button>
+                                    </div>
+                                </Dialog.Panel>
+                            </div>
+                        </div>
+                    </Dialog>
+                </Transition>
 
                 {/* Receipt Modal */}
                 <ReceiptModal

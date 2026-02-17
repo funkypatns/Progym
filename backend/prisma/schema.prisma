@@ -139,8 +139,26 @@ model Member {
   packages      MemberPackage[]
   packageSessionUsages PackageSessionUsage[]
   checkInIdempotencyRecords CheckInIdempotency[]
+  convertedLeads Lead[] @relation("LeadConvertedMember")
 
   @@index([gender])
+}
+
+/// First-time visitors/leads (pre-member booking records)
+model Lead {
+  id                Int      @id @default(autoincrement())
+  fullName          String
+  phone             String?
+  notes             String?
+  convertedMemberId Int?
+  convertedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  convertedMember   Member?      @relation("LeadConvertedMember", fields: [convertedMemberId], references: [id], onDelete: SetNull)
+  appointments      Appointment[]
+
+  @@index([phone])
 }
 
 // ============================================
@@ -325,7 +343,7 @@ model CheckInIdempotency {
 /// Payment records
 model Payment {
   id             Int      @id @default(autoincrement())
-  memberId       Int
+  memberId       Int?
   subscriptionId Int?
   amount         Float
   sessionPrice   Float?
@@ -359,7 +377,7 @@ model Payment {
   refundedTotal  Float    @default(0)
 
   // Relations
-  member       Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  member       Member?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   shift        POSShift?     @relation(fields: [shiftId], references: [id])
   creator      User?         @relation("PaymentCreator", fields: [createdBy], references: [id])
@@ -823,19 +841,23 @@ model Service {
 model Appointment {
   id          Int      @id @default(autoincrement())
   title       String?  // e.g. "PT Session"
-  memberId    Int
+  memberId    Int?
+  leadId      Int?
+  bookingType String   @default("confirmed") // tentative, confirmed
   coachId     Int
   
   start       DateTime
   end         DateTime
   price       Float    @default(0)   // Base price at booking
+  sessionName String?
+  sessionPrice Float?
   finalPrice  Float?                // Final price after adjustments; fallback to price when null
   paidAmount  Float    @default(0)
   dueAmount   Float    @default(0)
   overpaidAmount Float @default(0)
   paymentStatus String @default("unpaid") // unpaid, partial, paid, due, overpaid
   
-  status      String   @default("scheduled") // scheduled, completed, cancelled, no_show
+  status      String   @default("booked") // booked, arrived, completed, no_show, cancelled
   notes       String?
 
   createdByEmployeeId   Int?
@@ -847,7 +869,8 @@ model Appointment {
   updatedAt   DateTime @updatedAt
   
   // Relations
-  member      Member   @relation(fields: [memberId], references: [id])
+  member      Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
     coach       User     @relation("CoachAppointments", fields: [coachId], references: [id])
   createdByEmployee   User? @relation("AppointmentCreatedBy", fields: [createdByEmployeeId], references: [id])
   completedByEmployee User? @relation("AppointmentCompletedBy", fields: [completedByEmployeeId], references: [id])

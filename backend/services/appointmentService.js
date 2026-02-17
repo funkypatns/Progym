@@ -6,6 +6,7 @@ const { recordPaymentTransaction, normalizePaymentMethod } = require('./paymentS
 const { roundMoney } = require('../utils/money');
 const { getDefaultSessionCommissionPercent } = require('./commissionService');
 const CreditService = require('./creditService');
+const { createMemberWithUniqueness } = require('./memberService');
 
 const createInvalidTimeError = () => {
     const err = new Error('Invalid time or duration.');
@@ -38,6 +39,40 @@ const buildTimeRange = (startValue, durationMinutes) => {
     return { start: startDate, end: endDate };
 };
 
+const normalizeAppointmentStatus = (status, fallback = 'booked') => {
+    const raw = String(status || '').trim().toLowerCase();
+    if (!raw) return fallback;
+    if (raw === 'scheduled' || raw === 'pending') return 'booked';
+    return raw;
+};
+
+const normalizeBookingType = (bookingType, fallback = 'confirmed') => {
+    const raw = String(bookingType || '').trim().toLowerCase();
+    if (raw === 'tentative' || raw === 'confirmed') return raw;
+    return fallback;
+};
+
+const splitFullName = (fullName) => {
+    const cleaned = String(fullName || '').trim().replace(/\s+/g, ' ');
+    if (!cleaned) return { firstName: '', lastName: '' };
+    const parts = cleaned.split(' ');
+    const firstName = parts.shift() || '';
+    const lastName = parts.join(' ').trim() || firstName;
+    return { firstName, lastName };
+};
+
+const generateMemberId = async (client, offset = 0) => {
+    const lastMember = await client.member.findFirst({
+        orderBy: { id: 'desc' },
+        select: { memberId: true }
+    });
+    const lastId = lastMember?.memberId || '';
+    const match = lastId.match(/(\d+)\s*$/);
+    const base = match ? Number.parseInt(match[1], 10) : 0;
+    const next = (Number.isFinite(base) ? base : 0) + 1 + Math.max(0, offset);
+    return `GYM-${String(next).padStart(4, '0')}`;
+};
+
 const AppointmentService = {
     // ... (createAppointment remains same) ...
 
@@ -49,6 +84,22 @@ const AppointmentService = {
         const timeRange = buildTimeRange(data.start, durationMinutes);
         const coachId = parseInt(data.coachId);
         const trainerId = data.trainerId ? parseInt(data.trainerId) : null;
+        const rawMemberId = data.memberId;
+        const parsedMemberId = rawMemberId !== undefined && rawMemberId !== null && rawMemberId !== ''
+            ? parseInt(rawMemberId)
+            : null;
+        const leadPayload = data.lead || (data.leadFullName ? {
+            fullName: data.leadFullName,
+            phone: data.leadPhone,
+            notes: data.leadNotes
+        } : null);
+        const hasLeadPayload = Boolean(leadPayload && String(leadPayload.fullName || '').trim());
+        const hasMemberPayload = Number.isInteger(parsedMemberId);
+
+        if ((hasMemberPayload && hasLeadPayload) || (!hasMemberPayload && !hasLeadPayload)) {
+            throw new Error('Appointment must be linked to either member or lead');
+        }
+
         if (await this.checkOverlap(coachId, timeRange.start, timeRange.end)) {
             throw createOverlapError();
         }
@@ -62,28 +113,73 @@ const AppointmentService = {
             }
         }
 
-        return await prisma.appointment.create({
-            data: {
-                memberId: parseInt(data.memberId),
-                coachId,
-                trainerId,
-                title: data.title || null,
-                start: timeRange.start,
-                end: timeRange.end,
-                price: parseFloat(data.price) || 0,
-                status: 'scheduled',
-                notes: data.notes,
-                createdByEmployeeId: data.createdByEmployeeId ? parseInt(data.createdByEmployeeId) : null
-            },
-            include: {
-                member: {
-                    select: { firstName: true, lastName: true, memberId: true, phone: true }
-                },
-                coach: {
-                    select: { firstName: true, lastName: true }
-                },
-                financialRecord: { select: { status: true } }
+        const title = String(data.sessionName || data.title || '').trim() || null;
+        const sessionPrice = parseFloat(data.sessionPrice ?? data.price);
+        const normalizedPrice = Number.isFinite(sessionPrice) ? sessionPrice : 0;
+        const notes = data.notes ?? null;
+        const normalizedStatus = normalizeAppointmentStatus(
+            data.status,
+            hasLeadPayload ? 'booked' : 'booked'
+        );
+        const bookingType = hasLeadPayload
+            ? normalizeBookingType(data.bookingType || data.createdFrom, 'tentative')
+            : normalizeBookingType(data.bookingType || data.createdFrom, 'confirmed');
+
+        return await prisma.$transaction(async (tx) => {
+            let leadId = null;
+            if (hasLeadPayload) {
+                const fullName = String(leadPayload.fullName || '').trim();
+                if (!fullName) {
+                    throw new Error('Lead full name is required');
+                }
+                leadId = (await tx.lead.create({
+                    data: {
+                        fullName,
+                        phone: leadPayload.phone ? String(leadPayload.phone).trim() : null,
+                        notes: leadPayload.notes ? String(leadPayload.notes).trim() : null
+                    },
+                    select: { id: true }
+                })).id;
+            } else {
+                const memberExists = await tx.member.findUnique({
+                    where: { id: parsedMemberId },
+                    select: { id: true }
+                });
+                if (!memberExists) {
+                    throw new Error('Member not found');
+                }
             }
+
+            return tx.appointment.create({
+                data: {
+                    memberId: hasMemberPayload ? parsedMemberId : null,
+                    leadId,
+                    bookingType,
+                    coachId,
+                    trainerId,
+                    title,
+                    sessionName: title,
+                    start: timeRange.start,
+                    end: timeRange.end,
+                    price: normalizedPrice,
+                    sessionPrice: normalizedPrice,
+                    status: normalizedStatus,
+                    notes,
+                    createdByEmployeeId: data.createdByEmployeeId ? parseInt(data.createdByEmployeeId) : null
+                },
+                include: {
+                    member: {
+                        select: { firstName: true, lastName: true, memberId: true, phone: true }
+                    },
+                    lead: {
+                        select: { id: true, fullName: true, phone: true, notes: true, convertedAt: true }
+                    },
+                    coach: {
+                        select: { firstName: true, lastName: true }
+                    },
+                    financialRecord: { select: { status: true } }
+                }
+            });
         });
     },
 
@@ -116,10 +212,19 @@ const AppointmentService = {
      */
     async getAppointments(filters) {
         const where = {};
+        const andConditions = [];
 
         if (filters.coachId) where.coachId = parseInt(filters.coachId);
         if (filters.memberId) where.memberId = parseInt(filters.memberId);
-        if (filters.status) where.status = filters.status;
+
+        if (filters.status) {
+            const normalizedStatus = normalizeAppointmentStatus(filters.status, filters.status);
+            if (filters.status === 'scheduled') {
+                where.status = { in: ['scheduled', 'booked'] };
+            } else {
+                where.status = normalizedStatus;
+            }
+        }
 
         if (filters.startDate && filters.endDate) {
             where.start = {
@@ -128,11 +233,51 @@ const AppointmentService = {
             };
         }
 
+        const search = String(filters.search || filters.q || '').trim();
+        if (search) {
+            andConditions.push({
+                OR: [
+                    { title: { contains: search, mode: 'insensitive' } },
+                    { sessionName: { contains: search, mode: 'insensitive' } },
+                    { notes: { contains: search, mode: 'insensitive' } },
+                    {
+                        member: {
+                            is: {
+                                OR: [
+                                    { firstName: { contains: search, mode: 'insensitive' } },
+                                    { lastName: { contains: search, mode: 'insensitive' } },
+                                    { phone: { contains: search } },
+                                    { memberId: { contains: search, mode: 'insensitive' } }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        lead: {
+                            is: {
+                                OR: [
+                                    { fullName: { contains: search, mode: 'insensitive' } },
+                                    { phone: { contains: search } }
+                                ]
+                            }
+                        }
+                    }
+                ]
+            });
+        }
+
+        if (andConditions.length > 0) {
+            where.AND = andConditions;
+        }
+
         return await prisma.appointment.findMany({
             where,
             include: {
                 member: {
                     select: { id: true, firstName: true, lastName: true, memberId: true, phone: true }
+                },
+                lead: {
+                    select: { id: true, fullName: true, phone: true, notes: true, convertedAt: true }
                 },
                 coach: {
                     select: { id: true, firstName: true, lastName: true }
@@ -183,6 +328,9 @@ const AppointmentService = {
         const updatePayload = { ...data };
         delete updatePayload.durationMinutes;
         delete updatePayload.startTime;
+        if (updatePayload.status !== undefined) {
+            updatePayload.status = normalizeAppointmentStatus(updatePayload.status, updatePayload.status);
+        }
         if (updatePayload.trainerId !== undefined) {
             const parsedTrainerId = updatePayload.trainerId ? parseInt(updatePayload.trainerId) : null;
             if (parsedTrainerId) {
@@ -208,11 +356,14 @@ const AppointmentService = {
                 trainerId: updatePayload.trainerId !== undefined
                     ? (updatePayload.trainerId ? parseInt(updatePayload.trainerId) : null)
                     : undefined,
+                title: updatePayload.title !== undefined ? updatePayload.title : undefined,
+                sessionName: updatePayload.title !== undefined ? updatePayload.title : undefined,
                 start: updatePayload.start ? new Date(updatePayload.start) : undefined,
                 end: updatePayload.end ? new Date(updatePayload.end) : undefined,
-                price: updatePayload.price ? parseFloat(updatePayload.price) : undefined
+                price: updatePayload.price !== undefined ? parseFloat(updatePayload.price) : undefined,
+                sessionPrice: updatePayload.price !== undefined ? parseFloat(updatePayload.price) : undefined
             },
-            include: { member: true, coach: true }
+            include: { member: true, lead: true, coach: true }
         });
 
         // Hook: Calculate or Void commission
@@ -237,14 +388,28 @@ const AppointmentService = {
             const existing = await tx.appointment.findUnique({
                 where: { id: parseInt(id) },
                 select: {
+                    id: true,
                     memberId: true,
+                    leadId: true,
                     trainerId: true,
                     coachId: true,
+                    bookingType: true,
                     status: true,
+                    title: true,
+                    sessionName: true,
+                    sessionPrice: true,
                     price: true,
                     paidAmount: true,
                     isCompleted: true,
-                    completedAt: true
+                    completedAt: true,
+                    lead: {
+                        select: {
+                            id: true,
+                            fullName: true,
+                            phone: true,
+                            notes: true
+                        }
+                    }
                 }
             });
 
@@ -257,7 +422,7 @@ const AppointmentService = {
                 });
                 const appointmentDetails = await tx.appointment.findUnique({
                     where: { id: parseInt(id) },
-                    include: { member: true, coach: true, payments: true }
+                    include: { member: true, lead: true, coach: true, payments: true }
                 });
                 return { appointment: appointmentDetails, sessionPayment: existingPayment || null, alreadyCompleted: true };
             }
@@ -307,6 +472,206 @@ const AppointmentService = {
                 : (trainerCommissionPercent ?? await CommissionService.getDefaultSessionCommissionPercent(tx));
             const trainerPayout = roundMoney((sessionPrice * commissionPercentUsed) / 100);
             const gymShare = roundMoney(sessionPrice - trainerPayout);
+
+            // Lead conversion flow: complete + payment + member conversion in one transaction
+            if (existing?.leadId && !existing?.memberId) {
+                const leadData = existing.lead || {};
+                const memberDetails = paymentData?.memberDetails || paymentData?.member || {};
+                const fullName = String(memberDetails.fullName || leadData.fullName || '').trim();
+                const phone = String(memberDetails.phone || leadData.phone || '').trim();
+
+                if (!fullName) {
+                    const err = new Error('Lead full name is required for conversion');
+                    err.status = 400;
+                    throw err;
+                }
+                if (!phone) {
+                    const err = new Error('Phone is required for conversion');
+                    err.status = 400;
+                    throw err;
+                }
+
+                const { firstName, lastName } = splitFullName(fullName);
+                if (!firstName || !lastName) {
+                    const err = new Error('Member name is incomplete');
+                    err.status = 400;
+                    throw err;
+                }
+
+                const normalizedGender = ['male', 'female', 'unknown'].includes(String(memberDetails.gender || '').toLowerCase())
+                    ? String(memberDetails.gender).toLowerCase()
+                    : null;
+
+                let createdMember = null;
+                let memberCreateError = null;
+                for (let attempt = 0; attempt < 3; attempt += 1) {
+                    const memberId = await generateMemberId(tx, attempt);
+                    const createResult = await createMemberWithUniqueness(tx, {
+                        memberId,
+                        firstName,
+                        lastName,
+                        fullName,
+                        displayName: fullName,
+                        phone,
+                        email: memberDetails.email ? String(memberDetails.email).trim() : null,
+                        gender: normalizedGender,
+                        address: memberDetails.address ? String(memberDetails.address).trim() : null,
+                        notes: memberDetails.notes ? String(memberDetails.notes).trim() : (leadData.notes || null),
+                        isActive: true
+                    });
+                    if (createResult.ok) {
+                        createdMember = createResult.member;
+                        break;
+                    }
+                    memberCreateError = createResult;
+                    if (createResult.reason !== 'PHONE_EXISTS') {
+                        break;
+                    }
+                }
+
+                if (!createdMember) {
+                    const err = new Error(memberCreateError?.message || 'Failed to convert lead to member');
+                    err.status = memberCreateError?.reason === 'PHONE_EXISTS' ? 409 : 400;
+                    err.reason = memberCreateError?.reason;
+                    throw err;
+                }
+
+                const rawPaymentStatus = String(
+                    paymentData?.paymentStatus || paymentData?.payment?.status || 'paid'
+                ).toLowerCase();
+                const normalizedMethod = normalizePaymentMethod(
+                    paymentData?.paymentMethod || paymentData?.method || paymentData?.payment?.method || 'cash'
+                ).toUpperCase();
+                const paymentAmountInput = Number(
+                    paymentData?.payment?.amount ?? paymentData?.amount ?? paymentData?.paidAmount ?? sessionPrice
+                );
+                if (!Number.isFinite(paymentAmountInput) || paymentAmountInput < 0) {
+                    const err = new Error('Payment amount must be a valid non-negative number');
+                    err.status = 400;
+                    throw err;
+                }
+
+                const isUnpaid = rawPaymentStatus === 'unpaid';
+                const recordedPaymentStatus = isUnpaid ? 'pending' : 'completed';
+                const collectedAmount = isUnpaid ? 0 : roundMoney(paymentAmountInput);
+                const recordedAmount = isUnpaid ? roundMoney(sessionPrice) : collectedAmount;
+                const paymentNotes = paymentData?.payment?.notes
+                    ? String(paymentData.payment.notes).trim()
+                    : (paymentData?.notes ? String(paymentData.notes).trim() : undefined);
+
+                let sessionPayment = null;
+                if (recordedAmount > 0 || recordedPaymentStatus === 'pending') {
+                    const paymentResult = await recordPaymentTransaction(tx, {
+                        appointmentId: parseInt(id),
+                        memberId: createdMember.id,
+                        amount: recordedAmount,
+                        method: normalizedMethod,
+                        status: recordedPaymentStatus,
+                        notes: paymentNotes,
+                        createdBy: userContext?.id,
+                        collectorName: userContext ? `${userContext.firstName} ${userContext.lastName}` : 'System',
+                        sessionPrice,
+                        commissionPercentUsed,
+                        trainerPayout,
+                        gymShare
+                    }, { receiptSuffix: recordedPaymentStatus === 'pending' ? '-INV' : '' });
+                    sessionPayment = paymentResult.payment;
+                }
+
+                const paidAmount = roundMoney(collectedAmount);
+                const dueAmount = roundMoney(Math.max(0, sessionPrice - paidAmount));
+                const overpaidAmount = roundMoney(Math.max(0, paidAmount - sessionPrice));
+                const paymentStatus = dueAmount > 0 ? 'due' : 'paid';
+
+                const updated = await tx.appointment.update({
+                    where: { id: parseInt(id) },
+                    data: {
+                        memberId: createdMember.id,
+                        leadId: null,
+                        bookingType: 'confirmed',
+                        status: 'completed',
+                        title: existing.title || existing.sessionName || 'PT Session',
+                        sessionName: existing.sessionName || existing.title || 'PT Session',
+                        sessionPrice,
+                        price: sessionPrice,
+                        finalPrice: sessionPrice,
+                        paidAmount,
+                        dueAmount,
+                        overpaidAmount,
+                        paymentStatus,
+                        isCompleted: true,
+                        completedByEmployeeId: userContext?.id ?? undefined,
+                        completedAt: new Date()
+                    },
+                    include: { member: true, lead: true, coach: true, payments: true }
+                });
+
+                await tx.lead.update({
+                    where: { id: existing.leadId },
+                    data: {
+                        convertedMemberId: createdMember.id,
+                        convertedAt: new Date()
+                    }
+                });
+
+                if (overpaidAmount > 0) {
+                    await CreditService.adjustCreditDelta(tx, createdMember.id, overpaidAmount, {
+                        sourceAppointmentId: updated.id,
+                        createdByUserId: userContext?.id ?? null,
+                        note: 'Overpayment credit from lead conversion completion'
+                    });
+                }
+
+                await CommissionService.processSessionCommission(updated.id, tx);
+
+                if (existing?.coachId) {
+                    const existingCoachEarning = await tx.coachEarning.findFirst({
+                        where: { appointmentId: updated.id }
+                    });
+                    if (!existingCoachEarning) {
+                        await tx.coachEarning.create({
+                            data: {
+                                coachId: existing.coachId,
+                                memberId: createdMember.id,
+                                appointmentId: updated.id,
+                                amount: trainerPayout,
+                                basisAmount: sessionPrice,
+                                commissionType: 'percentage',
+                                commissionValue: commissionPercentUsed,
+                                status: 'pending'
+                            }
+                        });
+                    }
+                }
+
+                if (existing?.trainerId) {
+                    const existingEarning = await tx.trainerEarning.findUnique({
+                        where: { appointmentId: updated.id }
+                    });
+                    if (!existingEarning) {
+                        await tx.trainerEarning.create({
+                            data: {
+                                trainerId: existing.trainerId,
+                                appointmentId: updated.id,
+                                baseAmount: sessionPrice,
+                                commissionPercent: commissionPercentUsed,
+                                commissionAmount: trainerPayout,
+                                status: 'UNPAID'
+                            }
+                        });
+                    }
+                }
+
+                return {
+                    appointment: updated,
+                    sessionPayment,
+                    member: createdMember,
+                    alreadyCompleted: false,
+                    appliedCredit: 0,
+                    dueAmount,
+                    overpaidAmount
+                };
+            }
 
             // Credit balance (apply before creating payment to avoid over-collection)
             const creditBalance = await CreditService.getBalance(tx, existing.memberId);
@@ -410,7 +775,7 @@ const AppointmentService = {
             const updated = await tx.appointment.update({
                 where: { id: parseInt(id) },
                 data: updateData,
-                include: { member: true, coach: true, payments: true }
+                include: { member: true, lead: true, coach: true, payments: true }
             });
 
             // If overpaid, grant credit delta
@@ -688,6 +1053,82 @@ const AppointmentService = {
     },
 
     /**
+     * Update appointment status with guardrails for lead completion.
+     */
+    async updateAppointmentStatus(id, status, extra = {}) {
+        const appointmentId = parseInt(id);
+        if (!Number.isInteger(appointmentId)) {
+            const err = new Error('Invalid appointment id');
+            err.status = 400;
+            throw err;
+        }
+        const normalizedStatus = normalizeAppointmentStatus(status, status);
+        const allowed = ['booked', 'arrived', 'completed', 'no_show', 'cancelled', 'scheduled'];
+        if (!allowed.includes(normalizedStatus)) {
+            const err = new Error('Invalid status');
+            err.status = 400;
+            throw err;
+        }
+
+        const appointment = await prisma.appointment.findUnique({
+            where: { id: appointmentId },
+            select: {
+                id: true,
+                status: true,
+                isCompleted: true,
+                completedAt: true,
+                memberId: true,
+                leadId: true
+            }
+        });
+        if (!appointment) {
+            const err = new Error('Appointment not found');
+            err.status = 404;
+            throw err;
+        }
+
+        const alreadyCompleted = Boolean(appointment.isCompleted || appointment.completedAt || appointment.status === 'completed');
+        if (normalizedStatus === 'completed' && appointment.leadId && !appointment.memberId) {
+            const err = new Error('Use complete endpoint to convert lead appointment');
+            err.status = 400;
+            throw err;
+        }
+        if (normalizedStatus === 'completed' && alreadyCompleted) {
+            return prisma.appointment.findUnique({
+                where: { id: appointmentId },
+                include: { member: true, lead: true, coach: true, payments: true }
+            });
+        }
+
+        const nextStatus = normalizedStatus === 'scheduled' ? 'booked' : normalizedStatus;
+        const updateData = {
+            status: nextStatus,
+            notes: extra?.notes !== undefined ? extra.notes : undefined
+        };
+        if (nextStatus === 'completed') {
+            updateData.isCompleted = true;
+            updateData.completedAt = new Date();
+        } else if (['booked', 'arrived', 'no_show', 'cancelled'].includes(nextStatus)) {
+            updateData.isCompleted = false;
+            if (nextStatus !== 'arrived') {
+                updateData.completedAt = null;
+            }
+        }
+
+        return prisma.appointment.update({
+            where: { id: appointmentId },
+            data: updateData,
+            include: {
+                member: true,
+                lead: true,
+                coach: true,
+                payments: true,
+                financialRecord: true
+            }
+        });
+    },
+
+    /**
      * Delete/Cancel appointment
      */
     async deleteAppointment(id) {
@@ -729,7 +1170,7 @@ const AppointmentService = {
 
         const sessions = await prisma.appointment.findMany({
             where: {
-                status: 'scheduled',
+                status: { in: ['scheduled', 'booked'] },
                 end: { lt: cutoffTime }
             },
             include: { member: true }
