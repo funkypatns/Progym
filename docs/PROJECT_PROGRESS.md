@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Post-login blank-screen loop fixed in frontend by preventing redundant auth-store user updates, decoupling POS init from `user` object changes, and hardening ErrorBoundary catch handling. Status: done.
 - Device management architecture refactored: removed gym-app device admin UI/APIs, added dedicated license-server `/admin` dashboard and separate license-admin JWT auth (`LICENSE_ADMIN_JWT_SECRET`). Status: done.
 - Recurring `INTEGRITY_MISMATCH` fixed with release-only signed manifest validation (versioned `/api/integrity/manifest`, RSA signature verification with embedded public key, production-only strict enforcement, and dev warn mode). Status: done.
 - Post-licensing security layer implemented (device fingerprint binding, approved-device enforcement, RS256 activation tokens, 24h validation + 72h grace, integrity manifest verification, and baseline security tests/docs). Status: done, needs manual verification.
@@ -78,6 +79,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 1b02134  | Fix post-login render crash loop by avoiding redundant `refreshSession` state writes, running POS initialization only on auth transition, and removing recursive ErrorBoundary catch-state updates. |
 | 2026-02-17 | 2a67571  | Move device management out of gym client into license-server only: remove gym-side device routes/UI, add `/api/licenses/heartbeat`, add dedicated license-server `/admin` dashboard routes (`/admin/licenses`, `/admin/licenses/:id/devices`, approve/revoke/reset), and enforce separate license-admin JWT auth secret. |
 | 2026-02-17 | 926a659  | Map integrity-related activation failures to HTTP 403 so tamper/signature/release-manifest blocks return explicit security status codes instead of generic 400. |
 | 2026-02-17 | 31d329f  | Permanently fix recurring integrity mismatch by replacing source-file/token manifest checks with release-artifact SHA-256 manifests, RSA signature verification via embedded public key, versioned `/api/integrity/manifest` endpoint, production-only enforcement with dev warn mode, and updated integrity tests/docs. |
