@@ -697,6 +697,7 @@
         "form": {
             "member": "Member",
             "memberSearch": "Search member by name / ID",
+            "memberSearchHint": "Type at least 2 letters to search",
             "packTemplate": "Pack Template",
             "paymentMethod": "Payment method",
             "paymentStatus": "Payment status",

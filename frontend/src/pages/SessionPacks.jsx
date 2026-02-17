@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import apiClient from '../utils/api';
 
 const STATUS_OPTIONS = ['all', 'active', 'exhausted', 'paused', 'expired'];
+const MEMBER_SEARCH_MIN_CHARS = 2;
 
 const STATUS_CLASS = {
     active: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40',
@@ -31,6 +32,7 @@ const SessionPacks = () => {
     const [members, setMembers] = useState([]);
     const [memberSearch, setMemberSearch] = useState('');
     const [isSearchingMembers, setIsSearchingMembers] = useState(false);
+    const [selectedMemberOption, setSelectedMemberOption] = useState(null);
     const [selectedAssignment, setSelectedAssignment] = useState(null);
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
@@ -112,7 +114,7 @@ const SessionPacks = () => {
 
     useEffect(() => {
         if (!showAssignModal) return;
-        if (!memberSearch.trim()) {
+        if (memberSearch.trim().length < MEMBER_SEARCH_MIN_CHARS) {
             setMembers([]);
             return;
         }
@@ -131,10 +133,33 @@ const SessionPacks = () => {
         return () => clearTimeout(timeout);
     }, [memberSearch, showAssignModal]);
 
-    const selectedMember = useMemo(
-        () => members.find((member) => String(member.id) === String(form.memberId)),
-        [members, form.memberId]
-    );
+    const selectedMember = useMemo(() => {
+        if (!form.memberId) return null;
+        if (selectedMemberOption && String(selectedMemberOption.id) === String(form.memberId)) {
+            return selectedMemberOption;
+        }
+        return members.find((member) => String(member.id) === String(form.memberId)) || null;
+    }, [form.memberId, members, selectedMemberOption]);
+
+    const getMemberFullName = (member) => `${member?.firstName || ''} ${member?.lastName || ''}`.trim();
+
+    const handleMemberSearchChange = (value) => {
+        setMemberSearch(value);
+        if (!selectedMember) return;
+        const selectedName = getMemberFullName(selectedMember).toLowerCase();
+        if (value.trim().toLowerCase() !== selectedName) {
+            setSelectedMemberOption(null);
+            setForm((prev) => ({ ...prev, memberId: '' }));
+        }
+    };
+
+    const handleMemberSelect = (member) => {
+        const fullName = getMemberFullName(member);
+        setForm((prev) => ({ ...prev, memberId: String(member.id) }));
+        setSelectedMemberOption(member);
+        setMemberSearch(fullName);
+        setMembers([]);
+    };
 
     const getTemplatePrice = (template) => {
         if (!template) return '';
@@ -199,6 +224,7 @@ const SessionPacks = () => {
             setAmountTouched(false);
             setMemberSearch('');
             setMembers([]);
+            setSelectedMemberOption(null);
             fetchRows();
         } catch (error) {
             toast.error(error.response?.data?.message || error.message || t('sessionPacks.errors.assign', 'Failed to assign pack'));
@@ -455,7 +481,7 @@ const SessionPacks = () => {
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-200">{t('sessionPacks.form.member', 'Member')}</label>
                             <input
                                 value={memberSearch}
-                                onChange={(e) => setMemberSearch(e.target.value)}
+                                onChange={(e) => handleMemberSearchChange(e.target.value)}
                                 placeholder={t('sessionPacks.form.memberSearch', 'Search member by name / ID')}
                                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950"
                             />
@@ -466,7 +492,7 @@ const SessionPacks = () => {
                                         <button
                                             type="button"
                                             key={member.id}
-                                            onClick={() => setForm((prev) => ({ ...prev, memberId: String(member.id) }))}
+                                            onClick={() => handleMemberSelect(member)}
                                             className={`w-full text-start px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${String(form.memberId) === String(member.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
                                         >
                                             <div className="font-bold text-gray-900 dark:text-white">{member.firstName} {member.lastName}</div>
@@ -474,6 +500,11 @@ const SessionPacks = () => {
                                         </button>
                                     ))}
                                 </div>
+                            )}
+                            {memberSearch.trim().length > 0 && memberSearch.trim().length < MEMBER_SEARCH_MIN_CHARS && (
+                                <p className="text-xs text-gray-500">
+                                    {t('sessionPacks.form.memberSearchHint', 'Type at least 2 letters to search')}
+                                </p>
                             )}
                             {selectedMember && (
                                 <p className="text-xs text-emerald-500">{selectedMember.firstName} {selectedMember.lastName}</p>
