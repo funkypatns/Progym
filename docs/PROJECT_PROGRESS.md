@@ -74,6 +74,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 8b83839  | Remove duplicate route declarations for `POST /api/payments/:id/refund` and `PUT /api/subscriptions/:id/toggle-pause` so each endpoint has a single canonical handler. |
 | 2026-02-17 | 5dca48a  | Fix Assign Pack member autocomplete: enforce minimum search length, sync typed value with selected member, and auto-fill input text on member selection (with AR/EN hint key). |
 | 2026-02-17 | 2de7db5  | Polish Trainer Report UI for simpler, clearer visuals (formatted headers/values and badges) and add missing Arabic keys for Trainer Report and Pending Completion labels. |
 | 2026-02-17 | dacf5f3  | Fix Trainer Report frontend parse error by closing commissions transactions map expression in `TrainerReportPage.jsx`. |
