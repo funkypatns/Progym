@@ -63,9 +63,11 @@
 ### Build Settings
 ```yaml
 Root Directory: backend
-Build Command: npm ci && npx prisma generate && npx prisma migrate deploy
+Build Command: npm ci && npx prisma generate && npx prisma db push
 Start Command: npm start
 ```
+
+> Note: deployment currently uses `prisma db push` because the checked-in migration lock file is SQLite-based.
 
 ### Environment Variables
 ```env

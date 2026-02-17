@@ -61,7 +61,6 @@
                     ]
                 }
             ],
-            "icon": "electron/assets/icon.ico",
             "artifactName": "${productName}-Setup-${version}.${ext}"
         },
         "nsis": {
@@ -70,9 +69,6 @@
             "createDesktopShortcut": true,
             "createStartMenuShortcut": true,
             "shortcutName": "Gym Management",
-            "installerIcon": "electron/assets/icon.ico",
-            "uninstallerIcon": "electron/assets/icon.ico",
-            "installerHeaderIcon": "electron/assets/icon.ico",
             "license": "LICENSE.txt"
         },
         "publish": {
