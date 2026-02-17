@@ -600,7 +600,7 @@ const TrainerReportPage = () => {
                     overpaidAmount: item.overpaidAmount ?? 0,
                     appointmentStatus: item.appointmentStatus || '',
                     appointment: item.appointment || null
-                });
+                }));
 
             const normalizedPayouts = settlementRows.map((row) => ({
                 ...row,
