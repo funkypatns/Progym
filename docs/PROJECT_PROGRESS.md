@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Session Packs assign-member autocomplete now requires at least 2 letters, shows matching members, and writes the selected member name into the input on click. Status: done, needs manual verification.
 - Trainer Report UI refreshed for cleaner readability (modern summary cards, clearer table header/value formatting, status badges in list/details) and Arabic labels restored for Trainer Report + Pending Completion. Status: done, needs manual verification.
 - Trainer Report commissions integration build/parsing regression fixed in `TrainerReportPage.jsx` map closure. Status: done.
 - Trainer Report now reads from unified `/api/commissions/summary` + `/api/commissions/transactions` APIs and settles via `/api/commissions/settle`. Status: done, needs manual verification.
@@ -73,6 +74,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 5dca48a  | Fix Assign Pack member autocomplete: enforce minimum search length, sync typed value with selected member, and auto-fill input text on member selection (with AR/EN hint key). |
 | 2026-02-17 | 2de7db5  | Polish Trainer Report UI for simpler, clearer visuals (formatted headers/values and badges) and add missing Arabic keys for Trainer Report and Pending Completion labels. |
 | 2026-02-17 | dacf5f3  | Fix Trainer Report frontend parse error by closing commissions transactions map expression in `TrainerReportPage.jsx`. |
 | 2026-02-17 | 1f3f0ef  | Unify Trainer Report with commissions APIs (summary/transactions/settle), add canonical trainer commission transaction upsert in commission service, and add integration tests for transaction generation and settlement flow. |
