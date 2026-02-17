@@ -74,6 +74,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 0aedc11  | Fix frontend quality command reliability by replacing missing-ESLint lint script with a working validation chain (`check:i18n` + production build). |
 | 2026-02-17 | 1c5b89a  | Unblock Electron release build by removing missing icon references (fallback to default icon), add `electron/assets` build-resources directory, and align deployment docs to `prisma db push`. |
 | 2026-02-17 | 6806687  | Harden license validation by removing recovery-key shortcuts and allowing offline bypass only with explicit development `LICENSE_BYPASS=true`. |
 | 2026-02-17 | 8b83839  | Remove duplicate route declarations for `POST /api/payments/:id/refund` and `PUT /api/subscriptions/:id/toggle-pause` so each endpoint has a single canonical handler. |
