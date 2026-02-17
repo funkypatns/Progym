@@ -1,6 +1,6 @@
 ﻿const test = require('node:test');
 const assert = require('node:assert/strict');
-const { performPackAssignmentCheckIn } = require('../services/packAssignmentsService');
+const { performPackAssignmentCheckIn, resolveAmountPaid } = require('../services/packAssignmentsService');
 
 function createMockPrisma({ remainingSessions = 2, status = 'ACTIVE', endDate = null } = {}) {
     let checkInCounter = 1;
@@ -168,4 +168,10 @@ test('cannot check-in exhausted assignment', async () => {
             return true;
         }
     );
+});
+
+test('resolveAmountPaid falls back to plan price when amount is missing', () => {
+    assert.equal(resolveAmountPaid(null, 1200), 1200);
+    assert.equal(resolveAmountPaid('', 1200), 1200);
+    assert.equal(resolveAmountPaid(undefined, 1200), 1200);
 });

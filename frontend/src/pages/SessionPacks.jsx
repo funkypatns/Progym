@@ -27,6 +27,7 @@ const SessionPacks = () => {
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [assigning, setAssigning] = useState(false);
     const [templates, setTemplates] = useState([]);
+    const [amountTouched, setAmountTouched] = useState(false);
     const [members, setMembers] = useState([]);
     const [memberSearch, setMemberSearch] = useState('');
     const [isSearchingMembers, setIsSearchingMembers] = useState(false);
@@ -135,6 +136,25 @@ const SessionPacks = () => {
         [members, form.memberId]
     );
 
+    const getTemplatePrice = (template) => {
+        if (!template) return '';
+        const rawPrice = template.price_total ?? template.priceTotal ?? template.price;
+        const priceNumber = Number(rawPrice);
+        return Number.isFinite(priceNumber) ? String(priceNumber) : '';
+    };
+
+    const handleTemplateChange = (templateId) => {
+        const template = templates.find((item) => String(item.id) === String(templateId));
+        const nextPrice = getTemplatePrice(template);
+        const shouldAutoFillAmount = !amountTouched || form.amountPaid === '' || form.amountPaid === null || form.amountPaid === undefined;
+
+        setForm((prev) => ({
+            ...prev,
+            packTemplateId: templateId,
+            amountPaid: shouldAutoFillAmount ? nextPrice : prev.amountPaid
+        }));
+    };
+
     const handleAssign = async () => {
         if (!form.memberId || !form.packTemplateId) {
             toast.error(t('sessionPacks.errors.selectMemberAndPack', 'Select member and pack template first'));
@@ -176,6 +196,7 @@ const SessionPacks = () => {
                 sessionName: '',
                 sessionPrice: ''
             });
+            setAmountTouched(false);
             setMemberSearch('');
             setMembers([]);
             fetchRows();
@@ -463,7 +484,7 @@ const SessionPacks = () => {
                             <label className="text-sm font-bold text-gray-700 dark:text-gray-200">{t('sessionPacks.form.packTemplate', 'Pack Template')}</label>
                             <select
                                 value={form.packTemplateId}
-                                onChange={(e) => setForm((prev) => ({ ...prev, packTemplateId: e.target.value }))}
+                                onChange={(e) => handleTemplateChange(e.target.value)}
                                 className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950"
                             >
                                 <option value="">{t('common.select', 'Select')}</option>
@@ -507,7 +528,10 @@ const SessionPacks = () => {
                                     type="number"
                                     min="0"
                                     value={form.amountPaid}
-                                    onChange={(e) => setForm((prev) => ({ ...prev, amountPaid: e.target.value }))}
+                                    onChange={(e) => {
+                                        setAmountTouched(true);
+                                        setForm((prev) => ({ ...prev, amountPaid: e.target.value }));
+                                    }}
                                     className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950"
                                 />
                             </div>

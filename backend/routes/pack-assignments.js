@@ -1,8 +1,8 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const { authenticate, requirePermission, requireActiveShift } = require('../middleware/auth');
 const { PERMISSIONS } = require('../utils/permissions');
-const { syncStatuses, performPackAssignmentCheckIn } = require('../services/packAssignmentsService');
+const { syncStatuses, performPackAssignmentCheckIn, resolveAmountPaid } = require('../services/packAssignmentsService');
 
 router.use(authenticate);
 
@@ -172,9 +172,6 @@ router.post('/', requireActiveShift, requirePermission(PERMISSIONS.SUBSCRIPTIONS
         if (!['paid', 'partial', 'unpaid'].includes(paymentStatus)) {
             return res.status(400).json({ success: false, reason: 'BAD_REQUEST', message: 'Invalid payment status' });
         }
-        if (amountPaid !== null && amountPaid < 0) {
-            return res.status(400).json({ success: false, reason: 'BAD_REQUEST', message: 'Amount paid must be >= 0' });
-        }
 
         const created = await req.prisma.$transaction(async (tx) => {
             const plan = await tx.subscriptionPlan.findUnique({ where: { id: templateId } });
@@ -215,6 +212,12 @@ router.post('/', requireActiveShift, requirePermission(PERMISSIONS.SUBSCRIPTIONS
             const expiresAt = plan.packageValidityDays
                 ? new Date(startDate.getTime() + Number(plan.packageValidityDays) * 24 * 60 * 60 * 1000)
                 : null;
+            const resolvedAmountPaid = resolveAmountPaid(amountPaid, plan.price);
+            if (resolvedAmountPaid === null) {
+                const err = new Error('Amount paid must be >= 0');
+                err.status = 400;
+                throw err;
+            }
 
             const fallbackSessionPrice = Number(plan.price || 0) > 0 && totalSessions > 0
                 ? Number(plan.price) / totalSessions
@@ -233,7 +236,7 @@ router.post('/', requireActiveShift, requirePermission(PERMISSIONS.SUBSCRIPTIONS
                     status: 'ACTIVE',
                     paymentMethod,
                     paymentStatus,
-                    amountPaid: amountPaid ?? 0,
+                    amountPaid: resolvedAmountPaid,
                     createdByEmployeeId: req.user?.id || null
                 },
                 include: {

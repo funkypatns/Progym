@@ -1,4 +1,4 @@
-﻿const parseJsonSafely = (text, fallback = null) => {
+const parseJsonSafely = (text, fallback = null) => {
     if (!text || typeof text !== 'string') return fallback;
     try {
         return JSON.parse(text);
@@ -6,7 +6,15 @@
         return fallback;
     }
 };
+const resolveAmountPaid = (inputAmountPaid, planPrice) => {
+    if (inputAmountPaid === null || inputAmountPaid === undefined || inputAmountPaid === '') {
+        const fallback = Number(planPrice);
+        return Number.isFinite(fallback) && fallback >= 0 ? fallback : 0;
+    }
 
+    const parsed = Number(inputAmountPaid);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
 const syncStatuses = async (prisma, where = {}) => {
     const now = new Date();
     await prisma.memberPackage.updateMany({
@@ -187,6 +195,7 @@ const performPackAssignmentCheckIn = async ({
 
 module.exports = {
     parseJsonSafely,
+    resolveAmountPaid,
     syncStatuses,
     performPackAssignmentCheckIn
 };
