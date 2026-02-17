@@ -217,3 +217,4 @@ Phase 4 - Receipts system
 | 2026-02-16 | 558ebc5 | Add session package sales/consumption flow with package routes, migrations, idempotent check-in deduction, and UI wiring. |
 | 2026-02-17 | f1a476e | Add Session Packs page/nav, pack-assignment APIs, payment fields, idempotent assignment check-ins, tests, and README usage section. |
 | 2026-02-17 | 9ffa135 | Handle pack assignments schema-mismatch errors with explicit response instead of opaque 500. |
+| 2026-02-17 | c82b8c0 | Auto-fill Assign Pack amount from template price and default missing amount_paid server-side. |
