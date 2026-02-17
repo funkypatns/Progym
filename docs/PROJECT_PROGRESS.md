@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Session Packs end-to-end flow (templates, assignments, attendance deduction, new page/nav). Status: done, needs manual verification.
 - Session packages (plan type + member package assignment + check-in consumption + attendance endpoint + UI wiring). Status: done, needs manual verification.
 - Quick payment in Assign Subscription flow, receipt fix, and reports refresh. Status: done, needs manual verification.
 - Payments list cancelled badge. Status: done, needs manual verification.
@@ -214,3 +215,4 @@ Phase 4 - Receipts system
 | 2026-02-16 | 0ecaf0b | Add package CTAs and success messaging in Check-in. |
 | 2026-02-16 | 0b87516 | Fix package selection JSX parse error. |
 | 2026-02-16 | 558ebc5 | Add session package sales/consumption flow with package routes, migrations, idempotent check-in deduction, and UI wiring. |
+| 2026-02-17 | f1a476e | Add Session Packs page/nav, pack-assignment APIs, payment fields, idempotent assignment check-ins, tests, and README usage section. |
