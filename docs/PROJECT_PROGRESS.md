@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Vendor Support Info delivered end-to-end: added `license-server`-only `vendor_profile` storage + admin APIs/UI (`/admin/vendor-profile`), public read endpoint (`/api/public/vendor-profile`, no license check), gym-app read-only Support page with cache/offline fallback, and expired-license access path (Support whitelisted + link on activation/expired screen). Status: done.
 - Export refactor completed: replaced raw CSV/key-value report exports with structured styled Excel (`.xlsx`) across cash close and reports, added shared backend Excel service (`exceljs`), and wired remaining report exports (payments ledger, gym income sessions, pending completion, cash movements) to server-side Excel endpoints. Status: done.
 - Cash Close end-to-end stability fixed: synced Prisma schema/client for `CashClosePeriod`, added explicit backend error codes + dev stack logging on create/current/history/list, hardened OPEN-period integrity checks, and updated frontend to show actionable cash-close toasts (no generic server-error masking). Status: done.
 - Cash Close modal now computes `difference = declaredCash - expectedCash` in real-time with 2-decimal rounding, safe empty-input handling, and dynamic status badge (`عجز`/`زيادة`/`متوازن`) with red/green styling. Status: done.
@@ -82,6 +83,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | e7c9f72  | Build Vendor Support Info feature: add `license-server` `vendor_profile` migration/model, public read API (`GET /api/public/vendor-profile`) with light rate limit, vendor admin profile page/APIs under separate license-admin auth, and gym-app read-only Support page (separate public HTTP client, local cache fallback, WhatsApp template vars, sidebar route, and expired-license whitelist/link). |
 | 2026-02-17 | 12cb575  | Refactor export stack to structured styled `.xlsx`: add shared backend `exceljs` export service, convert cash close export to multi-sheet workbook (summary/payments/payouts/cash-in/sales), migrate reports/receipts/trainer exports to consistent Excel output, and replace remaining frontend CSV export actions with backend Excel downloads (payments ledger, gym income sessions, pending completion, cash movements). |
 | 2026-02-17 | ff03374  | Fix Cash Close create/history/current failures end-to-end by enforcing Prisma cash-close model availability checks, returning endpoint-specific `errorCode` payloads with dev stack logs, preventing silent OPEN-period inconsistencies, adding regression tests for schema-mismatch handling, and updating frontend cash-close toasts for actionable errors. |
 | 2026-02-17 | f7ce6f6  | Enhance Cash Close modal difference behavior with rounded real-time calculation (`declared - expected`), safe zero fallback for empty input, and dynamic Arabic status badge/color states for shortage/overage/balanced. |
