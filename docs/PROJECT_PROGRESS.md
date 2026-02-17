@@ -21,6 +21,9 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Close Cash financial preview no longer crashes and now returns stable `summary` payload with null-safe totals. Status: done, needs manual verification.
+- Close Cash calculations now include cash movements (`IN`/`OUT`) and trainer payouts in expected cash/non-cash amounts. Status: done, needs manual verification.
+- Close Cash modal/report UI now surfaces payouts total, cash-in total, adjusted expected cash formula, and expected card/transfer snapshot. Status: done, needs manual verification.
 - Session ledger price section now uses `الفرق` (final - paid) and removes `المتبقي` from UI. Status: done, needs manual verification.
 - Session ledger panel UI refactor (essential-only fields, cleaner hierarchy, simplified payments row with paid-by alignment). Status: done, needs manual verification.
 - Gym Income - Sessions ledger drawer (eye action + detailed right-side ledger with payment timeline and adjustment history). Status: done, needs manual verification.
@@ -67,6 +70,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | f6f4e03  | Fix Close Cash financial preview crash, add null-safe summary response, include payouts/cash-in in expected calculations, persist new snapshot totals, and update close cash UI + tests. |
 | 2026-02-17 | e08e9da  | Replace Session Ledger `remaining` with `difference` (final - paid), compute paid from completed/paid payment timeline rows, and add paid-in-full/overpaid states. |
 | 2026-02-17 | 964414d  | Refactor Session Ledger drawer UI to essential information only, simplify pricing section, and streamline payment rows with cleaner paid-by alignment. |
 | 2026-02-17 | 010ffc6  | Add Gym Income - Sessions ledger drawer UI with row action, backend ledger details endpoint, payment timeline, adjustment history, and AR/EN i18n keys. |
@@ -143,6 +147,9 @@ Phase 4 - Receipts system
 - Verify Gym Income - Sessions `View Ledger` drawer opens from row action and shows session info, price breakdown, payment timeline, and adjustment history without horizontal table scrolling.
 - Verify Session Ledger drawer visual cleanup: essential-only header fields, simplified price strip, and one-line payment row with `Paid By` aligned to far-left in RTL.
 - Verify Session Ledger price section shows `الفرق` only (no `المتبقي`), with correct states for fully paid / due / overpaid.
+- Verify Close Cash preview includes `payoutsTotal`, `cashInTotal`, and expected cash uses `cash revenue + cash in - payouts - cash refunds`.
+- Verify creating trainer payout and cash movement (`OUT`/`IN`) changes expected cash/non-cash in Close Cash modal before saving.
+- Run cash closing migration and validate new fields appear in close records (`expectedCardAmount`, `expectedTransferAmount`, `payoutsTotal`, `cashInTotal`).
 - Run session package smoke test: create package plan, assign to member, verify check-in decrements remaining sessions.
 - Verify `/api/attendance` shows session name/price history for package usage.
 
