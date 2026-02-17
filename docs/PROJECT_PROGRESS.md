@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Session ledger price section now uses `الفرق` (final - paid) and removes `المتبقي` from UI. Status: done, needs manual verification.
 - Session ledger panel UI refactor (essential-only fields, cleaner hierarchy, simplified payments row with paid-by alignment). Status: done, needs manual verification.
 - Gym Income - Sessions ledger drawer (eye action + detailed right-side ledger with payment timeline and adjustment history). Status: done, needs manual verification.
 - Gym Income - Sessions report now uses dedicated backend endpoint so adjusted price details appear (original/final/diff/reason/adjusted-by). Status: done, needs manual verification.
@@ -66,6 +67,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | e08e9da  | Replace Session Ledger `remaining` with `difference` (final - paid), compute paid from completed/paid payment timeline rows, and add paid-in-full/overpaid states. |
 | 2026-02-17 | 964414d  | Refactor Session Ledger drawer UI to essential information only, simplify pricing section, and streamline payment rows with cleaner paid-by alignment. |
 | 2026-02-17 | 010ffc6  | Add Gym Income - Sessions ledger drawer UI with row action, backend ledger details endpoint, payment timeline, adjustment history, and AR/EN i18n keys. |
 | 2026-02-17 | 10733a6  | Route Gym Income - Sessions report through `/reports/gym-income-sessions`, include adjustment details/phone in backend rows, and polish report formatting/export labels. |
@@ -140,6 +142,7 @@ Phase 4 - Receipts system
 - Verify adjusted price details (original/final/diff/reason/adjusted-by) render in `Gym Income - Sessions` after appointment price adjustment.
 - Verify Gym Income - Sessions `View Ledger` drawer opens from row action and shows session info, price breakdown, payment timeline, and adjustment history without horizontal table scrolling.
 - Verify Session Ledger drawer visual cleanup: essential-only header fields, simplified price strip, and one-line payment row with `Paid By` aligned to far-left in RTL.
+- Verify Session Ledger price section shows `الفرق` only (no `المتبقي`), with correct states for fully paid / due / overpaid.
 - Run session package smoke test: create package plan, assign to member, verify check-in decrements remaining sessions.
 - Verify `/api/attendance` shows session name/price history for package usage.
 
