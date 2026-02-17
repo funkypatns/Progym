@@ -13,6 +13,31 @@ const { body, validationResult } = require('express-validator');
 const { generateToken, authenticate } = require('../middleware/auth');
 const permissionsStore = require('../utils/permissionsStore');
 
+const ensureDefaultAdminUser = async (prisma) => {
+    const existingUsers = await prisma.user.count();
+    if (existingUsers > 0) return;
+
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    await prisma.$transaction(async (tx) => {
+        const stillEmpty = await tx.user.count();
+        if (stillEmpty > 0) return;
+
+        await tx.user.upsert({
+            where: { username: 'admin' },
+            update: {},
+            create: {
+                username: 'admin',
+                email: 'admin@gym.local',
+                password: hashedPassword,
+                firstName: 'Admin',
+                lastName: 'User',
+                role: 'admin',
+                isActive: true
+            }
+        });
+    });
+};
+
 /**
  * POST /api/auth/login
  * User login
@@ -33,6 +58,9 @@ router.post('/login', [
         }
 
         const { username, password } = req.body;
+
+        // Bootstrap admin on first run (fresh database)
+        await ensureDefaultAdminUser(req.prisma);
 
         // Find user
         const user = await req.prisma.user.findUnique({
