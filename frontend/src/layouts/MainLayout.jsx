@@ -42,7 +42,12 @@ const MainLayout = () => {
     const [isShiftModalOpen, setIsShiftModalOpen] = React.useState(false);
 
     React.useEffect(() => {
-        initPos();
+        if (isAuthenticated) {
+            initPos();
+        }
+    }, [isAuthenticated, initPos]);
+
+    React.useEffect(() => {
         const handleForbidden = async () => useAuthStore.getState().refreshSession();
         const handleOpenShift = () => setIsShiftModalOpen(true);
         window.addEventListener('auth:forbidden', handleForbidden);
@@ -51,7 +56,7 @@ const MainLayout = () => {
             window.removeEventListener('auth:forbidden', handleForbidden);
             window.removeEventListener('shift:open', handleOpenShift);
         };
-    }, [user, isAuthenticated]);
+    }, []);
 
     // Sync Global Direction & Language
     React.useEffect(() => {

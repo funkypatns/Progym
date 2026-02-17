@@ -15,7 +15,7 @@ class ErrorBoundary extends React.Component {
     componentDidCatch(error, errorInfo) {
         // You can also log the error to an error reporting service
         console.error("Uncaught error:", error, errorInfo);
-        this.setState({ errorInfo });
+        // Do not trigger extra state updates here; repeated commit-phase errors can recurse.
     }
 
     handleReload = () => {

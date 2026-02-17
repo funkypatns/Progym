@@ -78,7 +78,15 @@ export const useAuthStore = create(
 
                     const response = await api.get('/auth/me');
                     if (response.data.success) {
-                        set({ user: response.data.data });
+                        const nextUser = response.data.data;
+                        const currentUser = get().user;
+                        const currentSerialized = currentUser ? JSON.stringify(currentUser) : '';
+                        const nextSerialized = nextUser ? JSON.stringify(nextUser) : '';
+
+                        // Avoid redundant auth-store updates that can cascade into layout re-inits.
+                        if (currentSerialized !== nextSerialized) {
+                            set({ user: nextUser });
+                        }
                     }
                 } catch (error) {
                     console.error('Session refresh failed:', error);
