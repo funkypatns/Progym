@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Cash Close modal now computes `difference = declaredCash - expectedCash` in real-time with 2-decimal rounding, safe empty-input handling, and dynamic status badge (`عجز`/`زيادة`/`متوازن`) with red/green styling. Status: done.
 - Post-login blank-screen loop fixed in frontend by preventing redundant auth-store user updates, decoupling POS init from `user` object changes, and hardening ErrorBoundary catch handling. Status: done.
 - Device management architecture refactored: removed gym-app device admin UI/APIs, added dedicated license-server `/admin` dashboard and separate license-admin JWT auth (`LICENSE_ADMIN_JWT_SECRET`). Status: done.
 - Recurring `INTEGRITY_MISMATCH` fixed with release-only signed manifest validation (versioned `/api/integrity/manifest`, RSA signature verification with embedded public key, production-only strict enforcement, and dev warn mode). Status: done.
@@ -79,6 +80,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | f7ce6f6  | Enhance Cash Close modal difference behavior with rounded real-time calculation (`declared - expected`), safe zero fallback for empty input, and dynamic Arabic status badge/color states for shortage/overage/balanced. |
 | 2026-02-17 | 1b02134  | Fix post-login render crash loop by avoiding redundant `refreshSession` state writes, running POS initialization only on auth transition, and removing recursive ErrorBoundary catch-state updates. |
 | 2026-02-17 | 2a67571  | Move device management out of gym client into license-server only: remove gym-side device routes/UI, add `/api/licenses/heartbeat`, add dedicated license-server `/admin` dashboard routes (`/admin/licenses`, `/admin/licenses/:id/devices`, approve/revoke/reset), and enforce separate license-admin JWT auth secret. |
 | 2026-02-17 | 926a659  | Map integrity-related activation failures to HTTP 403 so tamper/signature/release-manifest blocks return explicit security status codes instead of generic 400. |
