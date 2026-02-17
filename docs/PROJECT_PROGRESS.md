@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Post-licensing security layer implemented (device fingerprint binding, approved-device enforcement, RS256 activation tokens, 24h validation + 72h grace, integrity manifest verification, admin device management APIs/UI, and baseline security tests/docs). Status: done, needs manual verification.
 - Cash Close now uses POS-style periods (single OPEN period, immutable CLOSED snapshot, export CSV/JSON, auto-open new period, and close history tab in reports). Status: done, needs manual verification.
 - Session Packs assign-member autocomplete now requires at least 2 letters, shows matching members, and writes the selected member name into the input on click. Status: done, needs manual verification.
 - Trainer Report UI refreshed for cleaner readability (modern summary cards, clearer table header/value formatting, status badges in list/details) and Arabic labels restored for Trainer Report + Pending Completion. Status: done, needs manual verification.
@@ -75,6 +76,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | a6c3256  | Implement full post-licensing security layer: machine-id device fingerprint binding and approval workflow, RS256 activation token signing/verification, 24h revalidation with 72h offline grace, signed integrity manifest checks, audited device/license management endpoints, admin device dashboard page, and baseline security tests/docs. |
 | 2026-02-17 | c0c492f  | Implement POS-style Cash Close periods with immutable snapshot close + CSV/JSON export, auto-open next period baseline, backend history/export endpoints, refreshed close modal/history UI, and period lifecycle tests. |
 | 2026-02-17 | 4145293  | Fix Settings reset FK crash by deleting appointment-linked children (including `SessionPriceAdjustment`) before appointments and add regression test for reset order. |
 | 2026-02-17 | 0aedc11  | Fix frontend quality command reliability by replacing missing-ESLint lint script with a working validation chain (`check:i18n` + production build). |
@@ -149,6 +151,9 @@ Phase 4 - Receipts system
 | 2026-02-05 | 0cafb74 | Repair mojibake in Arabic/English i18n files to restore readable text. |
 
 ## Next Actions
+- Run end-to-end licensing security smoke tests: first activation, blocked copied device, admin approve second device, revoked device/license blocking, offline grace expiry, and integrity mismatch.
+- Ensure production secrets are configured on license server (`LICENSE_PRIVATE_KEY`, `LICENSE_PUBLIC_KEY`, `LICENSE_ADMIN_TOKEN`) and rotate defaults before deployment.
+- Regenerate integrity manifests when shipping changed critical files (`cd license-server && npm run manifest:generate`).
 - Run manual tests for full and partial subscription payments.
 - Confirm receipt page opens without auth error.
 - Confirm Payments Summary and Outstanding reports refresh correctly.
