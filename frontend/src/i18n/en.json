@@ -525,6 +525,30 @@
             },
             "net": "Gym Net Income"
         },
+        "gymIncomeSessionsLedger": {
+            "open": "View Ledger",
+            "title": "Session Ledger",
+            "subtitle": "Full details for this session",
+            "close": "Close",
+            "loading": "Loading details...",
+            "loadFailed": "Failed to load ledger details",
+            "sessionInfo": "Session Information",
+            "sessionId": "Session ID",
+            "priceBreakdown": "Price Breakdown",
+            "originalPrice": "Original Price",
+            "finalPrice": "Final Price",
+            "adjustment": "Adjustment",
+            "totalPaid": "Total Paid",
+            "remaining": "Remaining",
+            "paymentTimeline": "Payment Timeline",
+            "adjustmentHistory": "Adjustment History",
+            "adjustedBy": "Adjusted By",
+            "adjustmentReason": "Adjustment Reason",
+            "reference": "Reference",
+            "notes": "Notes",
+            "noPayments": "No payments recorded for this session",
+            "noAdjustments": "No adjustment history"
+        },
         "coachEarnings": {
             "title": "Coach Earnings Report",
             "subtitle": "View commissions and process settlements"

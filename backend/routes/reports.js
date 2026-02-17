@@ -2420,6 +2420,135 @@ router.get('/gym-income-sessions', async (req, res) => {
 });
 
 /**
+ * GET /api/reports/gym-income-sessions/:appointmentId/ledger
+ * Full ledger details for one session row
+ */
+router.get('/gym-income-sessions/:appointmentId/ledger', async (req, res) => {
+    try {
+        const appointmentId = parseInt(req.params.appointmentId, 10);
+        if (!Number.isInteger(appointmentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid appointment id' });
+        }
+
+        const appointment = await req.prisma.appointment.findUnique({
+            where: { id: appointmentId },
+            select: {
+                id: true,
+                title: true,
+                start: true,
+                end: true,
+                status: true,
+                price: true,
+                finalPrice: true,
+                member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
+                trainer: { select: { id: true, name: true } },
+                completedByEmployee: { select: { id: true, firstName: true, lastName: true } },
+                priceAdjustments: {
+                    orderBy: { createdAt: 'desc' },
+                    include: {
+                        changedBy: { select: { firstName: true, lastName: true, username: true } }
+                    }
+                },
+                payments: {
+                    where: { status: { in: ['completed', 'COMPLETED', 'paid', 'PAID'] } },
+                    orderBy: { paidAt: 'desc' },
+                    select: {
+                        id: true,
+                        amount: true,
+                        method: true,
+                        status: true,
+                        paidAt: true,
+                        transactionRef: true,
+                        externalReference: true,
+                        notes: true,
+                        creator: { select: { firstName: true, lastName: true, username: true } }
+                    }
+                }
+            }
+        });
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        const memberName = [appointment.member?.firstName, appointment.member?.lastName].filter(Boolean).join(' ').trim();
+        const employeeName = appointment.completedByEmployee
+            ? [appointment.completedByEmployee.firstName, appointment.completedByEmployee.lastName].filter(Boolean).join(' ').trim()
+            : '';
+
+        const originalPrice = Number(appointment.price ?? 0);
+        const finalPrice = Number(appointment.finalPrice ?? originalPrice);
+        const adjustmentDifference = finalPrice - originalPrice;
+        const paymentRows = Array.isArray(appointment.payments) ? appointment.payments : [];
+        const totalPaid = paymentRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const remaining = Math.max(0, finalPrice - totalPaid);
+
+        const latestAdjustment = appointment.priceAdjustments?.[0] || null;
+        const adjustedBy = latestAdjustment?.changedBy
+            ? [latestAdjustment.changedBy.firstName, latestAdjustment.changedBy.lastName].filter(Boolean).join(' ').trim()
+                || latestAdjustment.changedBy.username || ''
+            : '';
+
+        return res.json({
+            success: true,
+            data: {
+                appointmentId: appointment.id,
+                serviceName: appointment.title || '',
+                sessionDate: appointment.start || null,
+                customerName: memberName,
+                customerCode: appointment.member?.memberId || '',
+                customerPhone: appointment.member?.phone || '',
+                trainerName: appointment.trainer?.name || '',
+                employeeName,
+                appointmentStatus: appointment.status || '',
+                originalPrice,
+                finalPrice,
+                adjustmentDifference,
+                adjustedBy,
+                adjustmentReason: latestAdjustment?.reason || '',
+                adjustedAt: latestAdjustment?.createdAt || null,
+                totalPaid,
+                remaining,
+                paymentTimeline: paymentRows.map((item) => {
+                    const paidBy = item.creator
+                        ? [item.creator.firstName, item.creator.lastName].filter(Boolean).join(' ').trim()
+                            || item.creator.username || ''
+                        : '';
+                    return {
+                        id: item.id,
+                        amount: Number(item.amount || 0),
+                        method: item.method || '',
+                        status: item.status || '',
+                        paidAt: item.paidAt || null,
+                        paidBy,
+                        reference: item.transactionRef || item.externalReference || '',
+                        notes: item.notes || ''
+                    };
+                }),
+                adjustmentHistory: (appointment.priceAdjustments || []).map((item) => {
+                    const changedBy = item.changedBy
+                        ? [item.changedBy.firstName, item.changedBy.lastName].filter(Boolean).join(' ').trim()
+                            || item.changedBy.username || ''
+                        : '';
+                    return {
+                        id: item.id,
+                        oldEffectivePrice: Number(item.oldEffectivePrice ?? 0),
+                        newEffectivePrice: Number(item.newEffectivePrice ?? 0),
+                        delta: Number(item.delta ?? 0),
+                        reason: item.reason || '',
+                        changedBy,
+                        changedAt: item.createdAt || null
+                    };
+                })
+            }
+        });
+    } catch (error) {
+        console.error('[REPORTS] Gym income session ledger error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to load session ledger details' });
+    }
+});
+
+/**
  * GET /api/reports/trainer-earnings
  * Trainer earnings report sourced from TrainerEarning table
  */

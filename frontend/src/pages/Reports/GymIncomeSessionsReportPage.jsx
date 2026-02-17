@@ -7,7 +7,11 @@ import {
     User,
     Users,
     Wallet,
-    CreditCard
+    CreditCard,
+    Eye,
+    X,
+    Clock3,
+    FileText
 } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
 import ReportsPageShell from '../../components/Reports/ReportsPageShell';
@@ -30,8 +34,240 @@ const SummaryCard = ({ label, value, icon: Icon }) => (
     </div>
 );
 
+const SessionLedgerDrawer = ({
+    open,
+    onClose,
+    loading,
+    error,
+    data,
+    isRTL,
+    language,
+    t,
+    methodLabel,
+    formatDate,
+    formatTime
+}) => {
+    if (!open) return null;
+
+    const customerLabel = data?.customerCode
+        ? `${data.customerName || ''} (${data.customerCode})`
+        : (data?.customerName || '—');
+    const adjustmentValue = Number(data?.adjustmentDifference || 0);
+    const adjustmentTone = adjustmentValue > 0
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : adjustmentValue < 0
+            ? 'text-red-600 dark:text-red-400'
+            : 'text-gray-600 dark:text-gray-300';
+
+    return (
+        <div className="fixed inset-0 z-50">
+            <button
+                type="button"
+                className="absolute inset-0 bg-black/50"
+                onClick={onClose}
+                aria-label={t('reports.gymIncomeSessionsLedger.close', 'Close')}
+            />
+            <aside
+                className={`absolute top-0 h-full w-full max-w-[640px] bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-700 ${isRTL ? 'left-0 border-r border-l-0' : 'right-0'}`}
+                dir={isRTL ? 'rtl' : 'ltr'}
+            >
+                <div className="h-full flex flex-col">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                {t('reports.gymIncomeSessionsLedger.title', 'Session Ledger')}
+                            </h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                {t('reports.gymIncomeSessionsLedger.subtitle', 'Full details for this session')}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+                            aria-label={t('reports.gymIncomeSessionsLedger.close', 'Close')}
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                        {loading && (
+                            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-300">
+                                {t('reports.gymIncomeSessionsLedger.loading', 'Loading details...')}
+                            </div>
+                        )}
+
+                        {!loading && error && (
+                            <div className="p-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-900/10 text-sm text-red-700 dark:text-red-300">
+                                {error}
+                            </div>
+                        )}
+
+                        {!loading && !error && data && (
+                            <>
+                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                                        <FileText size={16} />
+                                        {t('reports.gymIncomeSessionsLedger.sessionInfo', 'Session Information')}
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.member', 'Member')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{customerLabel || '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.phone', 'Phone')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{data.customerPhone || '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.service', 'Service')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{data.serviceName || '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.employee', 'Employee')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{data.employeeName || '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncome.coach', 'Coach')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{data.trainerName || '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.status', 'Status')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{data.appointmentStatus || '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.paidAt', 'Date')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">
+                                                {formatDate(data.sessionDate)} {formatTime(data.sessionDate)}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.sessionId', 'Session ID')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">#{data.appointmentId || '—'}</div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                                        {t('reports.gymIncomeSessionsLedger.priceBreakdown', 'Price Breakdown')}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.originalPrice', 'Original Price')}</div>
+                                            <div className="font-bold text-gray-900 dark:text-white">
+                                                {formatMoney(Number(data.originalPrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.finalPrice', 'Final Price')}</div>
+                                            <div className="font-bold text-gray-900 dark:text-white">
+                                                {formatMoney(Number(data.finalPrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.adjustment', 'Adjustment')}</div>
+                                            <div className={`font-bold ${adjustmentTone}`}>
+                                                {adjustmentValue > 0 ? '+' : adjustmentValue < 0 ? '-' : ''}
+                                                {formatMoney(Math.abs(adjustmentValue), language, { code: 'EGP', symbol: 'EGP' })}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.totalPaid', 'Total Paid')}</div>
+                                            <div className="font-bold text-gray-900 dark:text-white">
+                                                {formatMoney(Number(data.totalPaid || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
+                                        {t('reports.gymIncomeSessionsLedger.remaining', 'Remaining')}: {formatMoney(Number(data.remaining || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                    </div>
+                                </section>
+
+                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                                        {t('reports.gymIncomeSessionsLedger.paymentTimeline', 'Payment Timeline')}
+                                    </div>
+                                    {Array.isArray(data.paymentTimeline) && data.paymentTimeline.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {data.paymentTimeline.map((item) => (
+                                                <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800/50">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                            {formatMoney(Number(item.amount || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                                        </div>
+                                                        <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
+                                                            <Clock3 size={12} />
+                                                            {formatDate(item.paidAt)} {formatTime(item.paidAt)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                                        <div>{t('reports.fields.method', 'Method')}: {methodLabel(item.method)}</div>
+                                                        <div>{t('reports.fields.paidBy', 'Paid By')}: {item.paidBy || '—'}</div>
+                                                        <div>{t('reports.fields.status', 'Status')}: {item.status || '—'}</div>
+                                                        <div>{t('reports.gymIncomeSessionsLedger.reference', 'Reference')}: {item.reference || '—'}</div>
+                                                    </div>
+                                                    {!!item.notes && (
+                                                        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                                            {t('reports.gymIncomeSessionsLedger.notes', 'Notes')}: {item.notes}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                                            {t('reports.gymIncomeSessionsLedger.noPayments', 'No payments recorded for this session')}
+                                        </div>
+                                    )}
+                                </section>
+
+                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                                        {t('reports.gymIncomeSessionsLedger.adjustmentHistory', 'Adjustment History')}
+                                    </div>
+                                    {Array.isArray(data.adjustmentHistory) && data.adjustmentHistory.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {data.adjustmentHistory.map((item) => (
+                                                <div key={item.id} className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-3">
+                                                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                                                        {formatDate(item.changedAt)} {formatTime(item.changedAt)}
+                                                    </div>
+                                                    <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                                                        {formatMoney(Number(item.oldEffectivePrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                                        {' -> '}
+                                                        {formatMoney(Number(item.newEffectivePrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                                        {t('reports.gymIncomeSessionsLedger.adjustment', 'Adjustment')}: {item.delta > 0 ? '+' : ''}{formatMoney(Math.abs(Number(item.delta || 0)), language, { code: 'EGP', symbol: 'EGP' })}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                                        {t('reports.gymIncomeSessionsLedger.adjustedBy', 'Adjusted By')}: {item.changedBy || '—'}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                                        {t('reports.gymIncomeSessionsLedger.adjustmentReason', 'Adjustment Reason')}: {item.reason || '—'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                                            {t('reports.gymIncomeSessionsLedger.noAdjustments', 'No adjustment history')}
+                                        </div>
+                                    )}
+                                </section>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </aside>
+        </div>
+    );
+};
+
 const GymIncomeSessionsReportPage = () => {
-    const { i18n } = useTranslation();
+    const { t, i18n } = useTranslation();
     const language = i18n.language || 'en';
     const isRTL = i18n.dir() === 'rtl';
 
@@ -46,6 +282,10 @@ const GymIncomeSessionsReportPage = () => {
         byMethod: { CASH: 0, CARD: 0, TRANSFER: 0 }
     });
     const [rows, setRows] = useState([]);
+    const [ledgerOpen, setLedgerOpen] = useState(false);
+    const [ledgerLoading, setLedgerLoading] = useState(false);
+    const [ledgerError, setLedgerError] = useState('');
+    const [ledgerData, setLedgerData] = useState(null);
     const [filters, setFilters] = useState({
         from: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
         to: new Date().toISOString().split('T')[0],
@@ -207,6 +447,57 @@ const GymIncomeSessionsReportPage = () => {
         });
     }, [language]);
 
+    const closeLedger = useCallback(() => {
+        setLedgerOpen(false);
+        setLedgerError('');
+    }, []);
+
+    const openLedger = useCallback(async (row) => {
+        if (!row?.appointmentId) return;
+        setLedgerOpen(true);
+        setLedgerLoading(true);
+        setLedgerError('');
+        setLedgerData({
+            appointmentId: row.appointmentId,
+            customerName: row.customerName || '',
+            customerCode: row.customerCode || '',
+            serviceName: row.serviceName || '',
+            trainerName: row.trainerName || '',
+            sessionDate: row.sessionDate || row.paidAt || null,
+            originalPrice: Number(row.originalPrice || 0),
+            finalPrice: Number(row.finalPrice ?? row.amount ?? 0),
+            adjustmentDifference: Number(row.adjustmentDifference || 0),
+            adjustedBy: row.adjustedBy || '',
+            adjustmentReason: row.adjustmentReason || '',
+            adjustedAt: row.adjustedAt || null,
+            paymentTimeline: [],
+            adjustmentHistory: []
+        });
+        try {
+            const response = await apiClient.get(`/reports/gym-income-sessions/${row.appointmentId}/ledger`);
+            if (response.data?.success && response.data?.data) {
+                setLedgerData(response.data.data);
+                return;
+            }
+            throw new Error('Failed to load details');
+        } catch (error) {
+            setLedgerError(t('reports.gymIncomeSessionsLedger.loadFailed', 'Failed to load ledger details'));
+        } finally {
+            setLedgerLoading(false);
+        }
+    }, [t]);
+
+    useEffect(() => {
+        if (!ledgerOpen) return undefined;
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                closeLedger();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [ledgerOpen, closeLedger]);
+
     const exportCsv = () => {
         if (!rows.length) {
             toast.error(isRTL ? 'لا توجد بيانات للتصدير' : 'No data to export');
@@ -286,27 +577,32 @@ const GymIncomeSessionsReportPage = () => {
         {
             key: 'index',
             label: '#',
-            width: 64,
+            width: 56,
             align: 'center',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap w-16 text-center',
-            cellClassName: 'px-4 py-3 text-gray-500 dark:text-gray-400 text-center font-mono text-xs',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-3 py-3 text-gray-500 dark:text-gray-400 text-center font-mono text-xs',
             render: (_, index) => (index + 1).toString().padStart(2, '0')
         },
         {
             key: 'sessionDate',
-            label: isRTL ? 'التاريخ' : 'Date',
-            width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white whitespace-nowrap font-medium',
+            label: isRTL ? 'التاريخ والوقت' : 'Date & Time',
+            width: 'minmax(170px, 1fr)',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-3 py-3 text-gray-900 dark:text-white whitespace-nowrap',
             align: 'right',
-            render: (row) => formatDate(row.sessionDate || row.paidAt)
+            render: (row) => (
+                <div>
+                    <div className="font-semibold">{formatDate(row.sessionDate || row.paidAt)}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{formatTime(row.sessionDate || row.paidAt)}</div>
+                </div>
+            )
         },
         {
             key: 'customerName',
             label: isRTL ? 'العميل' : 'Customer',
-            width: 'minmax(180px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white font-medium',
+            width: 'minmax(190px, 1.1fr)',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-3 py-3 text-gray-900 dark:text-white',
             align: 'right',
             render: (row) => {
                 const customerLabel = row.customerCode
@@ -319,35 +615,17 @@ const GymIncomeSessionsReportPage = () => {
             key: 'serviceName',
             label: isRTL ? 'الخدمة' : 'Service',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-600 dark:text-gray-300',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-3 py-3 text-gray-600 dark:text-gray-300',
             align: 'right',
             render: (row) => row.serviceName || '—'
         },
         {
-            key: 'trainerName',
-            label: isRTL ? 'المدرب' : 'Trainer',
-            width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-600 dark:text-gray-300',
-            align: 'right',
-            render: (row) => row.trainerName || '—'
-        },
-        {
-            key: 'employeeName',
-            label: isRTL ? 'الموظف' : 'Employee',
-            width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-500 dark:text-gray-400 text-xs',
-            align: 'right',
-            render: (row) => row.employeeName || '—'
-        },
-        {
             key: 'paymentMethod',
-            label: isRTL ? 'طريقة الدفع' : 'Payment Method',
-            width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3',
+            label: isRTL ? 'الدفع' : 'Method',
+            width: 'minmax(120px, 0.8fr)',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
+            cellClassName: 'px-3 py-3',
             align: 'right',
             render: (row) => {
                 const method = row.paymentMethod?.toLowerCase();
@@ -367,44 +645,31 @@ const GymIncomeSessionsReportPage = () => {
         },
         {
             key: 'amount',
-            label: isRTL ? 'السعر النهائي' : 'Final Price',
-            width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
-            cellClassName: 'px-4 py-3 text-center whitespace-nowrap',
+            label: isRTL ? 'السعر النهائي' : 'Final',
+            width: 'minmax(130px, 0.8fr)',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-3 py-3 text-center whitespace-nowrap',
             align: 'center',
             render: (row) => {
                 const finalPrice = Number(row.finalPrice ?? row.amount ?? 0);
                 if (!Number.isFinite(finalPrice)) return '—';
                 return (
-                    <span className="font-bold text-gray-900 dark:text-white text-base">
+                    <span className="font-bold text-gray-900 dark:text-white">
                         {formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}
                     </span>
                 );
             }
         },
         {
-            key: 'originalPrice',
-            label: isRTL ? 'السعر الأصلي' : 'Original Price',
-            width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
-            cellClassName: 'px-4 py-3 text-center whitespace-nowrap text-xs text-gray-600 dark:text-gray-300',
-            align: 'center',
-            render: (row) => (
-                Number.isFinite(Number(row.originalPrice))
-                    ? formatMoney(Number(row.originalPrice), language, { code: 'EGP', symbol: 'EGP' })
-                    : '—'
-            )
-        },
-        {
             key: 'adjustmentDifference',
-            label: isRTL ? 'فرق التعديل' : 'Adjustment',
-            width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
-            cellClassName: 'px-4 py-3 text-center whitespace-nowrap text-xs text-gray-600 dark:text-gray-300',
+            label: isRTL ? 'التعديل' : 'Adj.',
+            width: 'minmax(120px, 0.7fr)',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-3 py-3 text-center whitespace-nowrap text-xs',
             align: 'center',
             render: (row) => {
                 const diff = Number(row.adjustmentDifference || 0);
-                if (!diff) return '—';
+                if (!diff) return <span className="text-gray-400">—</span>;
                 return (
                     <span className={diff > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'}>
                         {diff > 0 ? '+' : '-'}{formatMoney(Math.abs(diff), language, { code: 'EGP', symbol: 'EGP' })}
@@ -413,24 +678,24 @@ const GymIncomeSessionsReportPage = () => {
             }
         },
         {
-            key: 'adjustedBy',
-            label: isRTL ? 'تم التعديل بواسطة' : 'Adjusted By',
-            width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-600 dark:text-gray-300 text-xs',
-            align: 'right',
-            render: (row) => row.adjustedBy || '—'
-        },
-        {
-            key: 'adjustmentReason',
-            label: isRTL ? 'سبب التعديل' : 'Adjustment Reason',
-            width: 'minmax(200px, 1.2fr)',
-            headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap',
-            cellClassName: 'px-4 py-3 text-gray-500 dark:text-gray-400 text-xs',
-            align: 'right',
-            render: (row) => row.adjustmentReason || '—'
+            key: 'actions',
+            label: t('reports.actions', 'Actions'),
+            width: 'minmax(150px, 0.9fr)',
+            headerClassName: 'px-3 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
+            cellClassName: 'px-3 py-3 text-center',
+            align: 'center',
+            render: (row) => (
+                <button
+                    type="button"
+                    onClick={() => openLedger(row)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                >
+                    <Eye size={14} />
+                    {t('reports.gymIncomeSessionsLedger.open', 'View Ledger')}
+                </button>
+            )
         }
-    ]), [formatDate, isRTL, methodLabel, language]);
+    ]), [formatDate, formatTime, isRTL, methodLabel, language, openLedger, t]);
 
     const rowClassName = useCallback((_, index) => (
         `hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-800/30'}`
@@ -573,9 +838,9 @@ const GymIncomeSessionsReportPage = () => {
                         <VirtualizedTable
                             columns={tableColumns}
                             rows={rows}
-                            rowHeight={56}
+                            rowHeight={62}
                             maxHeight={560}
-                            className="text-sm text-right"
+                            className={`text-sm ${isRTL ? 'text-right' : 'text-left'}`}
                             headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10 shadow-sm"
                             baseRowClassName="border-b border-gray-200 dark:border-gray-700"
                             rowClassName={rowClassName}
@@ -584,6 +849,20 @@ const GymIncomeSessionsReportPage = () => {
                     </div>
                 )}
             </div>
+
+            <SessionLedgerDrawer
+                open={ledgerOpen}
+                onClose={closeLedger}
+                loading={ledgerLoading}
+                error={ledgerError}
+                data={ledgerData}
+                isRTL={isRTL}
+                language={language}
+                t={t}
+                methodLabel={methodLabel}
+                formatDate={formatDate}
+                formatTime={formatTime}
+            />
         </ReportsPageShell>
     );
 };
