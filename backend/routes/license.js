@@ -81,6 +81,7 @@ router.post('/activate', async (req, res) => {
     try {
         const { licenseKey, gymName } = req.body;
         const trimmedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
+        const trimmedGymName = typeof gymName === 'string' ? gymName.trim() : '';
         const isDev = process.env.NODE_ENV !== 'production';
 
         if (!trimmedKey) {
@@ -103,7 +104,16 @@ router.post('/activate', async (req, res) => {
             });
         }
 
-        const result = await licenseService.activate(trimmedKey, gymName);
+        if (!trimmedGymName) {
+            return res.status(400).json({
+                success: false,
+                message: 'gymName is required',
+                errorCode: 'GYM_NAME_REQUIRED',
+                code: 'GYM_NAME_REQUIRED'
+            });
+        }
+
+        const result = await licenseService.activate(trimmedKey, trimmedGymName);
         if (!result || typeof result.success !== 'boolean') {
             console.error('Activation unexpected result:', result);
             return res.status(500).json({

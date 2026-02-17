@@ -45,12 +45,17 @@ const Settings = () => {
 
     const handleActivate = async () => {
         if (!licenseKey) return;
-        const result = await activateLicense(licenseKey);
+        const gymName = String(formData.gym_name || '').trim();
+        if (!gymName) {
+            toast.error('Gym name is required');
+            return;
+        }
+        const result = await activateLicense(licenseKey, gymName);
         if (result.valid) {
             toast.success('License activated successfully');
             setLicenseKey('');
         } else {
-            toast.error(result.error || 'Invalid license key');
+            toast.error(result.message || result.error || 'Invalid license key');
         }
     };
 

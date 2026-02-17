@@ -1,23 +1,43 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShieldAlert, Key, RefreshCw, Lock } from 'lucide-react';
-import { useLicenseStore } from '../store';
+import { useLicenseStore, useSettingsStore } from '../store';
 import { useNavigate } from 'react-router-dom';
 
 const LicenseExpired = () => {
     const { t } = useTranslation();
     const { license, activateLicense, checkLicense } = useLicenseStore();
+    const { getSetting } = useSettingsStore();
     const navigate = useNavigate();
     const [key, setKey] = useState('');
+    const [gymName, setGymName] = useState(() => {
+        const fromSettings = getSetting('gym_name', '');
+        if (fromSettings && String(fromSettings).trim()) return String(fromSettings).trim();
+        if (license?.gymName && String(license.gymName).trim()) return String(license.gymName).trim();
+        return '';
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [fieldErrors, setFieldErrors] = useState({ licenseKey: '', gymName: '' });
 
     const handleActivate = async (e) => {
         e.preventDefault();
-        setIsLoading(true);
+        const normalizedKey = key.trim().toUpperCase();
+        const normalizedGymName = gymName.trim();
+        const nextFieldErrors = {
+            licenseKey: normalizedKey ? '' : 'License key is required',
+            gymName: normalizedGymName ? '' : 'Gym name is required'
+        };
+        setFieldErrors(nextFieldErrors);
         setError('');
 
-        const result = await activateLicense(key);
+        if (nextFieldErrors.licenseKey || nextFieldErrors.gymName) {
+            setError('Please fill required fields.');
+            return;
+        }
+
+        setIsLoading(true);
+        const result = await activateLicense(normalizedKey, normalizedGymName);
 
         if (result.success || result.valid) {
             await checkLicense();
@@ -52,12 +72,42 @@ const LicenseExpired = () => {
                                 <input
                                     type="text"
                                     value={key}
-                                    onChange={(e) => setKey(e.target.value.toUpperCase())}
+                                    onChange={(e) => {
+                                        setKey(e.target.value.toUpperCase());
+                                        if (fieldErrors.licenseKey) {
+                                            setFieldErrors((prev) => ({ ...prev, licenseKey: '' }));
+                                        }
+                                    }}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 font-mono uppercase"
                                     placeholder="GYM-XXXX-XXXX-XXXX"
                                     required
                                 />
                             </div>
+                            {fieldErrors.licenseKey && (
+                                <p className="text-red-400 text-xs mt-2">{fieldErrors.licenseKey}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-2">
+                                {t('settings.gymName', 'Gym Name')}
+                            </label>
+                            <input
+                                type="text"
+                                value={gymName}
+                                onChange={(e) => {
+                                    setGymName(e.target.value);
+                                    if (fieldErrors.gymName) {
+                                        setFieldErrors((prev) => ({ ...prev, gymName: '' }));
+                                    }
+                                }}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                                placeholder={t('settings.gymName', 'Gym Name')}
+                                required
+                            />
+                            {fieldErrors.gymName && (
+                                <p className="text-red-400 text-xs mt-2">{fieldErrors.gymName}</p>
+                            )}
                         </div>
 
                         {error && (

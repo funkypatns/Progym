@@ -15,19 +15,27 @@ const LicenseActivation = () => {
     const { activateLicense, isLoading: storeLoading } = useLicenseStore();
 
     const [key, setKey] = useState('');
+    const [gymName, setGymName] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
 
     const handleActivate = async (e) => {
         e.preventDefault();
-        if (!key.trim()) return;
+        if (!key.trim()) {
+            setError('License key is required');
+            return;
+        }
+        if (!gymName.trim()) {
+            setError('Gym name is required');
+            return;
+        }
 
         setIsLoading(true);
         setError(null);
 
         try {
-            const result = await activateLicense(key);
+            const result = await activateLicense(key, gymName.trim());
 
             if (result.success) {
                 setSuccess(true);
@@ -85,6 +93,18 @@ const LicenseActivation = () => {
                 </div>
 
                 <form onSubmit={handleActivate} className="space-y-6">
+                    <div>
+                        <label className="label">{t('settings.gymName', 'Gym Name')}</label>
+                        <input
+                            type="text"
+                            value={gymName}
+                            onChange={(e) => setGymName(e.target.value)}
+                            placeholder={t('settings.gymName', 'Gym Name')}
+                            className="input"
+                            required
+                        />
+                    </div>
+
                     <div>
                         <label className="label">{t('license.enterKey')}</label>
                         <div className="relative">

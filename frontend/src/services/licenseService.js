@@ -69,11 +69,13 @@ export const licenseService = {
     /**
      * Activate a license key
      */
-    activate: async (licenseKey, gymName = null) => {
+    activate: async (licenseKey, gymName = '') => {
         try {
+            const normalizedLicenseKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
+            const normalizedGymName = typeof gymName === 'string' ? gymName.trim() : '';
             const response = await api.post('/license/activate', {
-                licenseKey,
-                gymName
+                licenseKey: normalizedLicenseKey,
+                gymName: normalizedGymName
             });
 
             if (response.data.success) {

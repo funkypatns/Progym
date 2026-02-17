@@ -183,8 +183,12 @@ const licenseService = {
      */
     activate: async (licenseKey, gymName = null) => {
         const normalizedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
+        const normalizedGymName = typeof gymName === 'string' ? gymName.trim() : '';
         if (!normalizedKey) {
             return { success: false, code: 'INVALID_KEY', message: 'License key is required' };
+        }
+        if (!normalizedGymName) {
+            return { success: false, code: 'GYM_NAME_REQUIRED', message: 'gymName is required' };
         }
         const hardwareId = generateHardwareId();
 
@@ -197,7 +201,7 @@ const licenseService = {
             const devLicense = {
                 type: 'premium',
                 maxMembers: 9999,
-                gymName: gymName || 'Gym (Recovery Mode)',
+                gymName: normalizedGymName || 'Gym (Recovery Mode)',
                 expiresAt: null // Never expires
             };
 
@@ -219,7 +223,7 @@ const licenseService = {
             const response = await axios.post(`${LICENSE_SERVER_URL}/api/licenses/activate`, {
                 licenseKey: normalizedKey,
                 hardwareId,
-                gymName
+                gymName: normalizedGymName
             }, { timeout: 10000 });
 
             if (response.data.success) {

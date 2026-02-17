@@ -248,10 +248,10 @@ export const useLicenseStore = create((set) => ({
         }
     },
 
-    activateLicense: async (licenseKey) => {
+    activateLicense: async (licenseKey, gymName = '') => {
         set({ isLoading: true });
         try {
-            const result = await licenseService.activate(licenseKey);
+            const result = await licenseService.activate(licenseKey, gymName);
             set({
                 license: result.license, // Unwrap the details object
                 isValid: result.valid,
