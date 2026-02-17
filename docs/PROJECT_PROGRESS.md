@@ -62,6 +62,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 9a029ca  | Harden login to normalize usernames, support safe admin password fallback, and trim frontend credentials. |
 | 2026-01-24 | 4280c22  | Quick payment toggle, receipt route, reports refresh, payment validation, audit script. |
 | 2026-01-24 | 2266548  | Add AGENTS.md and progress tracker docs. |
 | 2026-01-24 | 10bfeaf  | Show cancelled badge in Payments list rows when subscription is cancelled. |
