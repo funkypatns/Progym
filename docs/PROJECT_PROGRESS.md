@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-02-16
+Last updated: 2026-02-17
 
 Purpose:
 This file is the single source of truth for plans, tasks, and progress tracking. It is meant to help resume work after context compaction or a new chat session, and to prevent duplicate work.
@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Gym Income - Sessions report now uses dedicated backend endpoint so adjusted price details appear (original/final/diff/reason/adjusted-by). Status: done, needs manual verification.
 - Tentative booking appointment flow (book tentative, complete with payment, convert to member, auto no-show after 3 days). Status: done, needs manual verification.
 - Session Packs end-to-end flow (templates, assignments, attendance deduction, new page/nav). Status: done, needs manual verification.
 - Session packages (plan type + member package assignment + check-in consumption + attendance endpoint + UI wiring). Status: done, needs manual verification.
@@ -63,6 +64,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 10733a6  | Route Gym Income - Sessions report through `/reports/gym-income-sessions`, include adjustment details/phone in backend rows, and polish report formatting/export labels. |
 | 2026-02-17 | a4ec6da  | Refactor appointments to tentative booking flow with direct appointment fullName/phone, hourly auto no-show scanner, and UI badges/actions updates. |
 | 2026-02-17 | c645e15  | Add tentative lead booking flow with transactional completion/member conversion, lead-aware appointments UI, and route-level tests. |
 | 2026-02-17 | 16c1215  | Add Book Appointment UI tabs for existing member vs first-time visitor with lead payload fallback in notes JSON. |
@@ -131,6 +133,7 @@ Phase 4 - Receipts system
 - Verify Record Payment modal stays on receipt after partial payment.
 - Verify partial payments dedupe using stable idempotency key.
  - Verify transactionRef idempotency prevents duplicate partial payments.
+- Verify adjusted price details (original/final/diff/reason/adjusted-by) render in `Gym Income - Sessions` after appointment price adjustment.
 - Run session package smoke test: create package plan, assign to member, verify check-in decrements remaining sessions.
 - Verify `/api/attendance` shows session name/price history for package usage.
 
