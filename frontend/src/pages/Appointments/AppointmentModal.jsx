@@ -22,6 +22,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [memberSearch, setMemberSearch] = useState('');
     const [members, setMembers] = useState([]);
     const [selectedMember, setSelectedMember] = useState(null);
+    const [bookingMode, setBookingMode] = useState('member');
+    const [leadForm, setLeadForm] = useState({
+        fullName: '',
+        phone: '',
+        notes: ''
+    });
     const [selectedCoachId, setSelectedCoachId] = useState('');
     const [trainers, setTrainers] = useState([]);
     const [selectedTrainerId, setSelectedTrainerId] = useState('');
@@ -69,6 +75,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             fetchServices();
             if (appointment) {
                 // Edit Mode
+                setBookingMode('member');
+                setLeadForm({ fullName: '', phone: '', notes: '' });
                 setSelectedMember(appointment.member);
                 setSelectedCoachId((user?.id ? user.id.toString() : appointment.coachId?.toString()) || '');
                 setSelectedTrainerId(appointment.trainerId?.toString() || '');
@@ -95,8 +103,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setAdjustPreview(null);
             } else {
                 // Reset for create mode
+                setBookingMode('member');
                 setMemberSearch('');
                 setSelectedMember(null);
+                setLeadForm({ fullName: '', phone: '', notes: '' });
                 setSelectedCoachId(user?.id ? user.id.toString() : '');
                 setSelectedTrainerId('');
 
@@ -314,8 +324,18 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         setLoading(true);
 
         try {
-            if (!selectedMember) {
-                toast.error('Please select a member');
+            const isLeadBooking = !appointment && bookingMode === 'lead';
+
+            if (!isLeadBooking && !selectedMember) {
+                toast.error(t('appointments.selectMemberRequired', 'Please select a member'));
+                return;
+            }
+            if (isLeadBooking && !leadForm.fullName.trim()) {
+                toast.error(t('appointments.visitorFullNameRequired', 'Visitor full name is required'));
+                return;
+            }
+            if (isLeadBooking && !leadForm.phone.trim()) {
+                toast.error(t('appointments.visitorPhoneRequired', 'Visitor phone is required'));
                 return;
             }
             if (!user?.id) {
@@ -330,13 +350,31 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 ...form,
                 start: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
                 end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
-                memberId: selectedMember.id,
                 coachId: parseInt(user.id),
                 price: parseFloat(form.price)
             };
             payload.durationMinutes = durationNumber;
             payload.startTime = selectedTime;
             payload.trainerId = selectedTrainerId ? parseInt(selectedTrainerId) : null;
+            if (appointment || bookingMode === 'member') {
+                payload.memberId = selectedMember?.id ?? appointment?.memberId;
+            } else {
+                const leadPayload = {
+                    fullName: leadForm.fullName.trim(),
+                    phone: leadForm.phone.trim(),
+                    notes: leadForm.notes.trim() || null
+                };
+                payload.createdFrom = 'lead';
+                payload.lead = leadPayload;
+                payload.leadFullName = leadPayload.fullName;
+                payload.leadPhone = leadPayload.phone;
+                payload.leadNotes = leadPayload.notes;
+                payload.notes = JSON.stringify({
+                    source: 'lead',
+                    lead: leadPayload,
+                    appointmentNotes: form.notes?.trim() || null
+                });
+            }
 
             let res;
             if (appointment) {
@@ -598,39 +636,109 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <fieldset disabled={isReadOnly} className={isReadOnly ? 'opacity-80' : ''}>
 
-                                    {/* 1. Member Search */}
+                                    {/* 1. Booking Source */}
                                     {!appointment && (
-                                        <div className="space-y-2 relative">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.member')}</label>
-                                            <div className="relative">
-                                                <input
-                                                    type="text"
-                                                    value={selectedMember ? `${selectedMember.firstName} ${selectedMember.lastName}` : memberSearch}
-                                                    onChange={(e) => {
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-800/60 border border-white/5 p-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBookingMode('member')}
+                                                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${bookingMode === 'member'
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'text-slate-300 hover:bg-slate-700/80'
+                                                        }`}
+                                                >
+                                                    {t('appointments.existingMemberTab', 'عضو موجود')}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setBookingMode('lead');
+                                                        setMembers([]);
                                                         setSelectedMember(null);
-                                                        searchMembers(e.target.value);
+                                                        setMemberSearch('');
                                                     }}
-                                                    placeholder={t('appointments.searchMemberPlaceholder')}
-                                                    className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
-                                                />
-                                                {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">⌛</div>}
+                                                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${bookingMode === 'lead'
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'text-slate-300 hover:bg-slate-700/80'
+                                                        }`}
+                                                >
+                                                    {t('appointments.firstVisitTab', 'أول مرة / زائر')}
+                                                </button>
                                             </div>
-                                            {/* Results Dropdown */}
-                                            {members.length > 0 && !selectedMember && (
-                                                <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-                                                    {members.map(m => (
-                                                        <div key={m.id}
-                                                            className="p-3 hover:bg-white/5 cursor-pointer flex justify-between items-center"
-                                                            onClick={() => { setSelectedMember(m); setMembers([]); }}>
-                                                            <span className="text-white font-bold">{m.firstName} {m.lastName}</span>
-                                                            <span className="text-xs text-slate-500">{m.memberId}</span>
+
+                                            {bookingMode === 'member' ? (
+                                                <div className="space-y-2 relative">
+                                                    <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.member')}</label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={selectedMember ? `${selectedMember.firstName} ${selectedMember.lastName}` : memberSearch}
+                                                            onChange={(e) => {
+                                                                setSelectedMember(null);
+                                                                searchMembers(e.target.value);
+                                                            }}
+                                                            placeholder={t('appointments.searchMemberPlaceholder')}
+                                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
+                                                        />
+                                                        {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">⌛</div>}
+                                                    </div>
+                                                    {members.length > 0 && !selectedMember && (
+                                                        <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+                                                            {members.map(m => (
+                                                                <div key={m.id}
+                                                                    className="p-3 hover:bg-white/5 cursor-pointer flex justify-between items-center"
+                                                                    onClick={() => { setSelectedMember(m); setMembers([]); }}>
+                                                                    <span className="text-white font-bold">{m.firstName} {m.lastName}</span>
+                                                                    <span className="text-xs text-slate-500">{m.memberId}</span>
+                                                                </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.visitorFullName', 'الاسم الكامل')}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={leadForm.fullName}
+                                                            onChange={(e) => setLeadForm(prev => ({ ...prev, fullName: e.target.value }))}
+                                                            placeholder={t('appointments.visitorFullNamePlaceholder', 'اكتب الاسم الكامل')}
+                                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.visitorPhone', 'رقم الهاتف')}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={leadForm.phone}
+                                                            onChange={(e) => setLeadForm(prev => ({ ...prev, phone: e.target.value }))}
+                                                            placeholder={t('appointments.visitorPhonePlaceholder', 'اكتب رقم الهاتف')}
+                                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
+                                                            dir="ltr"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.visitorNotes', 'ملاحظات')}</label>
+                                                        <textarea
+                                                            rows={2}
+                                                            value={leadForm.notes}
+                                                            onChange={(e) => setLeadForm(prev => ({ ...prev, notes: e.target.value }))}
+                                                            placeholder={t('appointments.visitorNotesPlaceholder', 'ملاحظات اختيارية')}
+                                                            className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
                                     )}
-                                    {selectedMember && (
+                                    {!appointment && bookingMode === 'member' && selectedMember && (
+                                        <div className="text-xs text-slate-400">
+                                            {`${selectedMember.firstName || ''} ${selectedMember.lastName || ''}`.trim()} • {selectedMember.memberId || '-'} • {selectedMember.phone || '-'}
+                                        </div>
+                                    )}
+                                    {appointment && selectedMember && (
                                         <div className="text-xs text-slate-400">
                                             {`${selectedMember.firstName || ''} ${selectedMember.lastName || ''}`.trim()} • {selectedMember.memberId || '-'} • {selectedMember.phone || '-'}
                                         </div>
