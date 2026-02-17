@@ -48,11 +48,21 @@ const SessionLedgerDrawer = ({
     if (!open) return null;
 
     const customerLabel = data?.customerCode ? `${data.customerName || ''} (${data.customerCode})` : (data?.customerName || '—');
-    const finalPrice = Number(data?.finalPrice || 0);
-    const paidAmount = Number(data?.totalPaid || 0);
-    const originalPrice = Number(data?.originalPrice ?? finalPrice);
-    const discountAmount = Math.max(0, originalPrice - finalPrice);
-    const remainingAmount = Number(data?.remaining ?? Math.max(0, finalPrice - paidAmount));
+    const paymentTimeline = Array.isArray(data?.paymentTimeline) ? data.paymentTimeline : [];
+    const basePrice = Number(data?.originalPrice ?? data?.finalPrice ?? 0);
+    const finalPriceFromData = Number(data?.finalPrice ?? basePrice);
+    const discountAmount = Math.max(0, basePrice - finalPriceFromData);
+    const finalPrice = discountAmount > 0 ? (basePrice - discountAmount) : finalPriceFromData;
+    const paidAmount = paymentTimeline.reduce((sum, item) => {
+        const normalizedStatus = String(item?.status || '').toLowerCase();
+        if (normalizedStatus !== 'completed' && normalizedStatus !== 'paid') return sum;
+        return sum + Number(item?.amount || 0);
+    }, 0);
+    // Validation examples:
+    // final=300, paid=300 => diff=0 (paid in full)
+    // final=300, paid=250 => diff=50 (due)
+    // final=300, paid=340 => diff=-40 (overpaid / زيادة)
+    const diffAmount = Number((finalPrice - paidAmount).toFixed(2));
     const statusRaw = String(data?.appointmentStatus || '').toLowerCase();
     const isCompleted = statusRaw.includes('complete');
 
@@ -132,7 +142,7 @@ const SessionLedgerDrawer = ({
 
                                 <section className="py-4 border-b border-gray-200 dark:border-gray-700">
                                     <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('reports.gymIncomeSessionsLedger.priceBreakdown', 'Price Breakdown')}</div>
-                                    <div className={`grid gap-3 text-sm ${remainingAmount > 0 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-3'}`}>
+                                    <div className="grid gap-3 text-sm grid-cols-2 lg:grid-cols-4">
                                         <div>
                                             <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.finalPrice', 'Final Price')}</div>
                                             <div className="font-semibold text-gray-900 dark:text-white">{formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}</div>
@@ -147,20 +157,44 @@ const SessionLedgerDrawer = ({
                                                 {discountAmount > 0 ? formatMoney(discountAmount, language, { code: 'EGP', symbol: 'EGP' }) : '—'}
                                             </div>
                                         </div>
-                                        {remainingAmount > 0 && (
-                                            <div>
-                                                <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.remaining', 'Remaining')}</div>
-                                                <div className="font-semibold text-amber-600 dark:text-amber-400">{formatMoney(remainingAmount, language, { code: 'EGP', symbol: 'EGP' })}</div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{isRTL ? 'الفرق' : 'Difference'}</div>
+                                            <div className="flex items-center gap-2">
+                                                {diffAmount === 0 && (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                                        {isRTL ? 'مدفوع بالكامل' : 'Paid in full'}
+                                                    </span>
+                                                )}
+                                                {diffAmount > 0 && (
+                                                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                                        {formatMoney(diffAmount, language, { code: 'EGP', symbol: 'EGP' })}
+                                                    </span>
+                                                )}
+                                                {diffAmount < 0 && (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                                            {formatMoney(Math.abs(diffAmount), language, { code: 'EGP', symbol: 'EGP' })}
+                                                        </span>
+                                                        <span className="text-[10px] text-blue-600 dark:text-blue-400">
+                                                            {isRTL ? 'زيادة' : 'Overpaid'}
+                                                        </span>
+                                                    </span>
+                                                )}
+                                                {diffAmount === 0 && (
+                                                    <span className="font-semibold text-gray-900 dark:text-white">
+                                                        {formatMoney(0, language, { code: 'EGP', symbol: 'EGP' })}
+                                                    </span>
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
                                 </section>
 
                                 <section className="pt-4">
                                     <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('reports.gymIncomeSessionsLedger.paymentTimeline', 'Payment Timeline')}</div>
-                                    {Array.isArray(data.paymentTimeline) && data.paymentTimeline.length > 0 ? (
+                                    {paymentTimeline.length > 0 ? (
                                         <div className="space-y-1.5">
-                                            {data.paymentTimeline.map((item) => (
+                                            {paymentTimeline.map((item) => (
                                                 <div key={item.id} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
                                                     <span className="inline-flex items-center px-2 py-1 rounded text-[11px] font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
                                                         {methodLabel(item.method)}
