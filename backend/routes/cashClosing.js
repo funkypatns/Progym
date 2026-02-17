@@ -20,6 +20,58 @@ const { parseDateRange } = require('../utils/dateParams');
 // All routes require authentication
 router.use(authenticate);
 
+function toSafeNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function buildZeroFinancialPreviewSummary() {
+    return {
+        totalSessions: 0,
+        totalRevenue: 0,
+        cashRevenue: 0,
+        cardRevenue: 0,
+        transferRevenue: 0,
+        trainerCommissions: 0,
+        payoutsTotal: 0,
+        cashInTotal: 0,
+        expectedCash: 0,
+        expectedNonCash: 0
+    };
+}
+
+function normalizeFinancialPreviewSummary(snapshot = {}) {
+    return {
+        totalSessions: parseInt(snapshot.totalSessions, 10) || 0,
+        totalRevenue: toSafeNumber(snapshot.totalRevenue),
+        cashRevenue: toSafeNumber(snapshot.cashRevenue),
+        cardRevenue: toSafeNumber(snapshot.cardRevenue),
+        transferRevenue: toSafeNumber(snapshot.transferRevenue),
+        trainerCommissions: toSafeNumber(snapshot.trainerCommissions),
+        payoutsTotal: toSafeNumber(snapshot.payoutsTotal),
+        cashInTotal: toSafeNumber(snapshot.cashInTotal),
+        expectedCash: toSafeNumber(snapshot.expectedCash),
+        expectedNonCash: toSafeNumber(snapshot.expectedNonCash)
+    };
+}
+
+function parseRangeOrFallback(startAt, endAt) {
+    if (startAt || endAt) {
+        const start = new Date(startAt);
+        const end = new Date(endAt);
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+            if (start > end) return { start: end, end: start, valid: true };
+            return { start, end, valid: true };
+        }
+    }
+
+    const parsed = parseDateRange(startAt, endAt);
+    if (parsed.error) {
+        return { start: null, end: null, valid: false };
+    }
+    return { start: parsed.startDate, end: parsed.endDate, valid: true };
+}
+
 /**
  * GET /api/cash-closings/monthly-summary
  * Get monthly collection summary per employee (no closing required)
@@ -436,20 +488,26 @@ router.get('/sales-preview', async (req, res) => {
 router.get('/financial-preview', async (req, res) => {
     try {
         const { startAt, endAt } = req.query;
-
-        if (!startAt || !endAt) {
-            return res.status(400).json({ success: false, message: 'Start and end dates are required' });
+        const range = parseRangeOrFallback(startAt, endAt);
+        if (!range.valid) {
+            const summary = buildZeroFinancialPreviewSummary();
+            return res.json({ success: true, summary, data: summary });
         }
 
-        const stats = await calculateFinancialSnapshot(req.prisma, new Date(startAt), new Date(endAt));
-
-        res.json({
+        const snapshot = await calculateFinancialSnapshot(req.prisma, range.start, range.end);
+        const summary = normalizeFinancialPreviewSummary(snapshot);
+        return res.json({
             success: true,
-            data: stats
+            summary,
+            data: summary
         });
     } catch (error) {
-        console.error('Financial preview error:', error);
-        res.status(500).json({ success: false, message: 'Failed to calculate financial preview' });
+        console.error('[CashClosing][financial-preview] Failed to calculate financial preview');
+        if (process.env.NODE_ENV !== 'production') {
+            console.error(error?.stack || error);
+        }
+        const summary = buildZeroFinancialPreviewSummary();
+        return res.json({ success: true, summary, data: summary });
     }
 });
 
@@ -518,10 +576,18 @@ router.post('/', [
         }
 
         // Calculate expected amounts (SNAPSHOT)
-        const stats = await calculateCashClosingStats(req.prisma, new Date(startAt), new Date(endAt), targetEmployeeId);
+        const range = parseRangeOrFallback(startAt, endAt);
+        if (!range.valid) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid date range'
+            });
+        }
+
+        const stats = await calculateCashClosingStats(req.prisma, range.start, range.end, targetEmployeeId);
 
         // Calculate FINANCIAL SNAPSHOT (Strict)
-        const financialSnapshot = await calculateFinancialSnapshot(req.prisma, new Date(startAt), new Date(endAt));
+        const financialSnapshot = await calculateFinancialSnapshot(req.prisma, range.start, range.end);
 
         const expectedCashAmount = stats.expectedCashAmount;
         const expectedNonCashAmount = stats.expectedNonCashAmount;
@@ -550,10 +616,12 @@ router.post('/', [
                 employeeId: targetEmployeeId,
                 employeeName,
                 periodType,
-                startAt: new Date(startAt),
-                endAt: new Date(endAt),
+                startAt: range.start,
+                endAt: range.end,
                 expectedCashAmount,
                 expectedNonCashAmount,
+                expectedCardAmount: toSafeNumber(stats.expectedCardAmount),
+                expectedTransferAmount: toSafeNumber(stats.expectedTransferAmount),
                 expectedTotalAmount,
                 declaredCashAmount,
                 declaredNonCashAmount,
@@ -561,17 +629,22 @@ router.post('/', [
                 differenceCash,
                 differenceNonCash,
                 differenceTotal,
+                payoutsTotal: toSafeNumber(stats.payoutsTotal),
+                payoutsCashTotal: toSafeNumber(stats.payoutsCashTotal),
+                payoutsTransferTotal: toSafeNumber(stats.payoutsTransferTotal),
+                cashInTotal: toSafeNumber(stats.cashInTotal),
+                cashRefundsTotal: toSafeNumber(stats.cashRefundsTotal),
                 status,
                 notes,
                 createdBy: req.user.id,
 
                 // Save Financial Snapshot
                 totalSessions: financialSnapshot.totalSessions,
-                grossRevenue: financialSnapshot.grossRevenue,
-                totalCoachCommissions: financialSnapshot.totalCoachCommissions,
-                gymNetIncome: financialSnapshot.gymNetIncome,
-                breakdownByCoach: JSON.stringify(financialSnapshot.breakdownByCoach),
-                breakdownByService: JSON.stringify(financialSnapshot.breakdownByService)
+                grossRevenue: toSafeNumber(financialSnapshot.totalRevenue),
+                totalCoachCommissions: toSafeNumber(financialSnapshot.trainerCommissions),
+                gymNetIncome: toSafeNumber(financialSnapshot.totalRevenue) - toSafeNumber(financialSnapshot.trainerCommissions),
+                breakdownByCoach: JSON.stringify(Array.isArray(financialSnapshot.breakdownByCoach) ? financialSnapshot.breakdownByCoach : []),
+                breakdownByService: JSON.stringify(Array.isArray(financialSnapshot.breakdownByService) ? financialSnapshot.breakdownByService : [])
             },
             include: {
                 employee: {

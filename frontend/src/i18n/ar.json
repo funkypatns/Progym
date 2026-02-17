@@ -924,17 +924,26 @@
             "totalSessions": "إجمالي الجلسات",
             "completedOnly": "الجلسات المكتملة فقط",
             "grossRevenue": "إجمالي الإيرادات",
+            "totalRevenue": "إجمالي التحصيل",
             "sessionFees": "قيمة الجلسات",
+            "collectedRevenue": "محصل من المدفوعات والمبيعات",
             "totalCommissions": "إجمالي عمولات المدربين",
             "toBePaidOut": "مستحق الدفع",
             "gymNetIncome": "صافي دخل الجيم",
-            "grossMinusComm": "الإجمالي - العمولات"
+            "grossMinusComm": "الإجمالي - العمولات",
+            "expectedCashAfterAdjustments": "المتوقع النقدي بعد التسويات",
+            "adjustedFormulaHint": "الإيراد النقدي + توريد - صرف - مرتجعات نقدية"
         },
         "preview": {
             "title": "المعاينة",
             "total": "الإجمالي",
             "paymentsCount": "عدد العمليات",
-            "cashFormula": "الوارد النقدي - الصادر النقدي"
+            "cashFormula": "الوارد النقدي - الصادر النقدي",
+            "cashFormulaAdjusted": "الإيراد النقدي + توريد - صرف - مرتجعات نقدية",
+            "adjustments": "التسويات",
+            "cashIn": "توريد",
+            "payouts": "صرف",
+            "cashRefunds": "مرتجعات نقدية"
         }
     },
     "financials": {

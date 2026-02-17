@@ -106,6 +106,10 @@ const CashClosingReport = ({ data, onRefresh }) => {
                         const diff = closing.differenceTotal;
                         const statusColor = diff === 0 ? 'text-emerald-400' : diff > 0 ? 'text-amber-400' : 'text-red-400';
                         const isExpanded = expandedClosingId === closing.id;
+                        const expectedCard = Number(closing.expectedCardAmount) || 0;
+                        const expectedTransfer = Number(closing.expectedTransferAmount) || 0;
+                        const payoutsTotal = Number(closing.payoutsTotal) || 0;
+                        const cashInTotal = Number(closing.cashInTotal) || 0;
 
                         return (
                             <motion.div
@@ -214,6 +218,38 @@ const CashClosingReport = ({ data, onRefresh }) => {
                                                         <p className="text-2xl font-black text-white">
                                                             {formatCurrency(closing.expectedTotalAmount, i18n.language, currencyConf)}
                                                         </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className={`mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 ${isRTL ? 'text-right' : 'text-left'}`}>
+                                                    <div className="bg-slate-900 rounded-xl p-4 border border-white/5">
+                                                        <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">
+                                                            {t('cashClosing.preview.cashIn', 'Cash In')}
+                                                        </p>
+                                                        <p className="text-xl font-black text-white">
+                                                            {formatCurrency(cashInTotal, i18n.language, currencyConf)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="bg-slate-900 rounded-xl p-4 border border-white/5">
+                                                        <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">
+                                                            {t('cashClosing.preview.payouts', 'Payouts')}
+                                                        </p>
+                                                        <p className="text-xl font-black text-white">
+                                                            {formatCurrency(payoutsTotal, i18n.language, currencyConf)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="bg-slate-900 rounded-xl p-4 border border-white/5 space-y-1">
+                                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                                            {t('cashClosing.expectedNonCash', 'Expected Non-Cash')}
+                                                        </p>
+                                                        <div className="flex justify-between text-xs text-slate-400">
+                                                            <span>{t('payments.card', 'Card')}</span>
+                                                            <span className="text-white">{formatCurrency(expectedCard, i18n.language, currencyConf)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-xs text-slate-400">
+                                                            <span>{t('payments.transfer', 'Transfer')}</span>
+                                                            <span className="text-white">{formatCurrency(expectedTransfer, i18n.language, currencyConf)}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
 

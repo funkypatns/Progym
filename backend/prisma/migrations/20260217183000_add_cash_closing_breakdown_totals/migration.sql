@@ -1,0 +1,9 @@
+-- Add close-cash snapshot breakdown fields for payouts/cash-in and non-cash expectations
+ALTER TABLE "CashClosing"
+ADD COLUMN "expectedCardAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "expectedTransferAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "payoutsTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "payoutsCashTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "payoutsTransferTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "cashInTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "cashRefundsTotal" DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -43,9 +43,16 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
         expectedCashAmount: 0,
         expectedNonCashAmount: 0,
         expectedTotalAmount: 0,
+        expectedCardAmount: 0,
+        expectedTransferAmount: 0,
         cardTotal: 0,
         transferTotal: 0,
-        paymentCount: 0
+        paymentCount: 0,
+        payoutsTotal: 0,
+        payoutsCashTotal: 0,
+        payoutsTransferTotal: 0,
+        cashInTotal: 0,
+        cashRefundsTotal: 0
     });
     const [salesPreview, setSalesPreview] = useState({
         totalRevenue: 0,
@@ -62,11 +69,15 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
     // NEW: Financial Snapshot State
     const [financialSnapshot, setFinancialSnapshot] = useState({
         totalSessions: 0,
-        grossRevenue: 0,
-        totalCoachCommissions: 0,
-        gymNetIncome: 0,
-        breakdownByCoach: [],
-        breakdownByService: []
+        totalRevenue: 0,
+        cashRevenue: 0,
+        cardRevenue: 0,
+        transferRevenue: 0,
+        trainerCommissions: 0,
+        payoutsTotal: 0,
+        cashInTotal: 0,
+        expectedCash: 0,
+        expectedNonCash: 0
     });
     const [isFetchingSnapshot, setIsFetchingSnapshot] = useState(false);
 
@@ -156,9 +167,16 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                 expectedCashAmount: Number(data.expectedCashAmount) || 0,
                 expectedNonCashAmount: Number(data.expectedNonCashAmount) || 0,
                 expectedTotalAmount: Number(data.expectedTotalAmount) || 0,
-                cardTotal: Number(data.cardTotal) || 0,
-                transferTotal: Number(data.transferTotal) || 0,
-                paymentCount: Number(data.paymentCount) || 0
+                expectedCardAmount: Number(data.expectedCardAmount ?? data.cardTotal) || 0,
+                expectedTransferAmount: Number(data.expectedTransferAmount ?? data.transferTotal) || 0,
+                cardTotal: Number(data.expectedCardAmount ?? data.cardTotal) || 0,
+                transferTotal: Number(data.expectedTransferAmount ?? data.transferTotal) || 0,
+                paymentCount: Number(data.paymentCount) || 0,
+                payoutsTotal: Number(data.payoutsTotal) || 0,
+                payoutsCashTotal: Number(data.payoutsCashTotal) || 0,
+                payoutsTransferTotal: Number(data.payoutsTransferTotal) || 0,
+                cashInTotal: Number(data.cashInTotal ?? data.payInTotal) || 0,
+                cashRefundsTotal: Number(data.cashRefundsTotal) || 0
             });
         } catch (error) {
             console.error('Failed to fetch expected amounts:', error);
@@ -168,9 +186,16 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                 expectedCashAmount: 0,
                 expectedNonCashAmount: 0,
                 expectedTotalAmount: 0,
+                expectedCardAmount: 0,
+                expectedTransferAmount: 0,
                 cardTotal: 0,
                 transferTotal: 0,
-                paymentCount: 0
+                paymentCount: 0,
+                payoutsTotal: 0,
+                payoutsCashTotal: 0,
+                payoutsTransferTotal: 0,
+                cashInTotal: 0,
+                cashRefundsTotal: 0
             });
         } finally {
             setIsFetchingExpected(false);
@@ -218,17 +243,33 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
         try {
             const params = new URLSearchParams({ startAt: formData.startAt, endAt: formData.endAt });
             const response = await api.get(`/cash-closings/financial-preview?${params}`);
-            const data = response.data.data || {};
+            const data = response.data.summary || response.data.data || {};
             setFinancialSnapshot({
                 totalSessions: Number(data.totalSessions) || 0,
-                grossRevenue: Number(data.grossRevenue) || 0,
-                totalCoachCommissions: Number(data.totalCoachCommissions) || 0,
-                gymNetIncome: Number(data.gymNetIncome) || 0,
-                breakdownByCoach: Array.isArray(data.breakdownByCoach) ? data.breakdownByCoach : [],
-                breakdownByService: Array.isArray(data.breakdownByService) ? data.breakdownByService : []
+                totalRevenue: Number(data.totalRevenue ?? data.grossRevenue) || 0,
+                cashRevenue: Number(data.cashRevenue) || 0,
+                cardRevenue: Number(data.cardRevenue) || 0,
+                transferRevenue: Number(data.transferRevenue) || 0,
+                trainerCommissions: Number(data.trainerCommissions ?? data.totalCoachCommissions) || 0,
+                payoutsTotal: Number(data.payoutsTotal) || 0,
+                cashInTotal: Number(data.cashInTotal) || 0,
+                expectedCash: Number(data.expectedCash) || 0,
+                expectedNonCash: Number(data.expectedNonCash) || 0
             });
         } catch (error) {
             console.error('Failed to fetch financial snapshot:', error);
+            setFinancialSnapshot({
+                totalSessions: 0,
+                totalRevenue: 0,
+                cashRevenue: 0,
+                cardRevenue: 0,
+                transferRevenue: 0,
+                trainerCommissions: 0,
+                payoutsTotal: 0,
+                cashInTotal: 0,
+                expectedCash: 0,
+                expectedNonCash: 0
+            });
         } finally {
             setIsFetchingSnapshot(false);
         }
@@ -331,15 +372,34 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
             expectedCashAmount: 0,
             expectedNonCashAmount: 0,
             expectedTotalAmount: 0,
+            expectedCardAmount: 0,
+            expectedTransferAmount: 0,
             cardTotal: 0,
             transferTotal: 0,
-            paymentCount: 0
+            paymentCount: 0,
+            payoutsTotal: 0,
+            payoutsCashTotal: 0,
+            payoutsTransferTotal: 0,
+            cashInTotal: 0,
+            cashRefundsTotal: 0
         });
         setSalesPreview({
             totalRevenue: 0,
             totalUnits: 0,
             transactionsCount: 0,
             topProducts: []
+        });
+        setFinancialSnapshot({
+            totalSessions: 0,
+            totalRevenue: 0,
+            cashRevenue: 0,
+            cardRevenue: 0,
+            transferRevenue: 0,
+            trainerCommissions: 0,
+            payoutsTotal: 0,
+            cashInTotal: 0,
+            expectedCash: 0,
+            expectedNonCash: 0
         });
         onClose();
     };
@@ -490,9 +550,9 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                                             <DollarSign size={48} className="text-blue-400" />
                                         </div>
-                                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.grossRevenue', 'Gross Revenue')}</p>
-                                        <p className="text-3xl font-black text-blue-400 mb-1">{formatCurrency(financialSnapshot.grossRevenue, i18n.language, currencyConf)}</p>
-                                        <p className="text-[10px] text-gray-500 font-medium">{t('cashClosing.financialSnapshot.sessionFees', 'Session Fees')}</p>
+                                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.totalRevenue', 'Total Revenue')}</p>
+                                        <p className="text-3xl font-black text-blue-400 mb-1">{formatCurrency(financialSnapshot.totalRevenue, i18n.language, currencyConf)}</p>
+                                        <p className="text-[10px] text-gray-500 font-medium">{t('cashClosing.financialSnapshot.collectedRevenue', 'Collected from payments + sales')}</p>
                                     </div>
 
                                     {/* Card 3: Commissions */}
@@ -501,18 +561,18 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                             <CreditCard size={48} className="text-amber-400" />
                                         </div>
                                         <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.totalCommissions', 'Total Commissions')}</p>
-                                        <p className="text-3xl font-black text-amber-500 mb-1">{formatCurrency(financialSnapshot.totalCoachCommissions, i18n.language, currencyConf)}</p>
+                                        <p className="text-3xl font-black text-amber-500 mb-1">{formatCurrency(financialSnapshot.trainerCommissions, i18n.language, currencyConf)}</p>
                                         <p className="text-[10px] text-amber-500/60 font-medium">{t('cashClosing.financialSnapshot.toBePaidOut', 'To be paid out')}</p>
                                     </div>
 
-                                    {/* Card 4: Net Income */}
+                                    {/* Card 4: Expected Cash */}
                                     <div className="group relative bg-gradient-to-br from-emerald-900/20 to-slate-900/40 hover:from-emerald-900/30 transition-all duration-300 rounded-2xl p-5 border border-emerald-500/20 hover:border-emerald-500/40 overflow-hidden">
                                         <div className="absolute -right-4 -bottom-4 opacity-10">
                                             <div className="w-24 h-24 bg-emerald-500 rounded-full blur-2xl"></div>
                                         </div>
-                                        <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.gymNetIncome', 'Gym Net Income')}</p>
-                                        <p className="text-3xl font-black text-emerald-400 mb-1">{formatCurrency(financialSnapshot.gymNetIncome, i18n.language, currencyConf)}</p>
-                                        <p className="text-[10px] text-emerald-400/60 font-medium">{t('cashClosing.financialSnapshot.grossMinusComm', 'Gross - Comm')}</p>
+                                        <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.expectedCashAfterAdjustments', 'Expected Cash After Adjustments')}</p>
+                                        <p className="text-3xl font-black text-emerald-400 mb-1">{formatCurrency(financialSnapshot.expectedCash, i18n.language, currencyConf)}</p>
+                                        <p className="text-[10px] text-emerald-400/60 font-medium">{t('cashClosing.financialSnapshot.adjustedFormulaHint', 'Cash Revenue + Cash In - Payouts - Cash Refunds')}</p>
                                     </div>
                                 </div>
                             )}
@@ -534,7 +594,7 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                         </p>
                                     </div>
                                     <p className="text-[10px] text-gray-600 font-medium mt-2 pt-2 border-t border-slate-700/50">
-                                        {t('cashClosing.preview.cashFormula', 'Cash In - Cash Out')}
+                                        {t('cashClosing.preview.cashFormulaAdjusted', 'Cash Revenue + Cash In - Payouts - Cash Refunds')}
                                     </p>
                                 </div>
 
@@ -570,15 +630,31 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
                                     <p className="text-[10px] text-indigo-400 font-medium mt-2">{t('cashClosing.preview.total', 'Total')}</p>
                                 </div>
 
-                                {/* Transactions Count */}
-                                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col items-center justify-center text-center">
-                                    <div className="w-10 h-10 rounded-full bg-slate-700/50 flex items-center justify-center mb-2">
-                                        <FileText size={18} className="text-gray-400" />
+                                {/* Cash Adjustments */}
+                                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center">
+                                            <FileText size={14} className="text-gray-400" />
+                                        </div>
+                                        <p className="text-xs text-gray-500">{t('cashClosing.preview.adjustments', 'Adjustments')}</p>
                                     </div>
-                                    <p className="text-2xl font-bold text-white mb-0.5">
-                                        {expectedAmounts.paymentCount || 0}
+                                    <div className="space-y-1.5 text-[11px]">
+                                        <div className="flex justify-between text-gray-400">
+                                            <span>{t('cashClosing.preview.cashIn', 'Cash In')}</span>
+                                            <span className="text-emerald-400">{formatCurrency(expectedAmounts.cashInTotal || 0, i18n.language, currencyConf)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-400">
+                                            <span>{t('cashClosing.preview.payouts', 'Payouts')}</span>
+                                            <span className="text-orange-400">{formatCurrency(expectedAmounts.payoutsTotal || 0, i18n.language, currencyConf)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-400">
+                                            <span>{t('cashClosing.preview.cashRefunds', 'Cash Refunds')}</span>
+                                            <span className="text-red-400">{formatCurrency(expectedAmounts.cashRefundsTotal || 0, i18n.language, currencyConf)}</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 mt-3 pt-2 border-t border-slate-700/50">
+                                        {t('cashClosing.preview.paymentsCount', 'Payments')}: {expectedAmounts.paymentCount || 0}
                                     </p>
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">{t('cashClosing.preview.paymentsCount', 'Payments')}</p>
                                 </div>
                             </div>
 

@@ -242,6 +242,85 @@ async function calculateNetRevenue(prisma, startDate, endDate) {
     };
 }
 
+const COMPLETED_PAYMENT_STATUSES = ['completed', 'COMPLETED', 'paid', 'PAID', 'refunded', 'REFUNDED', 'Partial Refund', 'PARTIAL REFUND'];
+const COMPLETED_APPOINTMENT_STATUSES = ['completed', 'COMPLETED'];
+
+function normalizeRange(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return null;
+    }
+
+    if (start > end) {
+        return { start: end, end: start };
+    }
+
+    return { start, end };
+}
+
+function toNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function normalizePaymentMethod(method) {
+    const normalized = String(method || 'cash').toLowerCase();
+    if (normalized.includes('card') || normalized.includes('visa') || normalized.includes('master') || normalized.includes('credit') || normalized.includes('debit')) return 'card';
+    if (normalized.includes('transfer') || normalized.includes('bank')) return 'transfer';
+    return 'cash';
+}
+
+function normalizePayoutMethod(method) {
+    const normalized = String(method || 'CASH').toLowerCase();
+    if (normalized.includes('transfer') || normalized.includes('bank')) return 'transfer';
+    if (normalized.includes('card') || normalized.includes('visa') || normalized.includes('master') || normalized.includes('credit') || normalized.includes('debit')) return 'card';
+    return 'cash';
+}
+
+function zeroCashClosingStats() {
+    return {
+        expectedCashAmount: 0,
+        expectedNonCashAmount: 0,
+        expectedTotalAmount: 0,
+        expectedCardAmount: 0,
+        expectedTransferAmount: 0,
+        cardTotal: 0,
+        transferTotal: 0,
+        paymentCount: 0,
+        refundCount: 0,
+        cashIn: 0,
+        cashOut: 0,
+        nonCashIn: 0,
+        nonCashOut: 0,
+        cardOut: 0,
+        transferOut: 0,
+        payInTotal: 0,
+        payOutTotal: 0,
+        payoutsTotal: 0,
+        payoutsCashTotal: 0,
+        payoutsTransferTotal: 0,
+        payoutsCardTotal: 0,
+        cashInTotal: 0,
+        cashOutTotal: 0,
+        salesCount: 0,
+        salesTotal: 0,
+        subscriptionSalesTotal: 0,
+        subscriptionCashTotal: 0,
+        subscriptionNonCashTotal: 0,
+        subscriptionCardTotal: 0,
+        subscriptionTransferTotal: 0,
+        posCashTotal: 0,
+        posCardTotal: 0,
+        posTransferTotal: 0,
+        posNonCashTotal: 0,
+        refundsTotal: 0,
+        cashRefundsTotal: 0,
+        nonCashRefundsTotal: 0
+    };
+}
+
 /**
  * Calculate Cash Closing Stats (Cash vs Non-Cash logic)
  * Net Cash = Cash Payments - Cash Refunds
@@ -252,183 +331,331 @@ async function calculateNetRevenue(prisma, startDate, endDate) {
  * @returns {Promise<Object>} Closing Stats
  */
 async function calculateCashClosingStats(prisma, startDate, endDate, employeeId = null) {
+    const range = normalizeRange(startDate, endDate);
+    if (!range) {
+        return zeroCashClosingStats();
+    }
+
+    const { start, end } = range;
+    const parsedEmployeeId = employeeId ? parseInt(employeeId, 10) : null;
+
     const paymentWhere = {
-        paidAt: { gte: startDate, lte: endDate },
-        status: { in: ['completed', 'refunded', 'Partial Refund', 'PAID', 'REFUNDED', 'PARTIAL', 'PARTIAL REFUND'] }
+        paidAt: { gte: start, lte: end },
+        status: { in: COMPLETED_PAYMENT_STATUSES }
     };
 
     const refundWhere = {
-        createdAt: { gte: startDate, lte: endDate }
+        createdAt: { gte: start, lte: end }
     };
 
-    if (employeeId) {
-        paymentWhere.createdBy = parseInt(employeeId);
+    if (parsedEmployeeId) {
+        paymentWhere.createdBy = parsedEmployeeId;
         // For refunds, we might want to filter by who created the refund OR who created the original payment.
         // Usually, cash closing tracks the drawer of the person closing.
         // If I am closing MY drawer, I care about payments I took and refunds I gave.
-        refundWhere.createdBy = parseInt(employeeId);
+        refundWhere.createdBy = parsedEmployeeId;
     }
 
-    let cashIn = 0;
-    let cashOut = 0;
-    let nonCashIn = 0;
-    let nonCashOut = 0;
-    let cardIn = 0;
-    let transferIn = 0;
-    let cardOut = 0;
-    let transferOut = 0;
-
-    const subscriptionTotals = {
-        total: 0,
-        cash: 0,
-        nonCash: 0,
-        card: 0,
-        transfer: 0,
-        count: 0
-    };
-
-    // 1. Get Payments grouped by method
-    const payments = await prisma.payment.findMany({
-        where: paymentWhere,
-        select: { amount: true, method: true }
-    });
-
-    // 2. Get Refunds (check original payment method)
-    // Note: If I refunded a payment created by someone else, does it come from my drawer?
-    // Yes, if I am the one processing the refund, I am giving out cash.
-    const refunds = await prisma.refund.findMany({
-        where: refundWhere,
-        include: {
-            payment: {
-                select: { method: true }
-            }
-        }
-    });
-
-    payments.forEach(p => {
-        const amount = Number(p.amount) || 0;
-        if (amount <= 0) return; // Avoid double counting refunds (handled via Refund table)
-
-        const method = (p.method || 'cash').toLowerCase();
-        subscriptionTotals.total += amount;
-        subscriptionTotals.count += 1;
-
-        if (method === 'cash') {
-            cashIn += amount;
-            subscriptionTotals.cash += amount;
-        } else {
-            nonCashIn += amount;
-            subscriptionTotals.nonCash += amount;
-            if (method.includes('card')) {
-                cardIn += amount;
-                subscriptionTotals.card += amount;
-            } else if (method.includes('transfer')) {
-                transferIn += amount;
-                subscriptionTotals.transfer += amount;
-            }
-        }
-    });
-
-    refunds.forEach(r => {
-        const amount = Number(r.amount) || 0;
-        const method = (r.payment?.method || 'cash').toLowerCase();
-        if (method === 'cash') {
-            cashOut += amount;
-        } else {
-            nonCashOut += amount;
-            if (method.includes('card')) {
-                cardOut += amount;
-            } else if (method.includes('transfer')) {
-                transferOut += amount;
-            }
-        }
-    });
-
-    // 3. Get Retail Sales (POS)
     const salesWhere = {
-        createdAt: { gte: startDate, lte: endDate },
-        ...(employeeId ? { employeeId: parseInt(employeeId) } : {})
+        createdAt: { gte: start, lte: end },
+        ...(parsedEmployeeId ? { employeeId: parsedEmployeeId } : {})
     };
 
-    const sales = await prisma.saleTransaction.findMany({
-        where: salesWhere,
-        select: { totalAmount: true, paymentMethod: true }
-    });
+    const [payments, refunds, sales, cashMovements, trainerPayouts] = await Promise.all([
+        prisma.payment.findMany({
+            where: paymentWhere,
+            select: { amount: true, method: true }
+        }),
+        prisma.refund.findMany({
+            where: refundWhere,
+            include: {
+                payment: {
+                    select: { method: true }
+                }
+            }
+        }),
+        prisma.saleTransaction.findMany({
+            where: salesWhere,
+            select: { totalAmount: true, paymentMethod: true }
+        }),
+        prisma.cashMovement.findMany({
+            where: {
+                createdAt: { gte: start, lte: end },
+                ...(parsedEmployeeId ? { employeeId: parsedEmployeeId } : {})
+            },
+            select: {
+                type: true,
+                amount: true
+            }
+        }),
+        prisma.trainerPayout.findMany({
+            where: {
+                paidAt: { gte: start, lte: end },
+                ...(parsedEmployeeId ? { paidByEmployeeId: parsedEmployeeId } : {})
+            },
+            select: {
+                totalAmount: true,
+                method: true
+            }
+        })
+    ]);
+
+    let subscriptionTotal = 0;
+    let subscriptionCashTotal = 0;
+    let subscriptionCardTotal = 0;
+    let subscriptionTransferTotal = 0;
+    let paymentCount = 0;
 
     let posSalesTotal = 0;
     let posSalesCash = 0;
-    let posSalesNonCash = 0;
+    let posSalesCard = 0;
+    let posSalesTransfer = 0;
 
-    sales.forEach(s => {
-        const method = (s.paymentMethod || 'cash').toLowerCase();
-        const amount = s.totalAmount || 0;
+    let cashRevenue = 0;
+    let cardRevenue = 0;
+    let transferRevenue = 0;
+
+    let cashRefunds = 0;
+    let cardRefunds = 0;
+    let transferRefunds = 0;
+
+    payments.forEach((payment) => {
+        const amount = toNumber(payment.amount);
         if (amount <= 0) return;
 
-        posSalesTotal += amount;
-
+        paymentCount += 1;
+        subscriptionTotal += amount;
+        const method = normalizePaymentMethod(payment.method);
         if (method === 'cash') {
-            cashIn += amount;
-            posSalesCash += amount;
-        } else {
-            nonCashIn += amount;
-            posSalesNonCash += amount;
-            if (method.includes('card')) {
-                cardIn += amount;
-            } else if (method.includes('transfer')) {
-                transferIn += amount;
-            }
+            cashRevenue += amount;
+            subscriptionCashTotal += amount;
+            return;
         }
+        if (method === 'card') {
+            cardRevenue += amount;
+            subscriptionCardTotal += amount;
+            return;
+        }
+        transferRevenue += amount;
+        subscriptionTransferTotal += amount;
     });
 
-    // 4. Get Cash Movements
-    const cashMovements = await prisma.cashMovement.findMany({
-        where: {
-            createdAt: { gte: startDate, lte: endDate },
-            ...(employeeId ? { employeeId: parseInt(employeeId) } : {})
+    sales.forEach((sale) => {
+        const amount = toNumber(sale.totalAmount);
+        if (amount <= 0) return;
+
+        paymentCount += 1;
+        posSalesTotal += amount;
+        const method = normalizePaymentMethod(sale.paymentMethod);
+        if (method === 'cash') {
+            cashRevenue += amount;
+            posSalesCash += amount;
+            return;
         }
+        if (method === 'card') {
+            cardRevenue += amount;
+            posSalesCard += amount;
+            return;
+        }
+        transferRevenue += amount;
+        posSalesTransfer += amount;
+    });
+
+    refunds.forEach((refund) => {
+        const amount = toNumber(refund.amount);
+        if (amount <= 0) return;
+
+        const method = normalizePaymentMethod(refund.payment?.method);
+        if (method === 'cash') {
+            cashRefunds += amount;
+            return;
+        }
+        if (method === 'card') {
+            cardRefunds += amount;
+            return;
+        }
+        transferRefunds += amount;
     });
 
     let payInTotal = 0;
-    let payOutTotal = 0;
-
-    cashMovements.forEach(m => {
-        if (m.type === 'IN') {
-            payInTotal += m.amount;
-        } else if (m.type === 'OUT') {
-            payOutTotal += m.amount;
+    let movementOutTotal = 0;
+    cashMovements.forEach((movement) => {
+        const amount = toNumber(movement.amount);
+        if (amount <= 0) return;
+        if (movement.type === 'IN') {
+            payInTotal += amount;
+        } else if (movement.type === 'OUT') {
+            movementOutTotal += amount;
         }
     });
 
-    // Expected Cash = (Sales - Refunds) + (Pay In - Pay Out)
-    const netSalesCash = cashIn - cashOut;
-    const expectedCashAmount = netSalesCash + payInTotal - payOutTotal;
+    let trainerPayoutsCash = 0;
+    let trainerPayoutsCard = 0;
+    let trainerPayoutsTransfer = 0;
+    trainerPayouts.forEach((payout) => {
+        const amount = toNumber(payout.totalAmount);
+        if (amount <= 0) return;
+        const method = normalizePayoutMethod(payout.method);
+        if (method === 'cash') {
+            trainerPayoutsCash += amount;
+            return;
+        }
+        if (method === 'card') {
+            trainerPayoutsCard += amount;
+            return;
+        }
+        trainerPayoutsTransfer += amount;
+    });
+
+    const payoutsCashTotal = roundMoney(movementOutTotal + trainerPayoutsCash);
+    const payoutsCardTotal = roundMoney(trainerPayoutsCard);
+    const payoutsTransferTotal = roundMoney(trainerPayoutsTransfer);
+    const payoutsTotal = roundMoney(payoutsCashTotal + payoutsCardTotal + payoutsTransferTotal);
+
+    const expectedCashAmount = roundMoney(cashRevenue + payInTotal - payoutsCashTotal - cashRefunds);
+    const expectedCardAmount = roundMoney(cardRevenue - payoutsCardTotal - cardRefunds);
+    const expectedTransferAmount = roundMoney(transferRevenue - payoutsTransferTotal - transferRefunds);
+    const expectedNonCashAmount = roundMoney(expectedCardAmount + expectedTransferAmount);
+    const expectedTotalAmount = roundMoney(expectedCashAmount + expectedNonCashAmount);
 
     return {
-        expectedCashAmount, // Includes Pay In/Out
-        expectedNonCashAmount: nonCashIn - nonCashOut,
-        expectedTotalAmount: expectedCashAmount + (nonCashIn - nonCashOut),
-        cardTotal: cardIn,
-        transferTotal: transferIn,
-        paymentCount: subscriptionTotals.count + sales.length,
+        expectedCashAmount,
+        expectedNonCashAmount,
+        expectedTotalAmount,
+        expectedCardAmount,
+        expectedTransferAmount,
+        cardTotal: expectedCardAmount,
+        transferTotal: expectedTransferAmount,
+        paymentCount,
         refundCount: refunds.length,
-        cashIn,
-        cashOut,
-        nonCashIn,
-        nonCashOut,
-        cardOut,
-        transferOut,
-        payInTotal,
-        payOutTotal,
+        cashIn: roundMoney(cashRevenue),
+        cashOut: roundMoney(cashRefunds),
+        nonCashIn: roundMoney(cardRevenue + transferRevenue),
+        nonCashOut: roundMoney(cardRefunds + transferRefunds),
+        cardOut: roundMoney(cardRefunds + payoutsCardTotal),
+        transferOut: roundMoney(transferRefunds + payoutsTransferTotal),
+        payInTotal: roundMoney(payInTotal),
+        payOutTotal: payoutsCashTotal,
+        payoutsTotal,
+        payoutsCashTotal,
+        payoutsTransferTotal,
+        payoutsCardTotal,
+        cashInTotal: roundMoney(payInTotal),
+        cashOutTotal: payoutsCashTotal,
         salesCount: sales.length,
-        salesTotal: posSalesTotal,
-        subscriptionSalesTotal: subscriptionTotals.total,
-        subscriptionCashTotal: subscriptionTotals.cash,
-        subscriptionNonCashTotal: subscriptionTotals.nonCash,
-        subscriptionCardTotal: subscriptionTotals.card,
-        subscriptionTransferTotal: subscriptionTotals.transfer,
-        posCashTotal: posSalesCash,
-        posNonCashTotal: posSalesNonCash,
-        refundsTotal: refunds.reduce((sum, r) => sum + (r.amount || 0), 0)
+        salesTotal: roundMoney(posSalesTotal),
+        subscriptionSalesTotal: roundMoney(subscriptionTotal),
+        subscriptionCashTotal: roundMoney(subscriptionCashTotal),
+        subscriptionNonCashTotal: roundMoney(subscriptionCardTotal + subscriptionTransferTotal),
+        subscriptionCardTotal: roundMoney(subscriptionCardTotal),
+        subscriptionTransferTotal: roundMoney(subscriptionTransferTotal),
+        posCashTotal: roundMoney(posSalesCash),
+        posCardTotal: roundMoney(posSalesCard),
+        posTransferTotal: roundMoney(posSalesTransfer),
+        posNonCashTotal: roundMoney(posSalesCard + posSalesTransfer),
+        refundsTotal: roundMoney(cashRefunds + cardRefunds + transferRefunds),
+        cashRefundsTotal: roundMoney(cashRefunds),
+        nonCashRefundsTotal: roundMoney(cardRefunds + transferRefunds)
+    };
+}
+
+function zeroFinancialSnapshot() {
+    return {
+        totalSessions: 0,
+        totalRevenue: 0,
+        cashRevenue: 0,
+        cardRevenue: 0,
+        transferRevenue: 0,
+        trainerCommissions: 0,
+        payoutsTotal: 0,
+        cashInTotal: 0,
+        expectedCash: 0,
+        expectedNonCash: 0,
+        expectedCard: 0,
+        expectedTransfer: 0,
+        cashRefundsTotal: 0,
+        nonCashRefundsTotal: 0,
+        payoutsCashTotal: 0,
+        payoutsTransferTotal: 0,
+        breakdownByCoach: [],
+        breakdownByService: []
+    };
+}
+
+async function calculateFinancialSnapshot(prisma, startDate, endDate) {
+    const range = normalizeRange(startDate, endDate);
+    if (!range) {
+        return zeroFinancialSnapshot();
+    }
+
+    const { start, end } = range;
+    const isDev = process.env.NODE_ENV !== 'production';
+    const safeQuery = async (label, queryFn, fallback) => {
+        try {
+            return await queryFn();
+        } catch (error) {
+            if (isDev) {
+                console.error(`[FinancialSnapshot] ${label} query failed`, error?.stack || error);
+            }
+            return fallback;
+        }
+    };
+
+    const [closingStats, totalSessions, trainerCommissionsRaw] = await Promise.all([
+        safeQuery('cash-closing-stats', () => calculateCashClosingStats(prisma, start, end), zeroCashClosingStats()),
+        safeQuery(
+            'sessions-count',
+            () => prisma.appointment.count({
+                where: {
+                    status: { in: COMPLETED_APPOINTMENT_STATUSES },
+                    OR: [
+                        { completedAt: { gte: start, lte: end } },
+                        {
+                            AND: [
+                                { completedAt: null },
+                                { end: { gte: start, lte: end } }
+                            ]
+                        }
+                    ]
+                }
+            }),
+            0
+        ),
+        safeQuery(
+            'trainer-commissions',
+            () => prisma.trainerEarning.aggregate({
+                where: { createdAt: { gte: start, lte: end } },
+                _sum: { commissionAmount: true }
+            }),
+            { _sum: { commissionAmount: 0 } }
+        )
+    ]);
+
+    const cashRevenue = roundMoney(closingStats.cashIn || 0);
+    const cardRevenue = roundMoney((closingStats.subscriptionCardTotal || 0) + (closingStats.posCardTotal || 0));
+    const transferRevenue = roundMoney((closingStats.subscriptionTransferTotal || 0) + (closingStats.posTransferTotal || 0));
+    const trainerCommissions = roundMoney(trainerCommissionsRaw?._sum?.commissionAmount || 0);
+    const totalRevenue = roundMoney(cashRevenue + cardRevenue + transferRevenue);
+
+    return {
+        totalSessions: Number(totalSessions) || 0,
+        totalRevenue,
+        cashRevenue,
+        cardRevenue,
+        transferRevenue,
+        trainerCommissions,
+        payoutsTotal: roundMoney(closingStats.payoutsTotal || 0),
+        cashInTotal: roundMoney(closingStats.cashInTotal || 0),
+        expectedCash: roundMoney(closingStats.expectedCashAmount || 0),
+        expectedNonCash: roundMoney(closingStats.expectedNonCashAmount || 0),
+        expectedCard: roundMoney(closingStats.expectedCardAmount || 0),
+        expectedTransfer: roundMoney(closingStats.expectedTransferAmount || 0),
+        cashRefundsTotal: roundMoney(closingStats.cashRefundsTotal || 0),
+        nonCashRefundsTotal: roundMoney(closingStats.nonCashRefundsTotal || 0),
+        payoutsCashTotal: roundMoney(closingStats.payoutsCashTotal || 0),
+        payoutsTransferTotal: roundMoney(closingStats.payoutsTransferTotal || 0),
+        breakdownByCoach: [],
+        breakdownByService: []
     };
 }
 
@@ -442,5 +669,6 @@ module.exports = {
 
     calculateDailyRevenue,
     calculateNetRevenue,
-    calculateCashClosingStats
+    calculateCashClosingStats,
+    calculateFinancialSnapshot
 };

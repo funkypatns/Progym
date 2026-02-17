@@ -889,17 +889,26 @@
             "totalSessions": "Total Sessions",
             "completedOnly": "Completed only",
             "grossRevenue": "Gross Revenue",
+            "totalRevenue": "Total Revenue",
             "sessionFees": "Session Fees",
+            "collectedRevenue": "Collected from payments + sales",
             "totalCommissions": "Total Commissions",
             "toBePaidOut": "To be paid out",
             "gymNetIncome": "Gym Net Income",
-            "grossMinusComm": "Gross - Comm"
+            "grossMinusComm": "Gross - Comm",
+            "expectedCashAfterAdjustments": "Expected Cash After Adjustments",
+            "adjustedFormulaHint": "Cash Revenue + Cash In - Payouts - Cash Refunds"
         },
         "preview": {
             "title": "Preview",
             "total": "Total",
             "paymentsCount": "Payments",
-            "cashFormula": "Cash In - Cash Out"
+            "cashFormula": "Cash In - Cash Out",
+            "cashFormulaAdjusted": "Cash Revenue + Cash In - Payouts - Cash Refunds",
+            "adjustments": "Adjustments",
+            "cashIn": "Cash In",
+            "payouts": "Payouts",
+            "cashRefunds": "Cash Refunds"
         }
     },
     "financials": {

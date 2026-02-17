@@ -572,6 +572,8 @@ model CashClosing {
   // Snapshots (Expected)
   expectedCashAmount    Float    @default(0)
   expectedNonCashAmount Float    @default(0)
+  expectedCardAmount    Float    @default(0)
+  expectedTransferAmount Float   @default(0)
   expectedTotalAmount   Float    @default(0)
   
   // Declared (Input)
@@ -583,6 +585,13 @@ model CashClosing {
   differenceCash        Float    @default(0)
   differenceNonCash     Float    @default(0)
   differenceTotal       Float    @default(0)
+
+  // Closing adjustments snapshot
+  payoutsTotal          Float    @default(0)
+  payoutsCashTotal      Float    @default(0)
+  payoutsTransferTotal  Float    @default(0)
+  cashInTotal           Float    @default(0)
+  cashRefundsTotal      Float    @default(0)
 
   // Financial Snapshot (Immutable Report)
   totalSessions         Int      @default(0)
