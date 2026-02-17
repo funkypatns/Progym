@@ -1,0 +1,34 @@
+{
+  "versions": {
+    "1.0.0": {
+      "generatedAt": "2026-02-17T19:39:49.273Z",
+      "required": true,
+      "files": [
+        {
+          "path": "backend/server.js",
+          "sha256": "20db6bed57f4115e3b995822e0dbcb06bb7e5b46fb4236bc2daf1c37b2449885"
+        },
+        {
+          "path": "backend/routes/license.js",
+          "sha256": "f8194b349e78c95644b0ec200c820d9b58f19f63524ff93b1ec86c2b4ae390ae"
+        },
+        {
+          "path": "backend/services/licenseService.js",
+          "sha256": "facb8efd6c843641d8edce8b77fe7e1598f20328510984097b866f1eea8978a3"
+        },
+        {
+          "path": "frontend/src/App.jsx",
+          "sha256": "c290beb2a48b9ad930349c48b71c72d67135fa1d6d71aadaa751be1e2d7aec6e"
+        },
+        {
+          "path": "frontend/src/store/index.js",
+          "sha256": "11001a161982beff307f632911a4a75358b76e7dd194949cc4367f87dee3c4a1"
+        },
+        {
+          "path": "frontend/src/services/licenseService.js",
+          "sha256": "a6730ea8c9996b5cd845d7df5244938f175c079c719009458cc9625ad9a90423"
+        }
+      ]
+    }
+  }
+}

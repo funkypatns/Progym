@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 const LicenseExpired = () => {
     const { t } = useTranslation();
-    const { license, activateLicense, checkLicense } = useLicenseStore();
+    const { license, activateLicense, checkLicense, errorMessage } = useLicenseStore();
     const { getSetting } = useSettingsStore();
     const navigate = useNavigate();
     const [key, setKey] = useState('');
@@ -57,7 +57,7 @@ const LicenseExpired = () => {
                     </div>
                     <h1 className="text-2xl font-bold text-white mb-2">License Expired/Invalid</h1>
                     <p className="text-slate-400">
-                        Your gym management system license has expired or is invalid. Please enter a valid license key to continue.
+                        {errorMessage || 'Your gym management system license has expired or is invalid. Please enter a valid license key to continue.'}
                     </p>
                 </div>
 

@@ -29,7 +29,7 @@ const PORT = process.env.PORT || 4000;
 app.use(helmet()); // Security headers
 app.use(cors({
     origin: '*', // In production, restrict to known clients
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 }));
 app.use(express.json());
 
@@ -52,7 +52,9 @@ app.get('/', (req, res) => {
             health: '/health',
             activate: '/api/licenses/activate',
             validate: '/api/licenses/validate',
-            status: '/api/licenses/status/:key'
+            status: '/api/licenses/status/:key',
+            publicKey: '/api/licenses/public-key',
+            manifest: '/api/licenses/manifest/:appVersion'
         }
     });
 });
@@ -107,8 +109,11 @@ async function startServer() {
             console.log('  POST /api/licenses/activate   - Activate license');
             console.log('  POST /api/licenses/validate   - Validate license');
             console.log('  GET  /api/licenses/status/:key - Check status');
+            console.log('  GET  /api/licenses/public-key - Get RS256 public key');
+            console.log('  GET  /api/licenses/manifest/:appVersion - Get signed integrity manifest');
+            console.log('  GET  /api/licenses            - Admin list licenses');
             console.log('  POST /api/admin/login         - Admin login');
-            console.log('  GET  /api/admin/licenses      - List all licenses');
+            console.log('  GET  /api/admin/licenses      - Legacy admin list licenses');
             console.log('');
         });
     } catch (error) {

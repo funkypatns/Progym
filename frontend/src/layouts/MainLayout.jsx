@@ -108,6 +108,7 @@ const MainLayout = () => {
         navItems.push(
             { path: '/employees', icon: ShieldCheck, label: safeT('nav.employees', isRTL ? 'الموظفين' : 'Employees'), permission: PERMISSIONS.EMPLOYEES_VIEW },
             { path: '/staff-trainers', icon: ShieldCheck, label: safeT('nav.staffTrainers', isRTL ? 'المدربين' : 'Trainers'), permission: PERMISSIONS.COACHES_VIEW },
+            { path: '/license-devices', icon: ShieldCheck, label: safeT('nav.deviceManagement', isRTL ? 'إدارة الأجهزة' : 'Device Management'), permission: PERMISSIONS.SETTINGS_VIEW },
             { path: '/permissions', icon: Shield, label: safeT('nav.permissions', isRTL ? 'الصلاحيات' : 'Permissions'), permission: PERMISSIONS.EMPLOYEES_PERMISSIONS }
         );
     }

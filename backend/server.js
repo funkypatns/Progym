@@ -261,6 +261,7 @@ app.use((err, req, res, next) => {
 });
 
 const SessionJobs = require('./jobs/sessionJobs');
+const licenseService = require('./services/licenseService');
 
 async function logAppointmentSchemaWarnings() {
     try {
@@ -295,6 +296,8 @@ async function startServer() {
 
         // Start session scanner
         SessionJobs.startScanner();
+        // Start background license revalidation loop
+        licenseService.startBackgroundValidation();
 
         // Start listening
         app.listen(PORT, () => {
@@ -317,12 +320,14 @@ async function startServer() {
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
     console.log('\nðŸ‘‹ Shutting down gracefully...');
+    licenseService.stopBackgroundValidation();
     await prisma.$disconnect();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     console.log('\nðŸ‘‹ Shutting down gracefully...');
+    licenseService.stopBackgroundValidation();
     await prisma.$disconnect();
     process.exit(0);
 });

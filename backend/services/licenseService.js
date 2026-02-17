@@ -2,110 +2,171 @@
  * ============================================
  * LICENSE SERVICE
  * ============================================
- * 
- * Handles license validation with the license server.
- * Supports offline grace period and hardware fingerprinting.
- * 
- * Author: Omar Habib Software
+ *
+ * Handles license activation/validation with the license server.
+ * Enforces device binding, signed activation tokens, offline grace,
+ * and practical integrity checks.
  */
 
 const axios = require('axios');
 const crypto = require('crypto');
 const os = require('os');
+const jwt = require('jsonwebtoken');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// License server URL (configurable)
 const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'http://localhost:4000';
-
-// Local cache file
 const USER_DATA_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '../data');
 const CACHE_FILE = path.join(USER_DATA_PATH, 'license_cache.enc');
+const APP_ROOT_PATH = path.join(__dirname, '..', '..');
 
-// Encryption key (derived from hardware ID)
+const DEFAULT_VALIDATE_INTERVAL_HOURS = Number.parseInt(process.env.LICENSE_VALIDATE_INTERVAL_HOURS || '24', 10);
+const DEFAULT_OFFLINE_GRACE_HOURS = Number.parseInt(process.env.LICENSE_OFFLINE_GRACE_HOURS || '72', 10);
+const INTEGRITY_ENFORCE = String(process.env.LICENSE_ENFORCE_INTEGRITY || '').toLowerCase() === 'true';
+
 let encryptionKey = null;
+let backgroundTimer = null;
 
-/**
- * Generate hardware fingerprint
- * Combines CPU, disk serial, OS info for unique ID
- */
-function generateHardwareId() {
+function safeReadJson(filePath) {
     try {
-        const components = [];
-
-        // CPU info (safe)
-        const cpus = os.cpus();
-        if (cpus.length > 0) {
-            components.push(cpus[0].model);
+        if (!fs.existsSync(filePath)) {
+            return null;
         }
-
-        // OS info (safe)
-        components.push(os.platform());
-        components.push(os.arch());
-        components.push(os.hostname());
-
-        // Simple fallback
-        components.push(os.totalmem().toString());
-
-        // Create hash
-        const hash = crypto.createHash('sha256')
-            .update(components.join('|'))
-            .digest('hex');
-
-        return hash;
-
-    } catch (error) {
-        // Fallback for any catastrophic error
-        return crypto.createHash('sha256').update('fallback-id-safe-mode').digest('hex');
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (_) {
+        return null;
     }
 }
 
-/**
- * Get encryption key (derived from hardware ID)
- */
+function getAppVersion() {
+    const envVersion = process.env.APP_VERSION;
+    if (envVersion && envVersion.trim()) {
+        return envVersion.trim();
+    }
+
+    const rootPackage = safeReadJson(path.join(APP_ROOT_PATH, 'package.json'));
+    if (rootPackage?.version) {
+        return String(rootPackage.version);
+    }
+
+    const backendPackage = safeReadJson(path.join(__dirname, '..', 'package.json'));
+    if (backendPackage?.version) {
+        return String(backendPackage.version);
+    }
+
+    return '0.0.0';
+}
+
+function runCommand(command) {
+    try {
+        const output = execSync(command, {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            timeout: 3000
+        });
+        return String(output || '').trim();
+    } catch (_) {
+        return '';
+    }
+}
+
+function getRawMachineId() {
+    if (process.platform === 'win32') {
+        const byUuid = runCommand('wmic csproduct get UUID');
+        const uuidLine = byUuid
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find((line) => line && line.toLowerCase() !== 'uuid');
+        if (uuidLine && uuidLine !== 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF') {
+            return uuidLine;
+        }
+
+        const regOutput = runCommand('reg query "HKLM\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid');
+        const machineGuidLine = regOutput
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find((line) => /MachineGuid/i.test(line));
+        if (machineGuidLine) {
+            const parts = machineGuidLine.split(/\s+/);
+            return parts[parts.length - 1] || '';
+        }
+        return '';
+    }
+
+    if (process.platform === 'darwin') {
+        const output = runCommand('ioreg -rd1 -c IOPlatformExpertDevice');
+        const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/);
+        return match ? match[1] : '';
+    }
+
+    const linuxMachineId = runCommand('cat /etc/machine-id');
+    if (linuxMachineId) {
+        return linuxMachineId;
+    }
+
+    return runCommand('cat /var/lib/dbus/machine-id');
+}
+
+function generateDeviceFingerprint() {
+    const rawMachineId = getRawMachineId();
+    const hostname = os.hostname();
+    const platform = os.platform();
+    const arch = os.arch();
+    const fallback = `${hostname}|${platform}|${arch}|${os.totalmem()}`;
+    const base = rawMachineId || fallback;
+
+    return crypto
+        .createHash('sha256')
+        .update(`machine:${base}|platform:${platform}|arch:${arch}|app:gym-management`)
+        .digest('hex');
+}
+
+function getDeviceMetadata() {
+    const platform = `${os.platform()} ${os.release()} (${os.arch()})`;
+    return {
+        deviceName: os.hostname(),
+        platform
+    };
+}
+
 function getEncryptionKey() {
     if (!encryptionKey) {
-        const hwId = generateHardwareId();
-        encryptionKey = crypto.createHash('sha256')
-            .update(hwId + 'gym-license-salt-v2')
+        const fingerprint = generateDeviceFingerprint();
+        encryptionKey = crypto
+            .createHash('sha256')
+            .update(`${fingerprint}:gym-license-cache:v3`)
             .digest();
     }
     return encryptionKey;
 }
 
-/**
- * Encrypt data for local storage
- */
 function encryptData(data) {
     const key = getEncryptionKey();
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
     encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
+    return `${iv.toString('hex')}:${encrypted}`;
 }
 
-/**
- * Decrypt stored data
- */
 function decryptData(encryptedData) {
     try {
         const key = getEncryptionKey();
-        const [ivHex, encrypted] = encryptedData.split(':');
+        const [ivHex, encrypted] = String(encryptedData || '').split(':');
+        if (!ivHex || !encrypted) {
+            return null;
+        }
         const iv = Buffer.from(ivHex, 'hex');
         const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
         let decrypted = decipher.update(encrypted, 'hex', 'utf8');
         decrypted += decipher.final('utf8');
         return JSON.parse(decrypted);
-    } catch (error) {
+    } catch (_) {
         return null;
     }
 }
 
-/**
- * Save license to local cache
- */
 function saveLicenseCache(data) {
     try {
         const dir = path.dirname(CACHE_FILE);
@@ -118,19 +179,18 @@ function saveLicenseCache(data) {
         });
         fs.writeFileSync(CACHE_FILE, encrypted);
     } catch (error) {
-        console.error('Failed to save license cache:', error);
+        console.error('Failed to save license cache:', error.message);
     }
 }
 
-/**
- * Load license from local cache
- */
 function loadLicenseCache() {
     try {
-        if (!fs.existsSync(CACHE_FILE)) return null;
+        if (!fs.existsSync(CACHE_FILE)) {
+            return null;
+        }
         const encrypted = fs.readFileSync(CACHE_FILE, 'utf8');
         return decryptData(encrypted);
-    } catch (error) {
+    } catch (_) {
         return null;
     }
 }
@@ -144,159 +204,511 @@ function safeClearCorruptCache() {
         fs.renameSync(CACHE_FILE, corruptedName);
         console.warn(`License cache was corrupted. Moved to ${corruptedName}`);
     } catch (error) {
-        console.warn('Failed to clear corrupt license cache:', error?.message);
+        console.warn('Failed to clear corrupt license cache:', error.message);
     }
 }
 
-/**
- * Check if system clock has been tampered with
- */
 function detectClockTampering(cachedData) {
     if (!cachedData || !cachedData.cachedAt) return false;
 
     const cachedTime = new Date(cachedData.cachedAt).getTime();
     const currentTime = Date.now();
 
-    // If current time is significantly before cached time, clock was rolled back
-    if (currentTime < cachedTime - 60000) { // 1 minute tolerance
-        console.warn('Clock tampering detected!');
+    if (currentTime < cachedTime - 60000) {
+        console.warn('Clock tampering detected');
         return true;
     }
 
     return false;
 }
 
-// ============================================
-// LICENSE SERVICE API
-// ============================================
+async function fetchPublicKey() {
+    const response = await axios.get(`${LICENSE_SERVER_URL}/api/licenses/public-key`, { timeout: 8000 });
+    if (!response?.data?.success || !response?.data?.publicKey) {
+        throw new Error('Invalid public key response from license server');
+    }
+
+    return {
+        publicKey: response.data.publicKey,
+        algorithm: response.data.algorithm || 'RS256',
+        issuer: response.data.issuer,
+        audience: response.data.audience,
+        keyId: response.data.keyId,
+        fetchedAt: new Date().toISOString()
+    };
+}
+
+function verifyActivationToken(token, publicKeyBundle, expectedFingerprint, expectedLicenseKey) {
+    if (!token) {
+        return { valid: false, code: 'MISSING_TOKEN', message: 'Activation token is missing' };
+    }
+
+    if (!publicKeyBundle?.publicKey) {
+        return { valid: false, code: 'MISSING_PUBLIC_KEY', message: 'Public key unavailable for token verification' };
+    }
+
+    try {
+        const payload = jwt.verify(token, publicKeyBundle.publicKey, {
+            algorithms: [publicKeyBundle.algorithm || 'RS256'],
+            issuer: publicKeyBundle.issuer,
+            audience: publicKeyBundle.audience
+        });
+
+        if (payload?.typ !== 'activation') {
+            return { valid: false, code: 'INVALID_TOKEN_TYPE', message: 'Invalid activation token type' };
+        }
+
+        if (payload.fingerprint !== expectedFingerprint) {
+            return {
+                valid: false,
+                code: 'DEVICE_FINGERPRINT_MISMATCH',
+                message: 'Activation token does not match this device'
+            };
+        }
+
+        if (expectedLicenseKey && payload.licenseKey !== expectedLicenseKey) {
+            return {
+                valid: false,
+                code: 'LICENSE_KEY_MISMATCH',
+                message: 'Activation token does not match this license key'
+            };
+        }
+
+        if (payload.deviceStatus && payload.deviceStatus !== 'approved') {
+            return {
+                valid: false,
+                code: 'DEVICE_NOT_APPROVED',
+                message: 'Device is not approved for this license'
+            };
+        }
+
+        return { valid: true, payload };
+    } catch (error) {
+        return {
+            valid: false,
+            code: 'INVALID_TOKEN_SIGNATURE',
+            message: error.message || 'Activation token signature verification failed'
+        };
+    }
+}
+
+function verifyManifestToken(manifestToken, publicKeyBundle) {
+    if (!manifestToken) {
+        return { valid: false, code: 'MISSING_MANIFEST_TOKEN', message: 'Manifest token missing' };
+    }
+
+    try {
+        const payload = jwt.verify(manifestToken, publicKeyBundle.publicKey, {
+            algorithms: [publicKeyBundle.algorithm || 'RS256'],
+            issuer: publicKeyBundle.issuer,
+            audience: publicKeyBundle.audience
+        });
+
+        if (payload?.typ !== 'integrity_manifest' || !payload?.manifest) {
+            return { valid: false, code: 'INVALID_MANIFEST_TOKEN', message: 'Invalid manifest token payload' };
+        }
+
+        return { valid: true, manifest: payload.manifest };
+    } catch (error) {
+        return {
+            valid: false,
+            code: 'INVALID_MANIFEST_SIGNATURE',
+            message: error.message || 'Manifest signature verification failed'
+        };
+    }
+}
+
+function sha256File(filePath) {
+    const fileBuffer = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(fileBuffer).digest('hex');
+}
+
+function normalizeManifest(manifest) {
+    if (!manifest || !Array.isArray(manifest.files)) {
+        return null;
+    }
+    return {
+        appVersion: manifest.appVersion,
+        generatedAt: manifest.generatedAt,
+        required: manifest.required !== false,
+        files: manifest.files
+            .filter((entry) => entry && entry.path && entry.sha256)
+            .map((entry) => ({
+                path: String(entry.path),
+                sha256: String(entry.sha256).toLowerCase()
+            }))
+    };
+}
+
+function runIntegrityVerification(manifest) {
+    const normalized = normalizeManifest(manifest);
+    if (!normalized) {
+        return { valid: !INTEGRITY_ENFORCE, code: 'MANIFEST_INVALID', message: 'Integrity manifest is invalid' };
+    }
+
+    for (const fileEntry of normalized.files) {
+        const absolute = path.resolve(APP_ROOT_PATH, fileEntry.path);
+        if (!fs.existsSync(absolute)) {
+            if (normalized.required) {
+                return {
+                    valid: false,
+                    code: 'INTEGRITY_FILE_MISSING',
+                    message: `Integrity Check Failed: missing file ${fileEntry.path}`
+                };
+            }
+            continue;
+        }
+
+        const actualHash = sha256File(absolute).toLowerCase();
+        if (actualHash !== fileEntry.sha256) {
+            return {
+                valid: false,
+                code: 'INTEGRITY_MISMATCH',
+                message: `Integrity Check Failed: hash mismatch in ${fileEntry.path}`
+            };
+        }
+    }
+
+    return { valid: true, code: 'INTEGRITY_OK' };
+}
+
+async function fetchAndVerifyManifest({ licenseKey, fingerprint, appVersion, publicKeyBundle, timeout = 8000 }) {
+    const response = await axios.get(`${LICENSE_SERVER_URL}/api/licenses/manifest/${encodeURIComponent(appVersion)}`, {
+        timeout,
+        params: {
+            licenseKey,
+            deviceFingerprint: fingerprint
+        }
+    });
+
+    if (!response?.data?.success || !response?.data?.manifestToken) {
+        throw new Error('Manifest endpoint returned invalid response');
+    }
+
+    const manifestVerification = verifyManifestToken(response.data.manifestToken, publicKeyBundle);
+    if (!manifestVerification.valid) {
+        return manifestVerification;
+    }
+
+    const integrity = runIntegrityVerification(manifestVerification.manifest);
+    return {
+        ...integrity,
+        manifestToken: response.data.manifestToken,
+        manifest: manifestVerification.manifest
+    };
+}
+
+async function evaluateIntegrity({
+    licenseKey,
+    fingerprint,
+    appVersion,
+    publicKeyBundle,
+    cached
+}) {
+    const cachedManifestToken = cached?.integrity?.manifestToken;
+    if (cachedManifestToken) {
+        const manifestVerification = verifyManifestToken(cachedManifestToken, publicKeyBundle);
+        if (manifestVerification.valid) {
+            const cachedIntegrity = runIntegrityVerification(manifestVerification.manifest);
+            if (!cachedIntegrity.valid) {
+                return cachedIntegrity;
+            }
+        }
+    }
+
+    try {
+        const fresh = await fetchAndVerifyManifest({
+            licenseKey,
+            fingerprint,
+            appVersion,
+            publicKeyBundle
+        });
+
+        if (!fresh.valid) {
+            return fresh;
+        }
+
+        return {
+            valid: true,
+            manifestToken: fresh.manifestToken,
+            manifestCheckedAt: new Date().toISOString()
+        };
+    } catch (error) {
+        if (cachedManifestToken) {
+            const cachedManifest = verifyManifestToken(cachedManifestToken, publicKeyBundle);
+            if (cachedManifest.valid) {
+                const fallbackIntegrity = runIntegrityVerification(cachedManifest.manifest);
+                if (fallbackIntegrity.valid) {
+                    return {
+                        valid: true,
+                        manifestToken: cachedManifestToken,
+                        manifestCheckedAt: new Date().toISOString(),
+                        mode: 'cached'
+                    };
+                }
+                return fallbackIntegrity;
+            }
+        }
+
+        if (INTEGRITY_ENFORCE) {
+            return {
+                valid: false,
+                code: 'INTEGRITY_MANIFEST_UNAVAILABLE',
+                message: 'Integrity Check Failed: manifest unavailable'
+            };
+        }
+
+        return {
+            valid: true,
+            mode: 'skipped',
+            code: 'INTEGRITY_SKIPPED_MANIFEST_UNAVAILABLE'
+        };
+    }
+}
+
+async function resolvePublicKeyBundle(cached) {
+    if (cached?.publicKey?.publicKey) {
+        return cached.publicKey;
+    }
+    return fetchPublicKey();
+}
+
+function mergeAndPersistCache(cached, updates) {
+    const merged = {
+        ...(cached || {}),
+        ...(updates || {})
+    };
+    saveLicenseCache(merged);
+    return merged;
+}
+
+function getGraceRemainingHours(lastValidatedIso, graceHours) {
+    if (!lastValidatedIso) return 0;
+    const now = Date.now();
+    const lastValidated = new Date(lastValidatedIso).getTime();
+    const graceMs = graceHours * 60 * 60 * 1000;
+    const remainingMs = graceMs - (now - lastValidated);
+    return Math.max(0, Math.ceil(remainingMs / (60 * 60 * 1000)));
+}
+
+async function validateOnline({ licenseKey, fingerprint, appVersion, publicKeyBundle }) {
+    const deviceMeta = getDeviceMetadata();
+    const response = await axios.post(
+        `${LICENSE_SERVER_URL}/api/licenses/validate`,
+        {
+            licenseKey,
+            deviceFingerprint: fingerprint,
+            appVersion,
+            deviceName: deviceMeta.deviceName,
+            platform: deviceMeta.platform
+        },
+        { timeout: 10000 }
+    );
+
+    return response.data;
+}
+
+async function enforceTokenAndIntegrity({ cached, licenseKey, fingerprint, appVersion, requireIntegrity = true }) {
+    const publicKeyBundle = await resolvePublicKeyBundle(cached);
+
+    const tokenVerification = verifyActivationToken(
+        cached?.activationToken,
+        publicKeyBundle,
+        fingerprint,
+        licenseKey
+    );
+
+    if (!tokenVerification.valid) {
+        return tokenVerification;
+    }
+
+    if (!requireIntegrity) {
+        return {
+            valid: true,
+            publicKeyBundle,
+            tokenPayload: tokenVerification.payload
+        };
+    }
+
+    const integrity = await evaluateIntegrity({
+        licenseKey,
+        fingerprint,
+        appVersion,
+        publicKeyBundle,
+        cached
+    });
+
+    if (!integrity.valid) {
+        return integrity;
+    }
+
+    return {
+        valid: true,
+        publicKeyBundle,
+        tokenPayload: tokenVerification.payload,
+        integrity
+    };
+}
 
 const licenseService = {
-    /**
-     * Get hardware ID
-     */
-    getHardwareId: () => {
-        return generateHardwareId();
-    },
+    getHardwareId: () => generateDeviceFingerprint(),
 
-    /**
-     * Activate a license key
-     */
+    getDeviceFingerprint: () => generateDeviceFingerprint(),
+
+    getAppVersion: () => getAppVersion(),
+
     activate: async (licenseKey, gymName = null) => {
         const normalizedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
         const normalizedGymName = typeof gymName === 'string' ? gymName.trim() : '';
         const isDev = process.env.NODE_ENV === 'development';
         const licenseBypass = String(process.env.LICENSE_BYPASS || '').toLowerCase() === 'true';
+
         if (!normalizedKey) {
             return { success: false, code: 'INVALID_KEY', message: 'License key is required' };
         }
         if (!normalizedGymName) {
             return { success: false, code: 'GYM_NAME_REQUIRED', message: 'gymName is required' };
         }
-        const hardwareId = generateHardwareId();
 
-        // Clear corrupt cache before activation so we can rebuild safely
+        const fingerprint = generateDeviceFingerprint();
+        const appVersion = getAppVersion();
+
         safeClearCorruptCache();
 
-        // DEV MODE: bypass only when explicitly enabled in development
         const isDevTestKey = normalizedKey === 'DEV-MODE-TEST-1234' || normalizedKey === 'GYM-DEV-TEST-1234';
         if (isDev && licenseBypass && isDevTestKey) {
-            console.log('[LICENSE] DEV MODE: activating with development license');
             const devLicense = {
                 type: 'premium',
                 maxMembers: 9999,
                 gymName: normalizedGymName || 'Gym (Development Mode)',
-                expiresAt: null // Never expires
+                expiresAt: null
             };
 
             saveLicenseCache({
                 licenseKey: normalizedKey,
-                hardwareId,
+                deviceFingerprint: fingerprint,
                 license: devLicense,
+                activationToken: null,
+                publicKey: null,
                 lastValidated: new Date().toISOString(),
-                gracePeriodDays: 365
+                validateIntervalHours: 24,
+                offlineGraceHours: 24 * 365
             });
 
             return {
                 success: true,
-                license: devLicense
+                valid: true,
+                license: devLicense,
+                mode: 'dev_bypass'
             };
         }
 
         try {
-            const response = await axios.post(`${LICENSE_SERVER_URL}/api/licenses/activate`, {
-                licenseKey: normalizedKey,
-                hardwareId,
-                gymName: normalizedGymName
-            }, { timeout: 10000 });
+            const publicKeyBundle = await fetchPublicKey();
+            const deviceMeta = getDeviceMetadata();
 
-            if (response.data.success) {
-                // Cache the license locally
-                saveLicenseCache({
+            const response = await axios.post(
+                `${LICENSE_SERVER_URL}/api/licenses/activate`,
+                {
                     licenseKey: normalizedKey,
-                    hardwareId,
-                    license: response.data.license,
-                    lastValidated: new Date().toISOString(),
-                    gracePeriodDays: 7
-                });
+                    deviceFingerprint: fingerprint,
+                    gymName: normalizedGymName,
+                    appVersion,
+                    deviceName: deviceMeta.deviceName,
+                    platform: deviceMeta.platform
+                },
+                { timeout: 10000 }
+            );
 
-                return {
-                    success: true,
-                    license: response.data.license
-                };
-            }
+            const payload = response.data || {};
 
-            return {
-                success: false,
-                code: response.data.code,
-                message: response.data.message
-            };
-
-        } catch (error) {
-            console.error('License activation error:', {
-                message: error?.message,
-                code: error?.code,
-                status: error?.response?.status
-            });
-
-            if (error.response) {
-                const responseData = error.response.data;
-                const safeData = responseData && typeof responseData === 'object' ? responseData : {};
-                const fallbackMessage = typeof responseData === 'string' && responseData.trim()
-                    ? responseData
-                    : 'Activation failed';
-
-                console.error('[DEBUG] License Server Error Response:', JSON.stringify(responseData ?? null, null, 2));
+            if (!payload.success) {
                 return {
                     success: false,
-                    code: safeData.code || 'SERVER_ERROR',
-                    message: safeData.message || fallbackMessage,
-                    details: {
-                        status: error.response.status,
-                        data: responseData
-                    }
+                    code: payload.code || 'ACTIVATION_FAILED',
+                    message: payload.message || 'Activation failed'
                 };
             }
 
-            // Network error - return clear message
+            const tokenVerification = verifyActivationToken(
+                payload.activationToken,
+                publicKeyBundle,
+                fingerprint,
+                normalizedKey
+            );
+
+            if (!tokenVerification.valid) {
+                return {
+                    success: false,
+                    code: tokenVerification.code,
+                    message: tokenVerification.message
+                };
+            }
+
+            const nextCache = mergeAndPersistCache(loadLicenseCache(), {
+                licenseKey: normalizedKey,
+                deviceFingerprint: fingerprint,
+                appVersion,
+                license: payload.license,
+                activationToken: payload.activationToken,
+                publicKey: publicKeyBundle,
+                lastValidated: new Date().toISOString(),
+                validateIntervalHours: Number.parseInt(String(payload.validateIntervalHours || DEFAULT_VALIDATE_INTERVAL_HOURS), 10),
+                offlineGraceHours: Number.parseInt(String(payload.offlineGraceHours || DEFAULT_OFFLINE_GRACE_HOURS), 10)
+            });
+
+            const integrity = await evaluateIntegrity({
+                licenseKey: normalizedKey,
+                fingerprint,
+                appVersion,
+                publicKeyBundle,
+                cached: nextCache
+            });
+
+            if (!integrity.valid) {
+                return {
+                    success: false,
+                    code: integrity.code || 'INTEGRITY_CHECK_FAILED',
+                    message: integrity.message || 'Integrity Check Failed'
+                };
+            }
+
+            mergeAndPersistCache(nextCache, {
+                integrity: {
+                    manifestToken: integrity.manifestToken || nextCache?.integrity?.manifestToken || null,
+                    lastCheckedAt: new Date().toISOString()
+                }
+            });
+
+            return {
+                success: true,
+                valid: true,
+                license: payload.license,
+                mode: 'online'
+            };
+        } catch (error) {
+            if (error.response?.data) {
+                const server = error.response.data;
+                return {
+                    success: false,
+                    code: server.code || 'SERVER_ERROR',
+                    message: server.message || 'Activation failed'
+                };
+            }
+
             return {
                 success: false,
                 code: 'NETWORK_ERROR',
-                message: 'Cannot connect to license server. Please ensure the license server is running.',
-                details: { message: error?.message }
+                message: 'Cannot connect to license server. Please ensure the license server is running.'
             };
         }
     },
 
-    /**
-     * Validate license (online or cached)
-     * IMPORTANT: This function NEVER throws. Always returns a structured response.
-     */
-    validate: async (licenseKey = null) => {
+    validate: async (licenseKey = null, options = {}) => {
         try {
             const isDev = process.env.NODE_ENV === 'development';
             const licenseBypass = String(process.env.LICENSE_BYPASS || '').toLowerCase() === 'true';
 
-            // DEV MODE BYPASS: only when explicitly enabled in development
             if (isDev && licenseBypass) {
                 return {
                     valid: true,
@@ -308,19 +720,16 @@ const licenseService = {
                         features: ['all']
                     },
                     mode: 'offline',
-                    graceRemaining: 999
+                    graceRemaining: 9999
                 };
             }
 
-            const hardwareId = generateHardwareId();
+            const fingerprint = generateDeviceFingerprint();
+            const appVersion = getAppVersion();
             const cached = loadLicenseCache();
+            const resolvedKey = licenseKey || cached?.licenseKey;
 
-            // Use cached key if not provided
-            if (!licenseKey && cached) {
-                licenseKey = cached.licenseKey;
-            }
-
-            if (!licenseKey) {
+            if (!resolvedKey) {
                 return {
                     valid: false,
                     code: 'NO_LICENSE',
@@ -328,7 +737,6 @@ const licenseService = {
                 };
             }
 
-            // Check for clock tampering
             if (detectClockTampering(cached)) {
                 return {
                     valid: false,
@@ -337,105 +745,149 @@ const licenseService = {
                 };
             }
 
-            // Try online validation
-            try {
-                const response = await axios.post(`${LICENSE_SERVER_URL}/api/licenses/validate`, {
-                    licenseKey,
-                    hardwareId
-                }, { timeout: 10000 });
+            const localEnforcement = await enforceTokenAndIntegrity({
+                cached,
+                licenseKey: resolvedKey,
+                fingerprint,
+                appVersion,
+                requireIntegrity: true
+            });
 
-                if (response.data.success && response.data.valid) {
-                    saveLicenseCache({
-                        licenseKey,
-                        hardwareId,
-                        license: response.data.license,
-                        lastValidated: new Date().toISOString(),
-                        gracePeriodDays: response.data.gracePeriodDays || 7
-                    });
-
-                    return {
-                        valid: true,
-                        license: response.data.license,
-                        mode: 'online'
-                    };
-                }
-
+            if (!localEnforcement.valid) {
                 return {
                     valid: false,
-                    code: response.data.code,
-                    message: response.data.message
+                    code: localEnforcement.code || 'INVALID_TOKEN',
+                    message: localEnforcement.message || 'License token validation failed'
                 };
+            }
 
-            } catch (networkError) {
-                // Network error - try offline validation
-                console.log('License server unreachable, checking cache...');
+            const validateIntervalHours = Number.parseInt(
+                String(cached?.validateIntervalHours || DEFAULT_VALIDATE_INTERVAL_HOURS),
+                10
+            );
+            const offlineGraceHours = Number.parseInt(
+                String(cached?.offlineGraceHours || DEFAULT_OFFLINE_GRACE_HOURS),
+                10
+            );
 
-                if (cached && cached.lastValidated) {
-                    const lastValidated = new Date(cached.lastValidated);
-                    const gracePeriod = (cached.gracePeriodDays || 7) * 24 * 60 * 60 * 1000;
-                    const now = Date.now();
+            const now = Date.now();
+            const lastValidatedAt = cached?.lastValidated ? new Date(cached.lastValidated).getTime() : 0;
+            const dueForOnlineValidation = !lastValidatedAt || (now - lastValidatedAt) >= (validateIntervalHours * 60 * 60 * 1000);
+            const forceOnline = Boolean(options.forceOnline);
 
-                    if (now - lastValidated.getTime() < gracePeriod) {
-                        if (cached.hardwareId !== hardwareId) {
-                            return {
-                                valid: false,
-                                code: 'HARDWARE_MISMATCH',
-                                message: 'License bound to different device'
-                            };
-                        }
+            if (!forceOnline && !dueForOnlineValidation) {
+                return {
+                    valid: true,
+                    license: cached?.license,
+                    mode: 'cached',
+                    graceRemaining: getGraceRemainingHours(cached?.lastValidated, offlineGraceHours),
+                    nextValidationAt: new Date(lastValidatedAt + validateIntervalHours * 60 * 60 * 1000).toISOString()
+                };
+            }
 
-                        if (cached.license?.expiresAt) {
-                            const expiryDate = new Date(cached.license.expiresAt);
-                            if (now > expiryDate.getTime()) {
-                                return {
-                                    valid: false,
-                                    code: 'EXPIRED',
-                                    message: 'License has expired'
-                                };
-                            }
-                        }
+            try {
+                const online = await validateOnline({
+                    licenseKey: resolvedKey,
+                    fingerprint,
+                    appVersion,
+                    publicKeyBundle: localEnforcement.publicKeyBundle
+                });
 
-                        return {
-                            valid: true,
-                            license: cached.license,
-                            mode: 'offline',
-                            graceRemaining: Math.ceil((gracePeriod - (now - lastValidated.getTime())) / (24 * 60 * 60 * 1000))
-                        };
-                    }
-
+                if (!online?.success || !online?.valid) {
                     return {
                         valid: false,
-                        code: 'GRACE_EXPIRED',
-                        message: 'Offline grace period expired. Please connect to internet.'
+                        code: online?.code || 'VALIDATION_FAILED',
+                        message: online?.message || 'License validation failed'
+                    };
+                }
+
+                const tokenVerification = verifyActivationToken(
+                    online.activationToken,
+                    localEnforcement.publicKeyBundle,
+                    fingerprint,
+                    resolvedKey
+                );
+
+                if (!tokenVerification.valid) {
+                    return {
+                        valid: false,
+                        code: tokenVerification.code,
+                        message: tokenVerification.message
+                    };
+                }
+
+                const nextCache = mergeAndPersistCache(cached, {
+                    licenseKey: resolvedKey,
+                    deviceFingerprint: fingerprint,
+                    appVersion,
+                    license: online.license,
+                    activationToken: online.activationToken,
+                    publicKey: localEnforcement.publicKeyBundle,
+                    lastValidated: new Date().toISOString(),
+                    validateIntervalHours: Number.parseInt(String(online.validateIntervalHours || validateIntervalHours), 10),
+                    offlineGraceHours: Number.parseInt(String(online.offlineGraceHours || offlineGraceHours), 10)
+                });
+
+                const integrity = await evaluateIntegrity({
+                    licenseKey: resolvedKey,
+                    fingerprint,
+                    appVersion,
+                    publicKeyBundle: localEnforcement.publicKeyBundle,
+                    cached: nextCache
+                });
+
+                if (!integrity.valid) {
+                    return {
+                        valid: false,
+                        code: integrity.code || 'INTEGRITY_CHECK_FAILED',
+                        message: integrity.message || 'Integrity Check Failed'
+                    };
+                }
+
+                mergeAndPersistCache(nextCache, {
+                    integrity: {
+                        manifestToken: integrity.manifestToken || nextCache?.integrity?.manifestToken || null,
+                        lastCheckedAt: new Date().toISOString()
+                    }
+                });
+
+                return {
+                    valid: true,
+                    license: online.license,
+                    mode: 'online',
+                    nextValidationAt: online.nextCheckRequired,
+                    graceRemaining: Number.parseInt(String(online.offlineGraceHours || offlineGraceHours), 10)
+                };
+            } catch (networkError) {
+                const graceRemaining = getGraceRemainingHours(cached?.lastValidated, offlineGraceHours);
+                if (graceRemaining > 0) {
+                    return {
+                        valid: true,
+                        license: cached?.license,
+                        mode: 'offline',
+                        graceRemaining,
+                        message: 'License server unreachable. Running in offline grace period.'
                     };
                 }
 
                 return {
                     valid: false,
-                    code: 'OFFLINE_NO_CACHE',
-                    message: 'Cannot validate license offline (no cache)'
+                    code: 'GRACE_EXPIRED',
+                    message: 'Offline grace period expired. Please connect to internet.'
                 };
             }
         } catch (error) {
-            // Catch-all for any unexpected errors
-            console.error('[LicenseService] validate unexpected error:', error.message);
             return {
                 valid: false,
                 code: 'VALIDATION_ERROR',
-                message: 'License validation failed unexpectedly.',
-                debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+                message: error.message || 'License validation failed unexpectedly.'
             };
         }
     },
 
-    /**
-     * Check license status (quick check)
-     * IMPORTANT: This function NEVER throws. Always returns a structured response.
-     */
     getStatus: async () => {
         try {
             const cached = loadLicenseCache();
-
             if (!cached) {
                 return {
                     valid: false,
@@ -445,8 +897,7 @@ const licenseService = {
                 };
             }
 
-            const validation = await licenseService.validate();
-
+            const validation = await licenseService.validate(null, { forceOnline: true });
             return {
                 valid: validation.valid,
                 state: validation.valid ? 'active' : (validation.code || 'invalid'),
@@ -455,33 +906,69 @@ const licenseService = {
                 license: validation.license,
                 graceRemaining: validation.graceRemaining,
                 code: validation.code,
-                message: validation.message
+                message: validation.message,
+                appVersion: getAppVersion(),
+                deviceFingerprint: generateDeviceFingerprint()
             };
         } catch (error) {
-            console.error('[LicenseService] getStatus unexpected error:', error.message);
             return {
                 valid: false,
                 state: 'error',
                 status: 'error',
-                message: 'Failed to check license status. Please try again.',
-                debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+                message: 'Failed to check license status. Please try again.'
             };
         }
     },
 
-    /**
-     * Clear local license cache (for testing/reset)
-     */
     clearCache: () => {
         try {
             if (fs.existsSync(CACHE_FILE)) {
                 fs.unlinkSync(CACHE_FILE);
             }
             return true;
-        } catch (error) {
+        } catch (_) {
             return false;
         }
+    },
+
+    getCachedLicense: () => loadLicenseCache(),
+
+    startBackgroundValidation: () => {
+        if (backgroundTimer) {
+            return;
+        }
+
+        backgroundTimer = setInterval(async () => {
+            try {
+                const cached = loadLicenseCache();
+                if (!cached?.licenseKey) {
+                    return;
+                }
+                await licenseService.validate(cached.licenseKey, { forceOnline: false });
+            } catch (error) {
+                console.error('[LICENSE] Background validation failed:', error.message);
+            }
+        }, 60 * 60 * 1000);
+
+        if (typeof backgroundTimer.unref === 'function') {
+            backgroundTimer.unref();
+        }
+    },
+
+    stopBackgroundValidation: () => {
+        if (backgroundTimer) {
+            clearInterval(backgroundTimer);
+            backgroundTimer = null;
+        }
     }
+};
+
+licenseService.__private = {
+    generateDeviceFingerprint,
+    verifyActivationToken,
+    verifyManifestToken,
+    runIntegrityVerification,
+    getAppVersion
 };
 
 module.exports = licenseService;

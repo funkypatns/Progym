@@ -231,6 +231,8 @@ export const useLicenseStore = create((set) => ({
     isValid: false,
     isLoading: true,
     hardwareId: null,
+    errorMessage: '',
+    errorCode: '',
 
     checkLicense: async () => {
         set({ isLoading: true });
@@ -242,11 +244,18 @@ export const useLicenseStore = create((set) => ({
                 license: status.license, // Unwrap the details object
                 isValid: status.valid,
                 isLoading: false,
-                hardwareId: hwid
+                hardwareId: hwid,
+                errorMessage: status.valid ? '' : (status.message || ''),
+                errorCode: status.valid ? '' : (status.code || '')
             });
             return status;
         } catch (error) {
-            set({ isLoading: false, isValid: false });
+            set({
+                isLoading: false,
+                isValid: false,
+                errorMessage: error?.message || 'Failed to validate license',
+                errorCode: 'VALIDATION_ERROR'
+            });
             return { valid: false, error: error.message };
         }
     },
@@ -258,11 +267,17 @@ export const useLicenseStore = create((set) => ({
             set({
                 license: result.license, // Unwrap the details object
                 isValid: result.valid,
-                isLoading: false
+                isLoading: false,
+                errorMessage: result.valid ? '' : (result.message || ''),
+                errorCode: result.valid ? '' : (result.code || '')
             });
             return result;
         } catch (error) {
-            set({ isLoading: false });
+            set({
+                isLoading: false,
+                errorMessage: error?.message || 'Activation failed',
+                errorCode: 'ACTIVATION_ERROR'
+            });
             return { success: false, message: error.message };
         }
     },

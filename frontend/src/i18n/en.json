@@ -22,7 +22,8 @@
         "employees": "Employees",
         "permissions": "Permissions",
         "appointments": "Appointments",
-        "staffTrainers": "Trainers List"
+        "staffTrainers": "Trainers List",
+        "deviceManagement": "Device Management"
     },
     "appointments": {
         "title": "Appointments",
@@ -1043,6 +1044,40 @@
         "thisMonth": "This Month",
         "count": "Count",
         "notAvailable": "Not available"
+    },
+    "devicesManagement": {
+        "title": "Device Management",
+        "subtitle": "Manage approved devices per license and enforce device limits.",
+        "searchPlaceholder": "Search license key or gym name",
+        "refresh": "Refresh",
+        "loadFailed": "Failed to load licenses",
+        "devicesLoadFailed": "Failed to load devices",
+        "deviceApproved": "Device approved",
+        "deviceRevoked": "Device revoked",
+        "devicesReset": "License devices reset",
+        "invalidLimit": "Device limit must be at least 1",
+        "licenseUpdated": "License updated",
+        "licenseRevoked": "License revoked",
+        "deviceLimit": "Device Limit",
+        "licenseStatus": "License Status",
+        "saveLicense": "Save License",
+        "revokeLicense": "Revoke License",
+        "currentStats": "Approved Devices",
+        "devicesTable": "Devices",
+        "resetDevices": "Reset License Devices",
+        "deviceName": "Device Name",
+        "platform": "Platform",
+        "appVersion": "App Version",
+        "firstActivated": "First Activated",
+        "lastSeen": "Last Seen",
+        "lastIp": "Last IP",
+        "fingerprint": "Fingerprint",
+        "status": "Status",
+        "actions": "Actions",
+        "loadingDevices": "Loading devices...",
+        "noDevices": "No devices found for this license.",
+        "approve": "Approve",
+        "revoke": "Revoke"
     }
 }
 

@@ -2,38 +2,70 @@
  * ============================================
  * LICENSE ROUTES
  * ============================================
- * 
+ *
  * API endpoints for license management in the gym app.
- * Connects to the license server for validation.
+ * Connects to the license server for validation and device management.
  */
 
 const express = require('express');
+const axios = require('axios');
 const router = express.Router();
 const licenseService = require('../services/licenseService');
 const { authenticate, authorize } = require('../middleware/auth');
 
+const LICENSE_SERVER_URL = process.env.LICENSE_SERVER_URL || 'http://localhost:4000';
+const LICENSE_ADMIN_TOKEN = process.env.LICENSE_ADMIN_TOKEN || '';
+
+function mapActivationCodeToStatus(code) {
+    if (code === 'NETWORK_ERROR') return 503;
+    if (code === 'DEVICE_NOT_APPROVED') return 403;
+    if (code === 'LICENSE_REVOKED') return 403;
+    if (code === 'EXPIRED') return 403;
+    if (code === 'INVALID_KEY' || code === 'INVALID_KEY_FORMAT' || code === 'GYM_NAME_REQUIRED') return 400;
+    if (code === 'NOT_FOUND') return 404;
+    if (code === 'UNAUTHORIZED') return 401;
+    if (code === 'SUSPENDED') return 403;
+    return 400;
+}
+
+async function proxyAdminRequest({ method, endpoint, data, params, authHeader }) {
+    const headers = {};
+
+    if (LICENSE_ADMIN_TOKEN) {
+        headers['x-license-admin-token'] = LICENSE_ADMIN_TOKEN;
+    } else if (authHeader) {
+        headers.Authorization = authHeader;
+    }
+
+    const response = await axios({
+        method,
+        url: `${LICENSE_SERVER_URL}${endpoint}`,
+        data,
+        params,
+        headers,
+        timeout: 10000
+    });
+
+    return response.data;
+}
+
 /**
  * GET /api/license/status
  * Get current license status (public - for initial check)
- * ALWAYS returns 200 with valid/invalid status. Never 500 for expected cases.
  */
 router.get('/status', async (req, res) => {
     try {
         const status = await licenseService.getStatus();
-
-        // Always return 200 - the status object contains valid: true/false
-        res.json({
+        return res.json({
             success: true,
             data: {
                 licensed: Boolean(status?.valid),
                 ...status
             }
         });
-
     } catch (error) {
-        // Fail-safe: never block UI with a 500 on license status
         console.error('License status unexpected error:', error);
-        res.json({
+        return res.json({
             success: false,
             data: {
                 valid: false,
@@ -47,42 +79,40 @@ router.get('/status', async (req, res) => {
 
 /**
  * GET /api/license/hardware-id
- * Get hardware ID for this machine
+ * Get masked fingerprint for support display.
  */
 router.get('/hardware-id', (req, res) => {
     try {
-        const hardwareId = licenseService.getHardwareId();
-        const hasHardwareId = typeof hardwareId === 'string' && hardwareId.length > 0;
-        const displayHardwareId = hasHardwareId ? `${hardwareId.slice(0, 16)}...` : null;
+        const fingerprint = licenseService.getDeviceFingerprint();
+        const displayFingerprint = fingerprint ? `${fingerprint.slice(0, 12)}...${fingerprint.slice(-6)}` : null;
 
-        res.json({
-            success: hasHardwareId,
+        return res.json({
+            success: Boolean(fingerprint),
             data: {
-                hardwareId: displayHardwareId
+                hardwareId: displayFingerprint,
+                deviceFingerprint: displayFingerprint
             },
-            message: hasHardwareId ? undefined : 'Failed to generate hardware ID'
+            message: fingerprint ? undefined : 'Failed to generate device fingerprint'
         });
-
     } catch (error) {
         console.error('Hardware ID error:', error);
-        res.json({
+        return res.json({
             success: false,
-            data: { hardwareId: null },
-            message: 'Failed to generate hardware ID'
+            data: { hardwareId: null, deviceFingerprint: null },
+            message: 'Failed to generate device fingerprint'
         });
     }
 });
 
 /**
  * POST /api/license/activate
- * Activate a license key
+ * Activate a license key.
  */
 router.post('/activate', async (req, res) => {
     try {
         const { licenseKey, gymName } = req.body;
         const trimmedKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
         const trimmedGymName = typeof gymName === 'string' ? gymName.trim() : '';
-        const isDev = process.env.NODE_ENV !== 'production';
 
         if (!trimmedKey) {
             return res.status(400).json({
@@ -93,7 +123,6 @@ router.post('/activate', async (req, res) => {
             });
         }
 
-        // Basic format guard (avoid obviously invalid inputs)
         const keyFormatOk = /^[A-Za-z0-9-]{8,}$/.test(trimmedKey);
         if (!keyFormatOk) {
             return res.status(400).json({
@@ -114,16 +143,6 @@ router.post('/activate', async (req, res) => {
         }
 
         const result = await licenseService.activate(trimmedKey, trimmedGymName);
-        if (!result || typeof result.success !== 'boolean') {
-            console.error('Activation unexpected result:', result);
-            return res.status(500).json({
-                success: false,
-                message: 'Unexpected error during activation',
-                errorCode: 'UNEXPECTED_RESULT',
-                code: 'UNEXPECTED_RESULT',
-                details: isDev ? { resultType: typeof result } : undefined
-            });
-        }
 
         if (result.success) {
             return res.json({
@@ -133,67 +152,41 @@ router.post('/activate', async (req, res) => {
             });
         }
 
-        // Map error codes to HTTP status codes
-        let httpStatus = 400;
-        if (result.code === 'NETWORK_ERROR') {
-            httpStatus = 503;
-        } else if (result.code === 'HARDWARE_MISMATCH' || result.code === 'ALREADY_ACTIVATED') {
-            httpStatus = 409;
-        } else if (result.code === 'EXPIRED' || result.code === 'INVALID' || result.code === 'REVOKED' || result.code === 'SUSPENDED') {
-            httpStatus = 403;
-        } else if (result.code === 'NOT_FOUND') {
-            httpStatus = 404;
-        } else if (result.code === 'UNAUTHORIZED') {
-            httpStatus = 401;
-        } else if (result.code === 'FORBIDDEN') {
-            httpStatus = 403;
-        }
-
-        return res.status(httpStatus).json({
+        return res.status(mapActivationCodeToStatus(result.code)).json({
             success: false,
             message: result.message || 'Activation failed',
             errorCode: result.code || 'ACTIVATION_FAILED',
-            code: result.code || 'ACTIVATION_FAILED',
-            details: isDev ? result.details : undefined
+            code: result.code || 'ACTIVATION_FAILED'
         });
-
     } catch (error) {
-        console.error('Activation unexpected error:', {
-            name: error?.name,
-            message: error?.message,
-            code: error?.code,
-            stack: error?.stack
-        });
-        res.status(500).json({
+        console.error('Activation unexpected error:', error);
+        return res.status(500).json({
             success: false,
             errorCode: 'UNEXPECTED_ERROR',
             code: 'UNEXPECTED_ERROR',
-            message: 'Unexpected error during activation',
-            details: process.env.NODE_ENV !== 'production'
-                ? { name: error?.name, message: error?.message, code: error?.code }
-                : undefined
+            message: 'Unexpected error during activation'
         });
     }
 });
 
 /**
  * POST /api/license/validate
- * Validate current license
+ * Validate current license (forced online when available).
  */
 router.post('/validate', async (req, res) => {
     try {
-        const { licenseKey } = req.body;
+        const { licenseKey, forceOnline } = req.body || {};
+        const result = await licenseService.validate(licenseKey, {
+            forceOnline: forceOnline !== false
+        });
 
-        const result = await licenseService.validate(licenseKey);
-
-        res.json({
+        return res.json({
             success: true,
             data: result
         });
-
     } catch (error) {
         console.error('Validation error:', error);
-        res.json({
+        return res.json({
             success: false,
             data: {
                 valid: false,
@@ -206,22 +199,166 @@ router.post('/validate', async (req, res) => {
 
 /**
  * DELETE /api/license/cache
- * Clear license cache (admin only - for troubleshooting)
+ * Clear license cache (admin only - troubleshooting)
  */
 router.delete('/cache', authenticate, authorize('admin'), (req, res) => {
     try {
         const cleared = licenseService.clearCache();
-
-        res.json({
+        return res.json({
             success: true,
             message: cleared ? 'Cache cleared' : 'No cache to clear'
         });
-
     } catch (error) {
         console.error('Clear cache error:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: 'Failed to clear cache'
+        });
+    }
+});
+
+/**
+ * GET /api/licenses
+ * Admin: list all licenses and device usage.
+ */
+router.get('/licenses', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'GET',
+            endpoint: '/api/licenses',
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'LICENSES_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to fetch licenses'
+        });
+    }
+});
+
+/**
+ * GET /api/licenses/:key/devices
+ */
+router.get('/licenses/:key/devices', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'GET',
+            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/devices`,
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'LICENSE_DEVICES_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to fetch devices'
+        });
+    }
+});
+
+/**
+ * POST /api/licenses/:key/devices/:deviceId/approve
+ */
+router.post('/licenses/:key/devices/:deviceId/approve', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'POST',
+            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/devices/${encodeURIComponent(req.params.deviceId)}/approve`,
+            data: req.body || {},
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'APPROVE_DEVICE_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to approve device'
+        });
+    }
+});
+
+/**
+ * POST /api/licenses/:key/devices/:deviceId/revoke
+ */
+router.post('/licenses/:key/devices/:deviceId/revoke', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'POST',
+            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/devices/${encodeURIComponent(req.params.deviceId)}/revoke`,
+            data: req.body || {},
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'REVOKE_DEVICE_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to revoke device'
+        });
+    }
+});
+
+/**
+ * POST /api/licenses/:key/reset-devices
+ */
+router.post('/licenses/:key/reset-devices', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'POST',
+            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/reset-devices`,
+            data: req.body || {},
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'RESET_DEVICES_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to reset devices'
+        });
+    }
+});
+
+/**
+ * PATCH /api/licenses/:key
+ */
+router.patch('/licenses/:key', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'PATCH',
+            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}`,
+            data: req.body || {},
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'PATCH_LICENSE_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to update license'
+        });
+    }
+});
+
+/**
+ * POST /api/licenses/:key/revoke
+ */
+router.post('/licenses/:key/revoke', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const payload = await proxyAdminRequest({
+            method: 'POST',
+            endpoint: `/api/licenses/${encodeURIComponent(req.params.key)}/revoke`,
+            data: req.body || {},
+            authHeader: req.headers.authorization
+        });
+        return res.json(payload);
+    } catch (error) {
+        return res.status(error.response?.status || 500).json({
+            success: false,
+            code: error.response?.data?.code || 'REVOKE_LICENSE_PROXY_ERROR',
+            message: error.response?.data?.message || 'Failed to revoke license'
         });
     }
 });

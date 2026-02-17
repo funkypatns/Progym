@@ -22,7 +22,8 @@
         "employees": "الموظفين",
         "permissions": "الصلاحيات",
         "appointments": "المواعيد",
-        "staffTrainers": "قائمة المدربين"
+        "staffTrainers": "قائمة المدربين",
+        "deviceManagement": "إدارة الأجهزة"
     },
     "appointments": {
         "title": "المواعيد",
@@ -999,6 +1000,40 @@
         "thisMonth": "هذا الشهر",
         "count": "العدد",
         "notAvailable": "غير متوفر"
+    },
+    "devicesManagement": {
+        "title": "إدارة الأجهزة",
+        "subtitle": "إدارة الأجهزة المعتمدة لكل ترخيص وتطبيق حد الأجهزة.",
+        "searchPlaceholder": "ابحث بمفتاح الترخيص أو اسم الجيم",
+        "refresh": "تحديث",
+        "loadFailed": "تعذر تحميل التراخيص",
+        "devicesLoadFailed": "تعذر تحميل الأجهزة",
+        "deviceApproved": "تمت الموافقة على الجهاز",
+        "deviceRevoked": "تم إلغاء الجهاز",
+        "devicesReset": "تمت إعادة ضبط أجهزة الترخيص",
+        "invalidLimit": "حد الأجهزة يجب أن يكون 1 أو أكثر",
+        "licenseUpdated": "تم تحديث الترخيص",
+        "licenseRevoked": "تم إلغاء الترخيص",
+        "deviceLimit": "حد الأجهزة",
+        "licenseStatus": "حالة الترخيص",
+        "saveLicense": "حفظ الترخيص",
+        "revokeLicense": "إلغاء الترخيص",
+        "currentStats": "الأجهزة المعتمدة",
+        "devicesTable": "الأجهزة",
+        "resetDevices": "إعادة ضبط أجهزة الترخيص",
+        "deviceName": "اسم الجهاز",
+        "platform": "المنصة",
+        "appVersion": "إصدار التطبيق",
+        "firstActivated": "أول تفعيل",
+        "lastSeen": "آخر ظهور",
+        "lastIp": "آخر IP",
+        "fingerprint": "البصمة",
+        "status": "الحالة",
+        "actions": "الإجراءات",
+        "loadingDevices": "جاري تحميل الأجهزة...",
+        "noDevices": "لا توجد أجهزة لهذا الترخيص.",
+        "approve": "موافقة",
+        "revoke": "إلغاء"
     }
 }
 
