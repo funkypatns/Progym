@@ -74,6 +74,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 1c5b89a  | Unblock Electron release build by removing missing icon references (fallback to default icon), add `electron/assets` build-resources directory, and align deployment docs to `prisma db push`. |
 | 2026-02-17 | 6806687  | Harden license validation by removing recovery-key shortcuts and allowing offline bypass only with explicit development `LICENSE_BYPASS=true`. |
 | 2026-02-17 | 8b83839  | Remove duplicate route declarations for `POST /api/payments/:id/refund` and `PUT /api/subscriptions/:id/toggle-pause` so each endpoint has a single canonical handler. |
 | 2026-02-17 | 5dca48a  | Fix Assign Pack member autocomplete: enforce minimum search length, sync typed value with selected member, and auto-fill input text on member selection (with AR/EN hint key). |
