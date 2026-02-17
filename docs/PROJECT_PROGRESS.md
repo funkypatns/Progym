@@ -216,3 +216,4 @@ Phase 4 - Receipts system
 | 2026-02-16 | 0b87516 | Fix package selection JSX parse error. |
 | 2026-02-16 | 558ebc5 | Add session package sales/consumption flow with package routes, migrations, idempotent check-in deduction, and UI wiring. |
 | 2026-02-17 | f1a476e | Add Session Packs page/nav, pack-assignment APIs, payment fields, idempotent assignment check-ins, tests, and README usage section. |
+| 2026-02-17 | 9ffa135 | Handle pack assignments schema-mismatch errors with explicit response instead of opaque 500. |
