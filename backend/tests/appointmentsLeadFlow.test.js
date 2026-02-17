@@ -26,7 +26,7 @@ function createMockRes() {
     return res;
 }
 
-test('POST /appointments creates tentative appointment from lead payload', async () => {
+test('POST /appointments creates tentative appointment from tentative payload', async () => {
     const handler = getRouteHandler('post', '/');
     const originalCreateAppointment = AppointmentService.createAppointment;
 
@@ -37,9 +37,9 @@ test('POST /appointments creates tentative appointment from lead payload', async
             id: 10,
             bookingType: 'tentative',
             status: 'booked',
-            leadId: 21,
             memberId: null,
-            lead: { id: 21, fullName: 'Visitor User', phone: '01012345678' }
+            fullName: 'Visitor User',
+            phone: '01012345678'
         };
     };
 
@@ -48,12 +48,10 @@ test('POST /appointments creates tentative appointment from lead payload', async
             start: '2026-02-17T10:00:00.000Z',
             end: '2026-02-17T11:00:00.000Z',
             durationMinutes: 60,
-            createdFrom: 'lead',
-            lead: {
-                fullName: 'Visitor User',
-                phone: '01012345678',
-                notes: 'first call'
-            },
+            bookingType: 'tentative',
+            fullName: 'Visitor User',
+            phone: '01012345678',
+            notes: 'first call',
             title: 'PT Session',
             sessionName: 'PT Session',
             sessionPrice: 250,
@@ -73,12 +71,12 @@ test('POST /appointments creates tentative appointment from lead payload', async
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.data.bookingType, 'tentative');
-    assert.equal(res.body.data.leadId, 21);
+    assert.equal(res.body.data.fullName, 'Visitor User');
     assert.equal(calls.length, 1);
     assert.equal(calls[0].coachId, 3);
     assert.equal(calls[0].createdByEmployeeId, 3);
-    assert.equal(calls[0].createdFrom, 'lead');
-    assert.equal(calls[0].lead.fullName, 'Visitor User');
+    assert.equal(calls[0].bookingType, 'tentative');
+    assert.equal(calls[0].fullName, 'Visitor User');
 });
 
 test('POST /appointments/:id/complete returns member conversion payload', async () => {
@@ -94,7 +92,6 @@ test('POST /appointments/:id/complete returns member conversion payload', async 
                 status: 'completed',
                 bookingType: 'confirmed',
                 memberId: 55,
-                leadId: null,
                 paymentStatus: 'paid'
             },
             sessionPayment: {

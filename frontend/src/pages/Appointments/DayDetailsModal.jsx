@@ -10,19 +10,19 @@ const getAppointmentPerson = (apt) => {
         return {
             name: `${apt.member.firstName || ''} ${apt.member.lastName || ''}`.trim(),
             phone: apt.member.phone || '',
-            isLead: false
+            isTentative: false
         };
     }
 
-    if (apt?.lead) {
+    if (apt?.bookingType === 'tentative' && !apt?.memberId) {
         return {
-            name: apt.lead.fullName || '',
-            phone: apt.lead.phone || '',
-            isLead: true
+            name: apt.fullName || '',
+            phone: apt.phone || '',
+            isTentative: true
         };
     }
 
-    return { name: '', phone: '', isLead: false };
+    return { name: apt?.fullName || '', phone: apt?.phone || '', isTentative: false };
 };
 
 export default function DayDetailsModal({ isOpen, onClose, date, appointments, readOnly, onStatusUpdate, onEdit }) {
@@ -116,7 +116,10 @@ export default function DayDetailsModal({ isOpen, onClose, date, appointments, r
                     ) : (
                         filtered.map((apt) => {
                             const person = getAppointmentPerson(apt);
-                            const canComplete = !apt?.isCompleted && !['cancelled', 'no_show'].includes(apt.status);
+                            const canComplete = apt?.bookingType === 'tentative'
+                                && apt?.status === 'booked'
+                                && !apt?.memberId
+                                && !apt?.isCompleted;
                             const canMarkMissed = !readOnly && ['scheduled', 'booked', 'arrived', 'pending'].includes(apt.status);
                             const statusClass = apt.status === 'completed' || apt.status === 'auto_completed'
                                 ? 'bg-teal-500/20 text-teal-500'
@@ -145,9 +148,9 @@ export default function DayDetailsModal({ isOpen, onClose, date, appointments, r
                                                 <span className={`text-[10px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded ${chipClass}`}>
                                                     {apt.status === 'auto_completed' ? 'AUTO' : apt.status.replace('_', ' ').toUpperCase()}
                                                 </span>
-                                                {person.isLead && (
+                                                {person.isTentative && (
                                                     <span className="text-[10px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">
-                                                        {isRtl ? '????' : 'Lead'}
+                                                        {t('appointments.tentativeBadge', isRtl ? 'مبدئي' : 'Tentative')}
                                                     </span>
                                                 )}
                                             </div>

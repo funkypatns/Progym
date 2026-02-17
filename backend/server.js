@@ -259,6 +259,24 @@ app.use((err, req, res, next) => {
 
 const SessionJobs = require('./jobs/sessionJobs');
 
+async function logAppointmentSchemaWarnings() {
+    try {
+        const rows = await prisma.$queryRaw`
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'Appointment'
+        `;
+        const columns = new Set((rows || []).map((row) => row.column_name));
+        const requiredColumns = ['bookingType', 'fullName', 'phone', 'status'];
+        const missing = requiredColumns.filter((column) => !columns.has(column));
+        if (missing.length > 0) {
+            console.warn(`[SCHEMA WARNING] Appointment table is missing columns: ${missing.join(', ')}. Run migrations/db push before starting.`);
+        }
+    } catch (error) {
+        console.warn('[SCHEMA WARNING] Unable to verify Appointment schema columns:', error.message);
+    }
+}
+
 /**
  * Start the server
  */
@@ -270,6 +288,7 @@ async function startServer() {
         // Test database connection
         await prisma.$connect();
         console.log('âœ… Database connected');
+        await logAppointmentSchemaWarnings();
 
         // Start session scanner
         SessionJobs.startScanner();

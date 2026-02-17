@@ -1,47 +1,61 @@
 const AppointmentService = require('../services/appointmentService');
 
 let intervalId = null;
+let noShowIntervalId = null;
 
 const SessionJobs = {
     /**
-     * Start the background scanner for session auto-completion
-     * @param {number} intervalMs - Check interval in milliseconds (default 1 min)
+     * Start background scanners.
+     * @param {number} intervalMs - session auto-complete interval in milliseconds
      */
     startScanner(intervalMs = 60000) {
         if (intervalId) return;
 
-        console.log('⏰ Starting Session Auto-Complete Scanner...');
+        console.log('Starting Session Auto-Complete Scanner...');
+        console.log('Starting Tentative Booking No-show Scanner...');
 
-        // Run immediately on start
         this.runCheck();
+        this.runNoShowCheck();
 
         intervalId = setInterval(() => {
             this.runCheck();
         }, intervalMs);
+
+        noShowIntervalId = setInterval(() => {
+            this.runNoShowCheck();
+        }, 60 * 60 * 1000);
     },
 
-    /**
-     * Stop scanner
-     */
     stopScanner() {
         if (intervalId) {
             clearInterval(intervalId);
             intervalId = null;
         }
+        if (noShowIntervalId) {
+            clearInterval(noShowIntervalId);
+            noShowIntervalId = null;
+        }
     },
 
-    /**
-     * Run the check logic
-     */
     async runCheck() {
         try {
             const results = await AppointmentService.autoCompleteSessions();
             if (results && results.length > 0) {
-                console.log(`🤖 Auto-completed ${results.length} sessions.`);
-                // Here we could emit socket events or create notifications if not handled in service
+                console.log(`Auto-completed ${results.length} sessions.`);
             }
         } catch (error) {
-            console.error('❌ Session Auto-Complete Error:', error.message);
+            console.error('Session Auto-Complete Error:', error.message);
+        }
+    },
+
+    async runNoShowCheck() {
+        try {
+            const updatedCount = await AppointmentService.autoMarkTentativeNoShows();
+            if (updatedCount > 0) {
+                console.log(`Marked ${updatedCount} tentative bookings as no_show.`);
+            }
+        } catch (error) {
+            console.error('Tentative No-show Scanner Error:', error.message);
         }
     }
 };

@@ -156,7 +156,6 @@ model Lead {
   updatedAt         DateTime @updatedAt
 
   convertedMember   Member?      @relation("LeadConvertedMember", fields: [convertedMemberId], references: [id], onDelete: SetNull)
-  appointments      Appointment[]
 
   @@index([phone])
 }
@@ -842,8 +841,9 @@ model Appointment {
   id          Int      @id @default(autoincrement())
   title       String?  // e.g. "PT Session"
   memberId    Int?
-  leadId      Int?
   bookingType String   @default("confirmed") // tentative, confirmed
+  fullName    String?
+  phone       String?
   coachId     Int
   
   start       DateTime
@@ -870,7 +870,6 @@ model Appointment {
   
   // Relations
   member      Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
     coach       User     @relation("CoachAppointments", fields: [coachId], references: [id])
   createdByEmployee   User? @relation("AppointmentCreatedBy", fields: [createdByEmployeeId], references: [id])
   completedByEmployee User? @relation("AppointmentCompletedBy", fields: [completedByEmployeeId], references: [id])
@@ -884,6 +883,10 @@ model Appointment {
   priceAdjustments SessionPriceAdjustment[]
   creditAdjustmentsAsSource   MemberCreditLedger[] @relation("SourceAppointmentCredit")
   creditAdjustmentsAppliedTo  MemberCreditLedger[] @relation("AppliedAppointmentCredit")
+
+  @@index([bookingType])
+  @@index([status])
+  @@index([start])
 }
 
 /// Commission configuration per coach

@@ -118,11 +118,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                     notes: ''
                 });
                 setLeadMemberDetails({
-                    fullName: appointment.lead?.fullName || '',
-                    phone: appointment.lead?.phone || '',
+                    fullName: appointment.fullName || '',
+                    phone: appointment.phone || '',
                     address: '',
                     gender: '',
-                    notes: appointment.lead?.notes || ''
+                    notes: appointment.notes || ''
                 });
                 setShowLeadPaymentStep(false);
                 setShowLeadDetailsStep(false);
@@ -369,18 +369,18 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         setLoading(true);
 
         try {
-            const isLeadBooking = !appointment && bookingMode === 'lead';
+            const isTentativeBooking = !appointment && bookingMode === 'tentative';
 
-            if (!isLeadBooking && !selectedMember) {
+            if (!isTentativeBooking && !selectedMember) {
                 toast.error(t('appointments.selectMemberRequired', 'Please select a member'));
                 return;
             }
-            if (isLeadBooking && !leadForm.fullName.trim()) {
-                toast.error(t('appointments.visitorFullNameRequired', 'Visitor full name is required'));
+            if (isTentativeBooking && !leadForm.fullName.trim()) {
+                toast.error(t('appointments.tentativeFullNameRequired', 'Full name is required'));
                 return;
             }
-            if (isLeadBooking && !leadForm.phone.trim()) {
-                toast.error(t('appointments.visitorPhoneRequired', 'Visitor phone is required'));
+            if (isTentativeBooking && !leadForm.phone.trim()) {
+                toast.error(t('appointments.tentativePhoneRequired', 'Phone is required'));
                 return;
             }
             if (!user?.id) {
@@ -406,21 +406,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             if (appointment || bookingMode === 'member') {
                 payload.memberId = selectedMember?.id ?? appointment?.memberId;
             } else {
-                const leadPayload = {
-                    fullName: leadForm.fullName.trim(),
-                    phone: leadForm.phone.trim(),
-                    notes: leadForm.notes.trim() || null
-                };
-                payload.createdFrom = 'lead';
-                payload.lead = leadPayload;
-                payload.leadFullName = leadPayload.fullName;
-                payload.leadPhone = leadPayload.phone;
-                payload.leadNotes = leadPayload.notes;
-                payload.notes = JSON.stringify({
-                    source: 'lead',
-                    lead: leadPayload,
-                    appointmentNotes: form.notes?.trim() || null
-                });
+                payload.bookingType = 'tentative';
+                payload.fullName = leadForm.fullName.trim();
+                payload.phone = leadForm.phone.trim();
+                payload.memberId = null;
+                payload.notes = leadForm.notes.trim() || form.notes?.trim() || null;
             }
 
             let res;
@@ -522,7 +512,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 : 'Session has not ended yet. Are you sure you want to complete it?';
             if (!window.confirm(confirmMessage)) return;
         }
-        if (isLeadAppointment) {
+        if (isTentativeAppointment) {
             const defaultAmount = Number(appointment.sessionPrice ?? appointment.finalPrice ?? appointment.price ?? form.price ?? 0);
             setLeadCompletionPayment((prev) => ({
                 ...prev,
@@ -530,9 +520,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             }));
             setLeadMemberDetails((prev) => ({
                 ...prev,
-                fullName: prev.fullName || appointment?.lead?.fullName || '',
-                phone: prev.phone || appointment?.lead?.phone || '',
-                notes: prev.notes || appointment?.lead?.notes || ''
+                fullName: prev.fullName || appointment?.fullName || '',
+                phone: prev.phone || appointment?.phone || '',
+                notes: prev.notes || appointment?.notes || ''
             }));
             setShowLeadPaymentStep(true);
             return;
@@ -586,13 +576,13 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const handleLeadCompletionSubmit = async () => {
-        if (!appointment || !isLeadAppointment || isAlreadyCompleted) return;
+        if (!appointment || !isTentativeAppointment || isAlreadyCompleted) return;
         if (!leadMemberDetails.fullName.trim()) {
-            toast.error(t('appointments.visitorFullNameRequired', 'Visitor full name is required'));
+            toast.error(t('appointments.tentativeFullNameRequired', 'Full name is required'));
             return;
         }
         if (!leadMemberDetails.phone.trim()) {
-            toast.error(t('appointments.visitorPhoneRequired', 'Visitor phone is required'));
+            toast.error(t('appointments.tentativePhoneRequired', 'Phone is required'));
             return;
         }
 
@@ -628,7 +618,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             if (!res.data?.success) {
                 throw new Error(res.data?.message || 'Failed to complete appointment');
             }
-            toast.success(isRtl ? 'تم إكمال الجلسة وتحويل الزائر إلى عضو' : 'Session completed and visitor converted to member');
+            toast.success(isRtl ? 'تم إكمال الجلسة وتحويل الحجز إلى عضو' : 'Tentative booking completed and converted to member');
             setShowLeadDetailsStep(false);
             setShowLeadPaymentStep(false);
             onSuccess();
@@ -727,10 +717,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     };
 
     const hasEnded = appointment?.end ? isBefore(parseISO(appointment.end), new Date()) : false;
-    const isLeadAppointment = Boolean(appointment?.leadId && !appointment?.memberId);
-    const isCompletableStatus = appointment && !['cancelled', 'no_show', 'completed', 'auto_completed'].includes(appointment.status);
+    const isTentativeAppointment = Boolean(appointment?.bookingType === 'tentative' && !appointment?.memberId);
     const isAlreadyCompleted = Boolean(appointment && (appointment.isCompleted || appointment.status === 'completed' || appointment.status === 'auto_completed' || appointment.completedAt));
-    const canComplete = appointment && !isAlreadyCompleted && isCompletableStatus;
+    const canComplete = Boolean(appointment && isTentativeAppointment && appointment.status === 'booked' && !isAlreadyCompleted);
     const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError;
 
     return (
@@ -780,22 +769,22 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                         : 'text-slate-300 hover:bg-slate-700/80'
                                                         }`}
                                                 >
-                                                    {t('appointments.existingMemberTab', 'عضو موجود')}
+                                                    {t('appointments.existingMemberTab', 'Existing Member')}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        setBookingMode('lead');
+                                                        setBookingMode('tentative');
                                                         setMembers([]);
                                                         setSelectedMember(null);
                                                         setMemberSearch('');
                                                     }}
-                                                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${bookingMode === 'lead'
+                                                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${bookingMode === 'tentative'
                                                         ? 'bg-blue-600 text-white'
                                                         : 'text-slate-300 hover:bg-slate-700/80'
                                                         }`}
                                                 >
-                                                    {t('appointments.firstVisitTab', 'أول مرة / زائر')}
+                                                    {t('appointments.tentativeBookingTab', 'Tentative Booking')}
                                                 </button>
                                             </div>
 
@@ -813,7 +802,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                             placeholder={t('appointments.searchMemberPlaceholder')}
                                                             className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
                                                         />
-                                                        {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">⌛</div>}
+                                                        {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">?</div>}
                                                     </div>
                                                     {members.length > 0 && !selectedMember && (
                                                         <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
@@ -831,33 +820,33 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             ) : (
                                                 <div className="space-y-2">
                                                     <div className="space-y-2">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.visitorFullName', 'الاسم الكامل')}</label>
+                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.tentativeFullName', 'Full Name')}</label>
                                                         <input
                                                             type="text"
                                                             value={leadForm.fullName}
                                                             onChange={(e) => setLeadForm(prev => ({ ...prev, fullName: e.target.value }))}
-                                                            placeholder={t('appointments.visitorFullNamePlaceholder', 'اكتب الاسم الكامل')}
+                                                            placeholder={t('appointments.tentativeFullNamePlaceholder', 'Enter full name')}
                                                             className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
                                                         />
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.visitorPhone', 'رقم الهاتف')}</label>
+                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.tentativePhone', 'Phone')}</label>
                                                         <input
                                                             type="text"
                                                             value={leadForm.phone}
                                                             onChange={(e) => setLeadForm(prev => ({ ...prev, phone: e.target.value }))}
-                                                            placeholder={t('appointments.visitorPhonePlaceholder', 'اكتب رقم الهاتف')}
+                                                            placeholder={t('appointments.tentativePhonePlaceholder', 'Enter phone number')}
                                                             className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
                                                             dir="ltr"
                                                         />
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.visitorNotes', 'ملاحظات')}</label>
+                                                        <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.tentativeNotes', 'Notes')}</label>
                                                         <textarea
                                                             rows={2}
                                                             value={leadForm.notes}
                                                             onChange={(e) => setLeadForm(prev => ({ ...prev, notes: e.target.value }))}
-                                                            placeholder={t('appointments.visitorNotesPlaceholder', 'ملاحظات اختيارية')}
+                                                            placeholder={t('appointments.tentativeNotesPlaceholder', 'Optional notes')}
                                                             className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition"
                                                         />
                                                     </div>
@@ -1249,7 +1238,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                             <div className="flex min-h-full items-center justify-center p-4">
                                 <Dialog.Panel className="w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 p-5 shadow-xl">
                                     <Dialog.Title className="text-lg font-black text-white mb-4">
-                                        {isRtl ? 'تأكيد التحصيل' : 'Confirm Payment'}
+                                        {isRtl ? 'تأكيد الدفع' : 'Confirm Payment'}
                                     </Dialog.Title>
                                     <div className="space-y-3">
                                         <div>
@@ -1310,7 +1299,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             onClick={handleLeadPaymentNext}
                                             className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold"
                                         >
-                                            {isRtl ? 'متابعة' : 'Next'}
+                                            {t('common.next', 'Next')}
                                         </button>
                                     </div>
                                 </Dialog.Panel>
@@ -1327,11 +1316,11 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                             <div className="flex min-h-full items-center justify-center p-4">
                                 <Dialog.Panel className="w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 p-5 shadow-xl">
                                     <Dialog.Title className="text-lg font-black text-white mb-4">
-                                        {isRtl ? 'إكمال بيانات العضو' : 'Complete Member Details'}
+                                        {t('appointments.completeTentativeDetails', 'Complete Member Details')}
                                     </Dialog.Title>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.visitorFullName', 'Full Name')}</label>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.tentativeFullName', 'Full Name')}</label>
                                             <input
                                                 type="text"
                                                 value={leadMemberDetails.fullName}
@@ -1340,7 +1329,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.visitorPhone', 'Phone')}</label>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('appointments.tentativePhone', 'Phone')}</label>
                                             <input
                                                 type="text"
                                                 value={leadMemberDetails.phone}
@@ -1350,7 +1339,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'العنوان' : 'Address'}</label>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('members.address', 'Address')}</label>
                                             <input
                                                 type="text"
                                                 value={leadMemberDetails.address}
@@ -1359,16 +1348,16 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase">{isRtl ? 'النوع' : 'Gender'}</label>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">{t('members.gender', 'Gender')}</label>
                                             <select
                                                 value={leadMemberDetails.gender}
                                                 onChange={(e) => setLeadMemberDetails(prev => ({ ...prev, gender: e.target.value }))}
                                                 className="mt-1 w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
                                             >
-                                                <option value="">{isRtl ? 'غير محدد' : 'Unspecified'}</option>
-                                                <option value="male">{isRtl ? 'ذكر' : 'Male'}</option>
-                                                <option value="female">{isRtl ? 'أنثى' : 'Female'}</option>
-                                                <option value="unknown">{isRtl ? 'غير معروف' : 'Unknown'}</option>
+                                                <option value="">{t('common.unspecified', 'Unspecified')}</option>
+                                                <option value="male">{t('members.male', 'Male')}</option>
+                                                <option value="female">{t('members.female', 'Female')}</option>
+                                                <option value="unknown">{t('common.unknown', 'Unknown')}</option>
                                             </select>
                                         </div>
                                         <div>
@@ -1390,7 +1379,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             }}
                                             className="flex-1 py-2 rounded-xl bg-slate-700 text-white font-bold"
                                         >
-                                            {isRtl ? 'رجوع' : 'Back'}
+                                            {t('common.back', 'Back')}
                                         </button>
                                         <button
                                             type="button"
@@ -1398,7 +1387,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             disabled={completionLoading}
                                             className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50"
                                         >
-                                            {completionLoading ? t('common.processing', 'Processing...') : (isRtl ? 'تأكيد الإكمال' : 'Confirm Complete')}
+                                            {completionLoading ? t('common.processing', 'Processing...') : t('appointments.confirmComplete', 'Confirm Complete')}
                                         </button>
                                     </div>
                                 </Dialog.Panel>
@@ -1569,7 +1558,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                             <div className="flex justify-between">
                                                                 <span className="text-slate-500 dark:text-slate-300">{new Date(row.createdAt).toLocaleString()}</span>
                                                                 <span className="font-semibold text-slate-900 dark:text-white">
-                                                                    {formatMoney(row.oldFinalPrice ?? row.oldEffectivePrice ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })} → {formatMoney(row.newFinalPrice ?? row.newEffectivePrice ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}
+                                                                    {formatMoney(row.oldFinalPrice ?? row.oldEffectivePrice ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}{' -> '}{formatMoney(row.newFinalPrice ?? row.newEffectivePrice ?? 0, i18n.language, { code: 'EGP', symbol: 'EGP' })}
                                                                 </span>
                                                             </div>
                                                             <div className="text-slate-600 dark:text-slate-300">
@@ -1615,7 +1604,5 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
 };
 
 export default AppointmentModal;
-
-
 
 

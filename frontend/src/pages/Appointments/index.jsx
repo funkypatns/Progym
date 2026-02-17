@@ -64,25 +64,25 @@ const Appointments = () => {
     };
 
     const getAppointmentPerson = (apt) => {
-        if (!apt) return { name: '', phone: '', memberCode: '', isLead: false };
+        if (!apt) return { name: '', phone: '', memberCode: '', isTentative: false };
         if (apt.member) {
             const name = `${apt.member.firstName || ''} ${apt.member.lastName || ''}`.trim();
             return {
                 name,
                 phone: apt.member.phone || '',
                 memberCode: apt.member.memberId || '',
-                isLead: false
+                isTentative: false
             };
         }
-        if (apt.lead) {
+        if (apt.bookingType === 'tentative' && !apt.memberId) {
             return {
-                name: apt.lead.fullName || '',
-                phone: apt.lead.phone || '',
+                name: apt.fullName || '',
+                phone: apt.phone || '',
                 memberCode: '',
-                isLead: true
+                isTentative: true
             };
         }
-        return { name: '', phone: '', memberCode: '', isLead: false };
+        return { name: apt.fullName || '', phone: apt.phone || '', memberCode: '', isTentative: false };
     };
 
     const appointmentAlertsEnabled = parseBoolean(getSetting('appointment_alerts_enabled', true), true);
@@ -321,6 +321,10 @@ const Appointments = () => {
     const handleQuickStatus = async (e, apt, status) => {
         e.stopPropagation();
         if (status === 'completed') {
+            const isTentativeBooked = apt?.bookingType === 'tentative' && apt?.status === 'booked' && !apt?.memberId;
+            if (!isTentativeBooked) {
+                return;
+            }
             if (isAppointmentCompleted(apt)) {
                 return;
             }
@@ -403,9 +407,9 @@ const Appointments = () => {
                         <div>
                             <div className="text-sm font-bold text-white">
                                 {memberName || t('appointments.member', 'Member')}
-                                {person.isLead ? (
+                                {person.isTentative ? (
                                     <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 uppercase tracking-widest">
-                                        {isRtl ? 'زائر' : 'Lead'}
+                                        {t('appointments.tentativeBadge', isRtl ? 'مبدئي' : 'Tentative')}
                                     </span>
                                 ) : null}
                             </div>
@@ -678,7 +682,7 @@ const Appointments = () => {
                             <div className="text-sm text-slate-400 mt-0.5">
                                 {formatTime(apt.start, i18n.language)} - {formatTime(apt.end, i18n.language)} • {person.name || t('appointments.member', 'Member')}
                                 {person.phone ? ` • ${person.phone}` : ''}
-                                {person.isLead ? ` • ${isRtl ? 'زائر' : 'Lead'}` : ''}
+                                {person.isTentative ? ` • ${t('appointments.tentativeBadge', isRtl ? 'مبدئي' : 'Tentative')}` : ''}
                             </div>
                             {apt.trainer?.name && (
                                 <div className="text-[11px] text-slate-500 mt-0.5">
@@ -691,13 +695,15 @@ const Appointments = () => {
                         {/* Quick Actions for Scheduled Items */}
                         {!isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status) && (
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={(e) => handleQuickStatus(e, apt, 'completed')}
-                                    className="p-2 bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-500 rounded-lg transition"
-                                    title="Mark Completed"
-                                >
-                                    <CheckCircle size={16} />
-                                </button>
+                                {apt.bookingType === 'tentative' && apt.status === 'booked' && !apt.memberId && (
+                                    <button
+                                        onClick={(e) => handleQuickStatus(e, apt, 'completed')}
+                                        className="p-2 bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-500 rounded-lg transition"
+                                        title="Mark Completed"
+                                    >
+                                        <CheckCircle size={16} />
+                                    </button>
+                                )}
                                 <button
                                     onClick={(e) => handleQuickStatus(e, apt, 'no_show')}
                                     className="p-2 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 rounded-lg transition"

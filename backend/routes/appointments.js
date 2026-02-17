@@ -87,11 +87,12 @@ router.get('/pending-completion', authenticate, async (req, res) => {
                 paymentStatus: true,
                 trainerId: true,
                 memberId: true,
+                fullName: true,
+                phone: true,
                 coachId: true,
                 createdByEmployeeId: true,
                 isCompleted: true,
                 member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
-                lead: { select: { id: true, fullName: true, phone: true, notes: true } },
                 coach: { select: { firstName: true, lastName: true } },
                 trainer: { select: { id: true, name: true } },
                 createdByEmployee: { select: { id: true, firstName: true, lastName: true } }
@@ -420,7 +421,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
         const responseData = {
             ...preview,
             defaultCommissionPercent,
-            trainerId: appointment.trainerId,
+            trainerId: (Number.isFinite(trainerId) && trainerId > 0) ? trainerId : appointment.trainerId,
             trainerName: trainerForPreview?.name || preview?.coachName || '',
             serviceName: appointment.title || '',
             effectivePrice: roundMoney(priceValue),
