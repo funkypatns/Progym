@@ -88,7 +88,7 @@ const CashClosingReport = ({ data, refreshKey = 0 }) => {
     const closings = effectiveData.closings || effectiveData.rows || [];
     const summary = effectiveData.summary || fallbackData.summary;
 
-    const handleExport = async (closeId, format = 'csv') => {
+    const handleExport = async (closeId, format = 'xlsx') => {
         if (!closeId) return;
         setIsDownloadingId(closeId);
         try {
@@ -194,20 +194,12 @@ const CashClosingReport = ({ data, refreshKey = 0 }) => {
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleExport(row.id, 'csv')}
+                                                    onClick={() => handleExport(row.id, 'xlsx')}
                                                     disabled={isDownloadingId === row.id}
                                                     className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-800 transition-colors"
                                                 >
                                                     <Download size={14} />
-                                                    {t('cashClosing.downloadExport', 'تحميل Export')}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleExport(row.id, 'json')}
-                                                    disabled={isDownloadingId === row.id}
-                                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors"
-                                                >
-                                                    JSON
+                                                    {t('cashClosing.downloadExport', 'Download Excel')}
                                                 </button>
                                             </div>
                                         </td>

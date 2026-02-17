@@ -15,6 +15,16 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { createAuditLog } = require('../services/auditService');
 const { calculateDailyRevenue, calculateNetRevenue, calculateCashClosingStats, calculateFinancialSnapshot } = require('../utils/financialCalculations');
 const { parseDateRange } = require('../utils/dateParams');
+const {
+    CURRENCY_NUM_FMT,
+    DEFAULT_BORDER,
+    addTableSheet,
+    autoFitWorksheetColumns,
+    createWorkbook,
+    sendWorkbook,
+    styleHeaderRow,
+    toDateStamp
+} = require('../services/excelExportService');
 
 
 // All routes require authentication
@@ -217,15 +227,6 @@ function formatUserName(user) {
     return full || null;
 }
 
-function escapeCsvCell(value) {
-    if (value === null || value === undefined) return '';
-    const asString = String(value);
-    if (/[",\n]/.test(asString)) {
-        return `"${asString.replace(/"/g, '""')}"`;
-    }
-    return asString;
-}
-
 function parseSnapshotJson(value) {
     if (!value) return {};
     try {
@@ -321,78 +322,168 @@ function buildExportPayload(period) {
     };
 }
 
-function buildExportCsv(payload) {
-    const lines = [];
-    lines.push('section,key,value');
+function addCashCloseSummarySheet(workbook, payload) {
+    const meta = payload?.meta || {};
+    const totals = payload?.totals || {};
+    const worksheet = workbook.addWorksheet('Summary');
 
-    const meta = payload.meta || {};
-    Object.entries(meta).forEach(([key, value]) => {
-        lines.push(`meta,${escapeCsvCell(key)},${escapeCsvCell(value)}`);
+    const infoRows = [
+        ['Close ID', meta.closeId || ''],
+        ['Period Type', meta.periodType || ''],
+        ['Status', meta.status || ''],
+        ['Start Date', meta.startAt || null],
+        ['End Date', meta.endAt || null],
+        ['Created By', meta.createdBy || ''],
+        ['Closed By', meta.closedBy || ''],
+        ['Notes', meta.notes || '']
+    ];
+
+    let rowCursor = 1;
+    infoRows.forEach(([label, value]) => {
+        const row = worksheet.getRow(rowCursor);
+        row.getCell(1).value = label;
+        row.getCell(1).font = { bold: true };
+
+        if (value) {
+            const parsed = value instanceof Date ? value : new Date(value);
+            if (label.toLowerCase().includes('date') && !Number.isNaN(parsed.getTime())) {
+                row.getCell(2).value = parsed;
+                row.getCell(2).numFmt = 'yyyy-mm-dd hh:mm';
+            } else {
+                row.getCell(2).value = String(value);
+            }
+        } else {
+            row.getCell(2).value = '';
+        }
+        row.getCell(1).border = DEFAULT_BORDER;
+        row.getCell(2).border = DEFAULT_BORDER;
+        rowCursor += 1;
     });
 
-    const totals = payload.totals || {};
-    Object.entries(totals).forEach(([key, value]) => {
-        lines.push(`totals,${escapeCsvCell(key)},${escapeCsvCell(value)}`);
+    rowCursor += 1;
+    const tableHeaderRow = worksheet.getRow(rowCursor);
+    tableHeaderRow.getCell(1).value = 'Item';
+    tableHeaderRow.getCell(2).value = 'Expected';
+    tableHeaderRow.getCell(3).value = 'Actual';
+    tableHeaderRow.getCell(4).value = 'Difference';
+    styleHeaderRow(tableHeaderRow);
+
+    const summaryTableRows = [
+        {
+            item: 'Cash',
+            expected: toSafeNumber(totals.expectedCashAmount),
+            actual: toSafeNumber(totals.actualCashAmount),
+            difference: toSafeNumber(totals.differenceCash)
+        },
+        {
+            item: 'Non-Cash',
+            expected: toSafeNumber(totals.expectedNonCashAmount),
+            actual: toSafeNumber(totals.actualNonCashAmount),
+            difference: toSafeNumber(totals.differenceNonCash)
+        },
+        {
+            item: 'Total',
+            expected: toSafeNumber(totals.expectedTotalAmount),
+            actual: toSafeNumber(totals.actualTotalAmount),
+            difference: toSafeNumber(totals.differenceTotal)
+        }
+    ];
+
+    summaryTableRows.forEach((item, index) => {
+        const rowNumber = rowCursor + index + 1;
+        const row = worksheet.getRow(rowNumber);
+        row.getCell(1).value = item.item;
+        row.getCell(1).font = { bold: true };
+        row.getCell(2).value = item.expected;
+        row.getCell(3).value = item.actual;
+        row.getCell(4).value = item.difference;
+
+        [2, 3, 4].forEach((columnIndex) => {
+            row.getCell(columnIndex).numFmt = CURRENCY_NUM_FMT;
+            row.getCell(columnIndex).alignment = { horizontal: 'right' };
+        });
+
+        if (item.difference > 0) {
+            row.getCell(4).font = { color: { argb: 'FF166534' }, bold: true };
+        } else if (item.difference < 0) {
+            row.getCell(4).font = { color: { argb: 'FFB91C1C' }, bold: true };
+        } else {
+            row.getCell(4).font = { color: { argb: 'FF166534' }, bold: true };
+        }
+
+        [1, 2, 3, 4].forEach((columnIndex) => {
+            row.getCell(columnIndex).border = DEFAULT_BORDER;
+        });
     });
 
-    lines.push('');
-    lines.push('payments,id,paidAt,method,amount,status,memberName');
-    const paymentRows = payload.breakdown?.payments?.rows || [];
-    paymentRows.forEach((row) => {
-        lines.push([
-            'payments',
-            escapeCsvCell(row.id),
-            escapeCsvCell(row.paidAt),
-            escapeCsvCell(row.method),
-            escapeCsvCell(row.amount),
-            escapeCsvCell(row.status),
-            escapeCsvCell(row.memberName || '')
-        ].join(','));
+    autoFitWorksheetColumns(worksheet);
+}
+
+function buildCashCloseWorkbook(payload) {
+    const workbook = createWorkbook();
+    const breakdown = payload?.breakdown || {};
+
+    addCashCloseSummarySheet(workbook, payload);
+
+    const paymentRows = Array.isArray(breakdown?.payments?.rows) ? breakdown.payments.rows : [];
+    const payoutRows = Array.isArray(breakdown?.payouts?.rows) ? breakdown.payouts.rows : [];
+    const cashInRows = Array.isArray(breakdown?.cashIn?.rows) ? breakdown.cashIn.rows : [];
+    const salesRows = Array.isArray(breakdown?.sales?.rows) ? breakdown.sales.rows : [];
+
+    addTableSheet(workbook, {
+        name: 'Payments',
+        title: 'Payments',
+        columns: [
+            { key: 'id', header: 'ID', type: 'text' },
+            { key: 'paidAt', header: 'Paid At', type: 'date' },
+            { key: 'method', header: 'Method', type: 'text' },
+            { key: 'amount', header: 'Amount', type: 'currency' },
+            { key: 'status', header: 'Status', type: 'text' },
+            { key: 'memberName', header: 'Member Name', type: 'text' }
+        ],
+        rows: paymentRows
     });
 
-    lines.push('');
-    lines.push('payouts,source,id,method,amount,createdAt,note');
-    const payoutRows = payload.breakdown?.payouts?.rows || [];
-    payoutRows.forEach((row) => {
-        lines.push([
-            'payouts',
-            escapeCsvCell(row.source),
-            escapeCsvCell(row.id),
-            escapeCsvCell(row.method),
-            escapeCsvCell(row.amount),
-            escapeCsvCell(row.createdAt),
-            escapeCsvCell(row.note || '')
-        ].join(','));
+    addTableSheet(workbook, {
+        name: 'Payouts',
+        title: 'Payouts',
+        columns: [
+            { key: 'source', header: 'Source', type: 'text' },
+            { key: 'id', header: 'ID', type: 'text' },
+            { key: 'method', header: 'Method', type: 'text' },
+            { key: 'amount', header: 'Amount', type: 'currency' },
+            { key: 'createdAt', header: 'Created At', type: 'date' },
+            { key: 'note', header: 'Note', type: 'text' }
+        ],
+        rows: payoutRows
     });
 
-    lines.push('');
-    lines.push('cash_in,source,id,amount,createdAt,note');
-    const cashInRows = payload.breakdown?.cashIn?.rows || [];
-    cashInRows.forEach((row) => {
-        lines.push([
-            'cash_in',
-            escapeCsvCell(row.source),
-            escapeCsvCell(row.id),
-            escapeCsvCell(row.amount),
-            escapeCsvCell(row.createdAt),
-            escapeCsvCell(row.note || '')
-        ].join(','));
+    addTableSheet(workbook, {
+        name: 'Cash In',
+        title: 'Cash In',
+        columns: [
+            { key: 'source', header: 'Source', type: 'text' },
+            { key: 'id', header: 'ID', type: 'text' },
+            { key: 'amount', header: 'Amount', type: 'currency' },
+            { key: 'createdAt', header: 'Created At', type: 'date' },
+            { key: 'note', header: 'Note', type: 'text' }
+        ],
+        rows: cashInRows
     });
 
-    lines.push('');
-    lines.push('sales,id,createdAt,method,totalAmount');
-    const salesRows = payload.breakdown?.sales?.rows || [];
-    salesRows.forEach((row) => {
-        lines.push([
-            'sales',
-            escapeCsvCell(row.id),
-            escapeCsvCell(row.createdAt),
-            escapeCsvCell(row.method),
-            escapeCsvCell(row.totalAmount)
-        ].join(','));
+    addTableSheet(workbook, {
+        name: 'Sales',
+        title: 'Sales',
+        columns: [
+            { key: 'id', header: 'ID', type: 'text' },
+            { key: 'createdAt', header: 'Created At', type: 'date' },
+            { key: 'method', header: 'Method', type: 'text' },
+            { key: 'totalAmount', header: 'Total Amount', type: 'currency' }
+        ],
+        rows: salesRows
     });
 
-    return lines.join('\n');
+    return workbook;
 }
 
 async function ensureOpenPeriod(prisma, userId = null) {
@@ -1221,8 +1312,8 @@ router.post('/', [
             data: {
                 closeId: closeResult.closedPeriod.id,
                 exportAvailable: true,
-                exportFormats: ['csv', 'json'],
-                exportUrl: `/api/cash-closings/${closeResult.closedPeriod.id}/export?format=json`,
+                exportFormats: ['xlsx'],
+                exportUrl: `/api/cash-closings/${closeResult.closedPeriod.id}/export?format=xlsx`,
                 closedPeriod: normalizePeriodRow(closeResult.closedPeriod),
                 newOpenPeriod: {
                     id: closeResult.newOpenPeriod.id,
@@ -1444,8 +1535,8 @@ router.get('/', async (req, res) => {
 });
 
 /**
- * GET /api/cash-closings/:id/export?format=csv|json
- * Export closed period from immutable snapshot payload
+ * GET /api/cash-closings/:id/export?format=xlsx|excel
+ * Export closed period as structured XLSX workbook
  */
 router.get('/:id/export', async (req, res) => {
     try {
@@ -1457,11 +1548,12 @@ router.get('/:id/export', async (req, res) => {
             });
         }
 
-        const format = String(req.query.format || 'json').trim().toLowerCase();
-        if (!['csv', 'json'].includes(format)) {
+        const format = String(req.query.format || 'xlsx').trim().toLowerCase();
+        if (!['xlsx', 'excel'].includes(format)) {
             return res.status(400).json({
                 success: false,
-                message: 'Unsupported format. Use csv or json'
+                errorCode: CASH_CLOSE_ERROR_CODES.VALIDATION_ERROR,
+                message: 'Unsupported format. Use xlsx'
             });
         }
 
@@ -1485,25 +1577,17 @@ router.get('/:id/export', async (req, res) => {
         }
 
         const payload = buildExportPayload(period);
-        if (format === 'csv') {
-            const csv = buildExportCsv(payload);
-            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-            res.setHeader('Content-Disposition', `attachment; filename="cash-close-${periodId}.csv"`);
-            return res.send(csv);
-        }
-
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="cash-close-${periodId}.json"`);
-        return res.send(JSON.stringify(payload, null, 2));
+        const workbook = buildCashCloseWorkbook(payload);
+        const datePart = toDateStamp(payload?.meta?.closedAt || payload?.meta?.endAt || new Date());
+        const filename = `cash-close-${periodId}-${datePart}.xlsx`;
+        return sendWorkbook(res, workbook, filename);
     } catch (error) {
-        console.error('[CashClosing][export] Failed to export close period');
-        if (process.env.NODE_ENV !== 'production') {
-            console.error(error?.stack || error);
-        }
-        return res.status(500).json({
-            success: false,
-            message: 'Failed to export close period'
-        });
+        return respondWithCashCloseError(
+            res,
+            'export',
+            error,
+            'Failed to export close period'
+        );
     }
 });
 

@@ -5,6 +5,7 @@ const { authenticate } = require('../middleware/auth');
 const { parseDateRange } = require('../utils/dateParams');
 const { roundMoney } = require('../utils/money');
 const CreditService = require('../services/creditService');
+const { addTableSheet, createWorkbook, sendWorkbook, toDateStamp } = require('../services/excelExportService');
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Create
@@ -61,7 +62,15 @@ router.get('/', authenticate, async (req, res) => {
 // Pending Completion
 router.get('/pending-completion', authenticate, async (req, res) => {
     try {
-        const { startDate: startDateParam, endDate: endDateParam } = req.query;
+        const {
+            startDate: startDateParam,
+            endDate: endDateParam,
+            trainerId,
+            employeeId,
+            serviceId,
+            search,
+            format
+        } = req.query;
         const where = {
             isCompleted: false,
             completedAt: null,
@@ -74,6 +83,44 @@ router.get('/pending-completion', authenticate, async (req, res) => {
                 where.end = { lte: endDate };
             }
         }
+        const parsedTrainerId = parseInt(trainerId, 10);
+        if (trainerId && trainerId !== 'all' && !Number.isNaN(parsedTrainerId)) {
+            where.trainerId = parsedTrainerId;
+        }
+        const parsedEmployeeId = parseInt(employeeId, 10);
+        if (employeeId && employeeId !== 'all' && !Number.isNaN(parsedEmployeeId)) {
+            where.createdByEmployeeId = parsedEmployeeId;
+        }
+        if (serviceId && serviceId !== 'all') {
+            const parsedServiceId = parseInt(serviceId, 10);
+            if (!Number.isNaN(parsedServiceId)) {
+                const service = await req.prisma.service.findUnique({
+                    where: { id: parsedServiceId },
+                    select: { name: true }
+                });
+                if (service?.name) {
+                    where.title = { contains: service.name, mode: 'insensitive' };
+                }
+            }
+        }
+        if (search && String(search).trim()) {
+            const q = String(search).trim();
+            where.OR = [
+                { fullName: { contains: q, mode: 'insensitive' } },
+                { phone: { contains: q } },
+                {
+                    member: {
+                        OR: [
+                            { firstName: { contains: q, mode: 'insensitive' } },
+                            { lastName: { contains: q, mode: 'insensitive' } },
+                            { memberId: { contains: q, mode: 'insensitive' } },
+                            { phone: { contains: q } }
+                        ]
+                    }
+                }
+            ];
+        }
+
         const appointments = await req.prisma.appointment.findMany({
             where,
             select: {
@@ -99,6 +146,49 @@ router.get('/pending-completion', authenticate, async (req, res) => {
             },
             orderBy: { end: 'asc' }
         });
+
+        if (String(format || '').toLowerCase() === 'excel') {
+            const rows = (appointments || []).map((appointment) => {
+                const member = appointment.member || {};
+                const customerName = `${member.firstName || ''} ${member.lastName || ''}`.trim();
+                const trainerName = appointment.trainer?.name
+                    || `${appointment.coach?.firstName || ''} ${appointment.coach?.lastName || ''}`.trim();
+                const employeeName = appointment.createdByEmployee
+                    ? `${appointment.createdByEmployee.firstName || ''} ${appointment.createdByEmployee.lastName || ''}`.trim()
+                    : '';
+
+                return {
+                    customer: member.memberId ? `${customerName} (${member.memberId})` : customerName,
+                    date: appointment.start || null,
+                    start: appointment.start || null,
+                    end: appointment.end || null,
+                    trainer: trainerName || '',
+                    employee: employeeName || '',
+                    price: appointment.price ?? 0,
+                    status: appointment.status || ''
+                };
+            });
+
+            const workbook = createWorkbook();
+            addTableSheet(workbook, {
+                name: 'Pending Completion',
+                title: 'Pending Completion Report',
+                subtitle: `${toDateStamp()} (${rows.length})`,
+                columns: [
+                    { key: 'customer', header: 'Customer', type: 'text' },
+                    { key: 'date', header: 'Date', type: 'date' },
+                    { key: 'start', header: 'Start', type: 'date' },
+                    { key: 'end', header: 'End', type: 'date' },
+                    { key: 'trainer', header: 'Trainer', type: 'text' },
+                    { key: 'employee', header: 'Employee', type: 'text' },
+                    { key: 'price', header: 'Price', type: 'currency' },
+                    { key: 'status', header: 'Status', type: 'text' }
+                ],
+                rows
+            });
+            return sendWorkbook(res, workbook, `pending-completion-${toDateStamp()}.xlsx`);
+        }
+
         return res.json({ success: true, data: appointments || [] });
     } catch (error) {
         console.error('[APPOINTMENTS] Pending completion error:', error);

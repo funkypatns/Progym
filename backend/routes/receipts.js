@@ -7,25 +7,26 @@
  */
 
 const express = require('express');
-const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
 const router = express.Router();
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { PERMISSIONS } = require('../utils/permissions');
 const { parseDateRange } = require('../utils/dateParams');
 const { createReceipt, buildTransactionId, parseReceiptJson } = require('../services/receiptService');
+const { addTableSheet, buildColumnsFromRows, createWorkbook, sendWorkbook } = require('../services/excelExportService');
 
 router.use(authenticate);
 
-const sendExcelResponse = (res, data, filename) => {
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buffer);
+const sendExcelResponse = async (res, data, filename) => {
+    const workbook = createWorkbook();
+    const rows = Array.isArray(data) ? data : [];
+    addTableSheet(workbook, {
+        name: 'Receipts',
+        title: 'Receipts Report',
+        columns: buildColumnsFromRows(rows),
+        rows
+    });
+    return sendWorkbook(res, workbook, filename);
 };
 
 const normalizeReceipt = (receipt) => {

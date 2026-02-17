@@ -228,7 +228,7 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
         }
     };
 
-    const handleDownloadExport = async (format) => {
+    const handleDownloadExport = async (format = 'xlsx') => {
         if (!successData?.closeId) return;
         setIsDownloading(true);
         try {
@@ -305,21 +305,12 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => handleDownloadExport('csv')}
+                                    onClick={() => handleDownloadExport('xlsx')}
                                     disabled={isDownloading}
                                     className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold transition-colors"
                                 >
                                     <Download size={16} />
-                                    {t('cashClosing.downloadExport', 'تحميل Export')}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleDownloadExport('json')}
-                                    disabled={isDownloading}
-                                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-600 hover:bg-slate-800 disabled:opacity-60 text-slate-200 font-semibold transition-colors"
-                                >
-                                    <Download size={16} />
-                                    {t('cashClosing.downloadJson', 'Download JSON')}
+                                    {t('cashClosing.downloadExport', 'Download Excel')}
                                 </button>
                                 <button
                                     type="button"

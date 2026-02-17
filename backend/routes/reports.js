@@ -14,18 +14,29 @@ const { calculateSubscriptionFinancials,
     calculateNetRevenue
 } = require('../utils/financialCalculations');
 const { parseDateRange } = require('../utils/dateParams');
-const XLSX = require('xlsx');
+const {
+    addTableSheet,
+    buildColumnsFromRows,
+    createWorkbook,
+    sendWorkbook,
+    toDateStamp
+} = require('../services/excelExportService');
 
-const sendExcelResponse = (res, data, filename) => {
+const sendExcelResponse = async (res, data, filename, options = {}) => {
     try {
-        const worksheet = XLSX.utils.json_to_sheet(data);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
-        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const workbook = createWorkbook();
+        const rows = Array.isArray(data) ? data : [];
+        const normalizedRows = rows.map((row) => flattenRow(row));
+        const columns = options.columns || buildColumnsFromRows(normalizedRows);
+        addTableSheet(workbook, {
+            name: options.sheetName || 'Report',
+            title: options.title || null,
+            subtitle: options.subtitle || null,
+            columns,
+            rows: normalizedRows
+        });
 
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-        return res.send(buffer);
+        return sendWorkbook(res, workbook, filename);
     } catch (error) {
         console.error('Excel generation error:', error);
         return res.status(500).json({ success: false, message: 'Failed to generate Excel file' });
@@ -108,13 +119,17 @@ router.get('/revenue', async (req, res) => {
         const stats = await calculateNetRevenue(req.prisma, startDate, endDate);
 
         if (req.query.format === 'excel') {
-            return sendExcelResponse(res, [stats].map(s => ({
+            return sendExcelResponse(res, [stats].map((s) => ({
                 Gross_Revenue: s.grossRevenue,
                 Total_Refunds: s.totalRefunds,
                 Net_Revenue: s.netRevenue,
                 Payment_Count: s.paymentCount,
                 Refund_Count: s.refundCount
-            })), 'revenue-report.xlsx');
+            })), `revenue-report-${toDateStamp()}.xlsx`, {
+                sheetName: 'Revenue',
+                title: 'Revenue Report',
+                subtitle: `${toDateStamp(startDate)} to ${toDateStamp(endDate)}`
+            });
         }
 
         res.json({
@@ -1064,7 +1079,7 @@ router.get('/payments/summary', async (req, res) => {
  */
 router.get('/payments/transactions', async (req, res) => {
     try {
-        const { from, to, employeeId, method, q, limit } = req.query;
+        const { from, to, employeeId, method, q, limit, type, format } = req.query;
         const { startDate, endDate, error } = parseDateRange(from, to);
         if (error) {
             return res.status(400).json({ success: false, message: error });
@@ -1076,17 +1091,26 @@ router.get('/payments/transactions', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid payment method' });
         }
 
+        const normalizedType = type ? String(type).toLowerCase() : null;
+        if (normalizedType && normalizedType !== 'all' && normalizedType !== 'session' && normalizedType !== 'subscription') {
+            return res.status(400).json({ success: false, message: 'Invalid payment type' });
+        }
+
         const parsedLimit = parseInt(limit, 10);
         const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 300) : 100;
 
         const statusFilter = ['completed', 'refunded', 'Partial Refund', 'COMPLETED', 'REFUNDED', 'PARTIAL REFUND'];
         const dateRange = { gte: startDate, lte: endDate };
         const where = {
-            status: { in: statusFilter },
-            amount: { gt: 0 },
-            OR: [
-                { paidAt: dateRange },
-                { createdAt: dateRange }
+            AND: [
+                { status: { in: statusFilter } },
+                { amount: { gt: 0 } },
+                {
+                    OR: [
+                        { paidAt: dateRange },
+                        { createdAt: dateRange }
+                    ]
+                }
             ]
         };
 
@@ -1095,24 +1119,38 @@ router.get('/payments/transactions', async (req, res) => {
             if (!Number.isInteger(parsedEmployeeId)) {
                 return res.status(400).json({ success: false, message: 'Invalid staff ID' });
             }
-            where.createdBy = parsedEmployeeId;
+            where.AND.push({
+                OR: [
+                    { createdBy: parsedEmployeeId },
+                    { appointment: { completedByEmployeeId: parsedEmployeeId } }
+                ]
+            });
         }
 
         if (normalizedMethod && normalizedMethod !== 'all') {
-            where.method = normalizedMethod;
+            where.AND.push({ method: normalizedMethod });
+        }
+
+        if (normalizedType === 'session') {
+            where.AND.push({ appointmentId: { not: null } });
+        }
+        if (normalizedType === 'subscription') {
+            where.AND.push({ subscriptionId: { not: null } });
         }
 
         if (q && String(q).trim()) {
             const search = String(q).trim();
-            where.member = {
-                OR: [
-                    { firstName: { contains: search } },
-                    { lastName: { contains: search } },
-                    { phone: { contains: search } },
-                    { memberId: { contains: search } },
-                    { email: { contains: search } }
-                ]
-            };
+            where.AND.push({
+                member: {
+                    OR: [
+                        { firstName: { contains: search } },
+                        { lastName: { contains: search } },
+                        { phone: { contains: search } },
+                        { memberId: { contains: search } },
+                        { email: { contains: search } }
+                    ]
+                }
+            });
         }
 
         const payments = await req.prisma.payment.findMany({
@@ -1138,6 +1176,14 @@ router.get('/payments/transactions', async (req, res) => {
                         }
                     }
                 },
+                appointment: {
+                    select: {
+                        id: true,
+                        completedByEmployee: {
+                            select: { id: true, firstName: true, lastName: true }
+                        }
+                    }
+                },
                 creator: {
                     select: { id: true, firstName: true, lastName: true }
                 }
@@ -1150,16 +1196,25 @@ router.get('/payments/transactions', async (req, res) => {
             const memberName = payment.member
                 ? `${payment.member.firstName} ${payment.member.lastName}`
                 : 'Unknown';
+            const completedByEmployee = payment.appointment?.completedByEmployee;
             const staffName = payment.creator
                 ? `${payment.creator.firstName} ${payment.creator.lastName}`
+                : completedByEmployee
+                    ? `${completedByEmployee.firstName} ${completedByEmployee.lastName}`
                 : (payment.collectorName || null);
             const planName = payment.subscription?.plan?.name || null;
             const planDuration = payment.subscription?.plan?.duration ?? null;
             const planTotal = payment.subscription?.price ?? payment.subscription?.plan?.price ?? null;
+            const paymentType = payment.appointmentId
+                ? 'session'
+                : payment.subscriptionId
+                    ? 'subscription'
+                    : 'other';
 
             return {
                 id: payment.id,
                 paidAt: payment.paidAt || payment.createdAt,
+                type: paymentType,
                 amount: payment.amount || 0,
                 method: (payment.method || 'other').toLowerCase(),
                 status: (payment.status || '').toLowerCase(),
@@ -1188,6 +1243,25 @@ router.get('/payments/transactions', async (req, res) => {
                 }
             };
         });
+
+        if (String(format || '').toLowerCase() === 'excel') {
+            const excelRows = rows.map((row) => ({
+                Date: row.paidAt,
+                Customer: row.member?.memberId ? `${row.member.name} (${row.member.memberId})` : row.member?.name,
+                Type: row.type,
+                Amount: row.amount,
+                Method: row.method,
+                Status: row.status,
+                Staff: row.staff?.name || '',
+                Plan: row.subscription?.planName || '',
+                Reference: row.reference?.receiptNumber || row.reference?.transactionRef || row.reference?.externalReference || ''
+            }));
+            return sendExcelResponse(res, excelRows, `payments-transactions-${toDateStamp()}.xlsx`, {
+                sheetName: 'Payments',
+                title: 'Payments Transactions',
+                subtitle: `${toDateStamp(startDate)} to ${toDateStamp(endDate)}`
+            });
+        }
 
         res.json({
             success: true,
@@ -1271,8 +1345,11 @@ router.get('/members', async (req, res) => {
         };
 
         if (req.query.format === 'excel') {
-            const excelRows = report.map(r => flattenRow(r));
-            return sendExcelResponse(res, excelRows, 'members-report.xlsx');
+            return sendExcelResponse(res, report, `members-report-${toDateStamp()}.xlsx`, {
+                sheetName: 'Members',
+                title: 'Members Report',
+                subtitle: `${toDateStamp(start)} to ${toDateStamp(end)}`
+            });
         }
 
         res.json({
@@ -2096,6 +2173,25 @@ router.get('/sales/detailed', async (req, res) => {
 
         summary.uniqueProducts = summary.uniqueProducts.size;
 
+        if (String(req.query.format || '').toLowerCase() === 'excel') {
+            const excelRows = rows.map((row) => ({
+                Date: row.date,
+                Transaction_ID: row.transactionId,
+                Product: row.productName,
+                SKU: row.sku,
+                Quantity: row.quantity,
+                Unit_Price: row.unitPrice,
+                Total: row.total,
+                Sold_By: row.soldBy,
+                Payment_Method: row.paymentMethod
+            }));
+            return sendExcelResponse(res, excelRows, `sales-report-${toDateStamp()}.xlsx`, {
+                sheetName: 'Sales',
+                title: 'Sales Report',
+                subtitle: `${toDateStamp(startDate)} to ${toDateStamp(endDate)}`
+            });
+        }
+
         res.json({
             success: true,
             data: {
@@ -2122,6 +2218,8 @@ router.get('/sales/detailed', async (req, res) => {
 router.get('/gym-income', async (req, res) => {
     try {
         const { from, to, coachId, serviceType, format } = req.query;
+        const exportStart = from && !Number.isNaN(Date.parse(from)) ? new Date(from) : null;
+        const exportEnd = to && !Number.isNaN(Date.parse(to)) ? new Date(to) : null;
 
         const where = {
             // Only completed records exist in this table
@@ -2193,31 +2291,21 @@ router.get('/gym-income', async (req, res) => {
         }));
 
         if (format === 'excel') {
-            // Excel logic remains basic but safe
-            try {
-                const excelRows = rows.map(r => ({
-                    Date: r.date,
-                    Member: r.memberName,
-                    Coach: r.coachName,
-                    Service: r.service,
-                    'Session Price': r.sessionPrice,
-                    'Coach Commission': r.commission,
-                    'Gym Net Income': r.netIncome,
-                    'Commission Status': r.status
-                }));
-                const xlsx = require('xlsx');
-                const wb = xlsx.utils.book_new();
-                const ws = xlsx.utils.json_to_sheet(excelRows);
-                xlsx.utils.book_append_sheet(wb, ws, 'Gym Income');
-                const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-                res.setHeader('Content-Disposition', `attachment; filename="gym-income-report.xlsx"`);
-                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-                return res.send(buf);
-            } catch (excelError) {
-                console.error('[REPORTS] Excel generation failed:', excelError);
-                return res.status(500).json({ success: false, message: 'Excel generation failed' });
-            }
+            const excelRows = rows.map((r) => ({
+                Date: r.date,
+                Member: r.memberName,
+                Coach: r.coachName,
+                Service: r.service,
+                Session_Price: r.sessionPrice,
+                Coach_Commission: r.commission,
+                Gym_Net_Income: r.netIncome,
+                Commission_Status: r.status
+            }));
+            return sendExcelResponse(res, excelRows, `gym-income-report-${toDateStamp()}.xlsx`, {
+                sheetName: 'Gym Income',
+                title: 'Gym Income Report',
+                subtitle: `${toDateStamp(exportStart || new Date())} to ${toDateStamp(exportEnd || new Date())}`
+            });
         }
 
         res.json({
@@ -2245,7 +2333,18 @@ router.get('/gym-income', async (req, res) => {
  */
 router.get('/gym-income-sessions', async (req, res) => {
     try {
-        const { from, to, startDate: startDateParam, endDate: endDateParam, serviceId, trainerId, employeeId, method } = req.query;
+        const {
+            from,
+            to,
+            startDate: startDateParam,
+            endDate: endDateParam,
+            serviceId,
+            trainerId,
+            employeeId,
+            method,
+            search,
+            format
+        } = req.query;
         const { startDate, endDate, error } = parseDateRange(from || startDateParam, to || endDateParam);
         if (error) {
             return res.status(400).json({ success: false, message: error });
@@ -2260,6 +2359,18 @@ router.get('/gym-income-sessions', async (req, res) => {
         const normalizedMethod = typeof method === 'string' ? method.toLowerCase() : '';
         if (normalizedMethod && normalizedMethod !== 'all') {
             paymentWhere.method = normalizedMethod;
+        }
+
+        if (search && String(search).trim()) {
+            const q = String(search).trim();
+            paymentWhere.member = {
+                OR: [
+                    { firstName: { contains: q, mode: 'insensitive' } },
+                    { lastName: { contains: q, mode: 'insensitive' } },
+                    { memberId: { contains: q, mode: 'insensitive' } },
+                    { phone: { contains: q } }
+                ]
+            };
         }
 
         const appointmentWhere = { status: { in: ['completed', 'COMPLETED'] } };
@@ -2394,6 +2505,28 @@ router.get('/gym-income-sessions', async (req, res) => {
         const totalRevenue = rows.reduce((sum, row) => sum + (row.finalPrice || 0), 0);
         const sessionsCount = rows.length;
         const averagePrice = sessionsCount ? totalRevenue / sessionsCount : 0;
+
+        if (String(format || '').toLowerCase() === 'excel') {
+            const excelRows = rows.map((row) => ({
+                Session_Date: row.sessionDate || row.paidAt,
+                Customer: row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName,
+                Service: row.serviceName || '',
+                Trainer: row.trainerName || '',
+                Employee: row.employeeName || '',
+                Payment_Method: row.paymentMethod || '',
+                Original_Price: row.originalPrice ?? 0,
+                Final_Price: row.finalPrice ?? row.amount ?? 0,
+                Adjustment: row.adjustmentDifference ?? 0,
+                Adjustment_Reason: row.adjustmentReason || '',
+                Adjusted_By: row.adjustedBy || '',
+                Booking_ID: row.appointmentId
+            }));
+            return sendExcelResponse(res, excelRows, `gym-income-sessions-${toDateStamp()}.xlsx`, {
+                sheetName: 'Gym Income Sessions',
+                title: 'Gym Income Sessions Report',
+                subtitle: `${toDateStamp(startDate)} to ${toDateStamp(endDate)}`
+            });
+        }
 
         return res.json({
             success: true,
@@ -2554,7 +2687,7 @@ router.get('/gym-income-sessions/:appointmentId/ledger', async (req, res) => {
  */
 router.get('/trainer-earnings', async (req, res) => {
     try {
-        const { trainerId, from, to, startDate: startDateParam, endDate: endDateParam, status, serviceId, q } = req.query;
+        const { trainerId, from, to, startDate: startDateParam, endDate: endDateParam, status, serviceId, q, format } = req.query;
         const parsedTrainerId = parseInt(trainerId, 10);
         if (!trainerId || Number.isNaN(parsedTrainerId)) {
             return res.json({
@@ -2717,6 +2850,30 @@ router.get('/trainer-earnings', async (req, res) => {
             _sum: { totalAmount: true }
         });
 
+        if (String(format || '').toLowerCase() === 'excel') {
+            const excelRows = rows.map((row) => ({
+                Date: row.sessionDate,
+                Trainer: row.trainerName,
+                Customer: row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName,
+                Service: row.serviceName,
+                Original_Price: row.originalPrice ?? row.baseAmount ?? 0,
+                Final_Price: row.finalPrice ?? row.baseAmount ?? 0,
+                Adjustment_Difference: row.adjustmentDifference ?? 0,
+                Commission_Percent: row.commissionPercent ?? '',
+                Commission_Amount: row.commissionAmount ?? 0,
+                Status: row.status,
+                Employee: row.employeeName || '',
+                Adjustment_Reason: row.adjustmentReason || '',
+                Adjusted_By: row.adjustedBy || '',
+                Adjusted_At: row.adjustedAt || ''
+            }));
+            return sendExcelResponse(res, excelRows, `trainer-earnings-${toDateStamp()}.xlsx`, {
+                sheetName: 'Trainer Earnings',
+                title: 'Trainer Earnings Report',
+                subtitle: `${toDateStamp(startDate)} to ${toDateStamp(endDate)}`
+            });
+        }
+
         return res.json({
             success: true,
             data: {
@@ -2747,7 +2904,7 @@ router.get('/trainer-earnings', async (req, res) => {
  */
 router.get('/trainer-payouts', async (req, res) => {
     try {
-        const { trainerId, from, to, startDate: startDateParam, endDate: endDateParam } = req.query;
+        const { trainerId, from, to, startDate: startDateParam, endDate: endDateParam, format } = req.query;
         const parsedTrainerId = parseInt(trainerId, 10);
         if (!trainerId || Number.isNaN(parsedTrainerId)) {
             return res.json({ success: true, data: { totals: { totalAmount: 0 }, rows: [] } });
@@ -2787,6 +2944,22 @@ router.get('/trainer-payouts', async (req, res) => {
         });
 
         const totalAmount = rows.reduce((sum, row) => sum + (row.totalAmount || 0), 0);
+
+        if (String(format || '').toLowerCase() === 'excel') {
+            const excelRows = rows.map((row) => ({
+                Date: row.paidAt,
+                Trainer: row.trainerName,
+                Paid_By: row.paidByName,
+                Amount: row.totalAmount || 0,
+                Method: row.method || '',
+                Note: row.note || ''
+            }));
+            return sendExcelResponse(res, excelRows, `trainer-payouts-${toDateStamp()}.xlsx`, {
+                sheetName: 'Trainer Payouts',
+                title: 'Trainer Payouts Report',
+                subtitle: `${toDateStamp(startDate)} to ${toDateStamp(endDate)}`
+            });
+        }
 
         return res.json({
             success: true,

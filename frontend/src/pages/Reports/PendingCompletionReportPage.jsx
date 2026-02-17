@@ -8,6 +8,12 @@ import ReportsToolbar from '../../components/Reports/ReportsToolbar';
 import ReportsTableContainer, { ReportsTableRow, ReportsTableCell } from '../../components/Reports/ReportsTableContainer';
 import AppointmentModal from '../Appointments/AppointmentModal';
 
+const parseContentDispositionFilename = (headerValue, fallbackName) => {
+    if (!headerValue || typeof headerValue !== 'string') return fallbackName;
+    const match = headerValue.match(/filename="(.+?)"/i);
+    return match?.[1] || fallbackName;
+};
+
 const PendingCompletionReportPage = () => {
     const { i18n, t } = useTranslation();
     const isRTL = i18n.dir() === 'rtl';
@@ -186,46 +192,46 @@ const PendingCompletionReportPage = () => {
         setAutoCompleteTriggerId(appointment.id);
     };
 
-    const exportCsv = () => {
+    const exportExcel = async () => {
         if (!rows.length) {
             toast.error(isRTL ? 'لا توجد بيانات للتصدير' : 'No data to export');
             return;
         }
+        try {
+            const normalizedRange = normalizeRange(filters.from, filters.to);
+            if (normalizedRange.swapped) {
+                setFilters((prev) => ({ ...prev, from: normalizedRange.from, to: normalizedRange.to }));
+                return;
+            }
 
-        const header = [
-            isRTL ? 'العميل' : 'Customer',
-            isRTL ? 'التاريخ' : 'Date',
-            isRTL ? 'البداية' : 'Start',
-            isRTL ? 'النهاية' : 'End',
-            isRTL ? 'المدرب' : 'Trainer',
-            isRTL ? 'الموظف' : 'Employee',
-            isRTL ? 'السعر' : 'Price',
-            isRTL ? 'الحالة' : 'Status'
-        ];
+            const params = new URLSearchParams();
+            params.append('startDate', toStartOfDay(normalizedRange.from));
+            params.append('endDate', toEndOfDay(normalizedRange.to));
+            params.append('format', 'excel');
+            if (filters.trainerId && filters.trainerId !== 'all') params.append('trainerId', filters.trainerId);
+            if (filters.employeeId && filters.employeeId !== 'all') params.append('employeeId', filters.employeeId);
+            if (filters.serviceId && filters.serviceId !== 'all') params.append('serviceId', filters.serviceId);
+            if (filters.search.trim()) params.append('search', filters.search.trim());
 
-        const csvRows = [header.join(',')];
-        rows.forEach((row) => {
-            const customerLabel = row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName;
-            const line = [
-                customerLabel || '',
-                formatDate(row.start),
-                formatTime(row.start),
-                formatTime(row.end),
-                row.trainerName || '',
-                row.employeeName || '',
-                row.price ?? 0,
-                row.status || ''
-            ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',');
-            csvRows.push(line);
-        });
+            const response = await apiClient.get(`/appointments/pending-completion?${params.toString()}`, {
+                responseType: 'blob'
+            });
 
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', 'pending-completion-report.csv');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+            const fallbackName = `pending-completion-${normalizedRange.from || 'report'}.xlsx`;
+            const filename = parseContentDispositionFilename(response.headers?.['content-disposition'], fallbackName);
+            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(isRTL ? 'تم التصدير بنجاح' : 'Exported successfully');
+        } catch (error) {
+            toast.error(isRTL ? 'فشل التصدير' : 'Export failed');
+        }
     };
 
     return (
@@ -291,10 +297,10 @@ const PendingCompletionReportPage = () => {
                         <ReportsToolbar.Button
                             variant="secondary"
                             icon={Download}
-                            onClick={exportCsv}
+                            onClick={exportExcel}
                             disabled={!rows.length}
                         >
-                            {isRTL ? 'تصدير CSV' : 'Export CSV'}
+                            {isRTL ? 'تصدير Excel' : 'Export Excel'}
                         </ReportsToolbar.Button>
                     </ReportsToolbar.Actions>
                 </ReportsToolbar>

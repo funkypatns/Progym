@@ -32,6 +32,12 @@ const SummaryCard = ({ label, value, icon: Icon }) => (
     </div>
 );
 
+const parseContentDispositionFilename = (headerValue, fallbackName) => {
+    if (!headerValue || typeof headerValue !== 'string') return fallbackName;
+    const match = headerValue.match(/filename="(.+?)"/i);
+    return match?.[1] || fallbackName;
+};
+
 const SessionLedgerDrawer = ({
     open,
     onClose,
@@ -461,75 +467,48 @@ const GymIncomeSessionsReportPage = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [ledgerOpen, closeLedger]);
 
-    const exportCsv = () => {
+    const exportExcel = async () => {
         if (!rows.length) {
             toast.error(isRTL ? 'لا توجد بيانات للتصدير' : 'No data to export');
             return;
         }
+        try {
+            const normalized = normalizeRange(filters.from, filters.to);
+            if (normalized.swapped) {
+                setFilters((prev) => ({ ...prev, from: normalized.from, to: normalized.to }));
+                return;
+            }
 
-        const csvRows = [
-            (isRTL
-                ? [
-                    'التاريخ',
-                    'الوقت',
-                    'العميل',
-                    'الخدمة',
-                    'المدرب',
-                    'الموظف',
-                    'طريقة الدفع',
-                    'السعر الأصلي',
-                    'السعر النهائي',
-                    'الفرق',
-                    'سبب التعديل',
-                    'تم التعديل بواسطة',
-                    'رقم الحجز'
-                ]
-                : [
-                    'Date',
-                    'Time',
-                    'Customer',
-                    'Service',
-                    'Trainer',
-                    'Employee',
-                    'Payment Method',
-                    'Original Price',
-                    'Final Price',
-                    'Adjustment',
-                    'Adjustment Reason',
-                    'Adjusted By',
-                    'Booking ID'
-                ]).join(',')
-        ];
+            const params = new URLSearchParams({
+                from: toStartOfDay(normalized.from),
+                to: toEndOfDay(normalized.to),
+                format: 'excel'
+            });
+            if (filters.trainerId) params.set('trainerId', String(filters.trainerId));
+            if (filters.serviceId) params.set('serviceId', String(filters.serviceId));
+            if (filters.employeeId) params.set('employeeId', String(filters.employeeId));
+            if (filters.method) params.set('method', String(filters.method));
+            if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
 
-        rows.forEach((row) => {
-            const customerLabel = row.customerCode
-                ? `${row.customerName} (${row.customerCode})`
-                : row.customerName;
-            const line = [
-                formatDate(row.sessionDate || row.paidAt),
-                formatTime(row.sessionDate || row.paidAt),
-                customerLabel || '',
-                row.serviceName || '',
-                row.trainerName || '',
-                row.employeeName || '',
-                methodLabel(row.paymentMethod),
-                row.originalPrice ?? 0,
-                row.finalPrice ?? row.amount ?? 0,
-                row.adjustmentDifference ?? 0,
-                row.adjustmentReason || '',
-                row.adjustedBy || '',
-                row.appointmentId ?? ''
-            ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',');
-            csvRows.push(line);
-        });
+            const response = await apiClient.get(`/reports/gym-income-sessions?${params.toString()}`, {
+                responseType: 'blob'
+            });
 
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', 'gym-income-sessions.csv');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+            const fallbackName = `gym-income-sessions-${normalized.from || 'report'}.xlsx`;
+            const filename = parseContentDispositionFilename(response.headers?.['content-disposition'], fallbackName);
+            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(isRTL ? 'تم التصدير بنجاح' : 'Exported successfully');
+        } catch (error) {
+            toast.error(isRTL ? 'فشل التصدير' : 'Export failed');
+        }
     };
 
     const byMethod = useMemo(() => {
@@ -741,10 +720,10 @@ const GymIncomeSessionsReportPage = () => {
                         <ReportsToolbar.Button
                             variant="secondary"
                             icon={Download}
-                            onClick={exportCsv}
+                            onClick={exportExcel}
                             disabled={!rows.length}
                         >
-                            {isRTL ? 'تصدير CSV' : 'Export CSV'}
+                            {isRTL ? 'تصدير Excel' : 'Export Excel'}
                         </ReportsToolbar.Button>
                     </ReportsToolbar.Actions>
                 </ReportsToolbar>

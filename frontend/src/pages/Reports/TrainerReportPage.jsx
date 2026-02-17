@@ -399,6 +399,12 @@ const TrainerPayoutModal = ({ isOpen, onClose, trainer, pendingEarnings, onConfi
 const TRAINER_REPORT_FILTERS_KEY = 'trainerReportFilters';
 const TRAINER_REPORT_FILTERS_USER_SET_KEY = 'trainerReportFiltersUserSet';
 
+const parseContentDispositionFilename = (contentDispositionValue, fallbackName) => {
+    if (!contentDispositionValue || typeof contentDispositionValue !== 'string') return fallbackName;
+    const match = contentDispositionValue.match(/filename="(.+?)"/i);
+    return match?.[1] || fallbackName;
+};
+
 const formatDateInput = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -690,60 +696,56 @@ const TrainerReportPage = () => {
         fetchReport();
     }, [filtersReady, refreshSeed, selectedTrainerId, statusFilter, serviceFilter, search, dateRange.from, dateRange.to]);
 
-    const exportCsv = (filename, rows) => {
-        if (!rows.length) {
-            toast.error(language === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export');
+    const downloadTrainerExcel = async (endpoint, fallbackFilename) => {
+        if (!selectedTrainerId) {
+            toast.error(language === 'ar' ? 'اختر مدرب أولاً' : 'Select a trainer first');
             return;
         }
-        const headers = Object.keys(rows[0]);
-        const csvRows = [
-            headers.join(','),
-            ...rows.map(row =>
-                headers.map((header) => {
-                    const value = row[header] ?? '';
-                    return `"${String(value).replace(/"/g, '""')}"`;
-                }).join(',')
-            )
-        ];
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        try {
+            const params = new URLSearchParams();
+            params.append('format', 'excel');
+            params.append('trainerId', selectedTrainerId);
+            params.append('from', dateRange.from);
+            params.append('to', dateRange.to);
+            if (statusFilter && statusFilter !== 'all') {
+                params.append('status', statusFilter);
+            }
+            if (serviceFilter && serviceFilter !== 'all') {
+                params.append('serviceId', serviceFilter);
+            }
+            if (search.trim()) {
+                params.append('q', search.trim());
+            }
+
+            const response = await apiClient.get(`${endpoint}?${params.toString()}`, {
+                responseType: 'blob'
+            });
+
+            const filename = parseContentDispositionFilename(
+                response.headers?.['content-disposition'],
+                fallbackFilename
+            );
+            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(language === 'ar' ? 'تم التصدير بنجاح' : 'Exported successfully');
+        } catch (error) {
+            toast.error(language === 'ar' ? 'فشل التصدير' : 'Export failed');
+        }
     };
 
     const handleExportEarnings = () => {
-        const rows = earnings.map((row) => ({
-            Date: formatDateTime(row.sessionDate, language),
-            Customer: row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName,
-            Service: row.serviceName,
-            OriginalPrice: row.originalPrice ?? row.baseAmount ?? 0,
-            FinalPrice: row.finalPrice ?? row.baseAmount ?? 0,
-            AdjustmentDifference: row.adjustmentDifference ?? 0,
-            Rule: row.ruleText || '',
-            CommissionAmount: row.commissionAmount,
-            Status: row.status,
-            Employee: row.employeeName || '',
-            AdjustmentReason: row.adjustmentReason || '',
-            AdjustedBy: row.adjustedBy || ''
-        }));
-        exportCsv('trainer-earnings.csv', rows);
+        downloadTrainerExcel('/reports/trainer-earnings', 'trainer-earnings-report.xlsx');
     };
 
     const handleExportPayouts = () => {
-        const rows = payouts.map((row) => ({
-            Date: formatDateTime(row.paidAt, language),
-            Trainer: row.trainer?.name || selectedTrainer?.name || '',
-            PaidBy: row.paidByEmployee
-                ? `${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()
-                : '',
-            Amount: row.totalAmount,
-            Method: row.method,
-            Note: row.note || ''
-        }));
-        exportCsv('trainer-payouts.csv', rows);
+        downloadTrainerExcel('/reports/trainer-payouts', 'trainer-payouts-report.xlsx');
     };
 
     const handleOpenDetails = useCallback((row) => {

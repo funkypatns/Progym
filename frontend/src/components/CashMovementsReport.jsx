@@ -17,6 +17,12 @@ import toast from 'react-hot-toast';
 import { useSettingsStore } from '../store';
 import ReportLayout from './Reports/ReportLayout';
 
+const parseContentDispositionFilename = (headerValue, fallbackName) => {
+    if (!headerValue || typeof headerValue !== 'string') return fallbackName;
+    const match = headerValue.match(/filename="(.+?)"/i);
+    return match?.[1] || fallbackName;
+};
+
 const CashMovementsReport = ({ isActive }) => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
@@ -64,30 +70,34 @@ const CashMovementsReport = ({ isActive }) => {
         }
     }, [isActive]);
 
-    const handleExport = () => {
+    const handleExport = async () => {
         if (!data.data.length) return;
+        try {
+            const params = new URLSearchParams();
+            if (filters.startDate) params.set('startDate', filters.startDate);
+            if (filters.endDate) params.set('endDate', filters.endDate);
+            if (filters.type) params.set('type', filters.type);
+            params.set('format', 'excel');
 
-        const headers = ["Date", "Type", "Amount", "Reason", "Notes", "Employee"];
-        const rows = data.data.map(m => [
-            formatDateTime(m.createdAt, 'en'),
-            m.type,
-            m.amount,
-            `"${m.reason}"`,
-            `"${m.notes || ''}"`,
-            `"${m.employee?.firstName} ${m.employee?.lastName}"`
-        ]);
+            const response = await api.get(`/reports/payInOut?${params.toString()}`, {
+                responseType: 'blob'
+            });
 
-        const csvContent = "data:text/csv;charset=utf-8,"
-            + headers.join(",") + "\n"
-            + rows.map(e => e.join(",")).join("\n");
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `Cash_Movements_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+            const fallbackName = `cash-movements-${new Date().toISOString().split('T')[0]}.xlsx`;
+            const filename = parseContentDispositionFilename(response.headers?.['content-disposition'], fallbackName);
+            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(t('reports.exportSuccess', 'Exported successfully'));
+        } catch (error) {
+            toast.error(t('reports.exportFailed', 'Export failed'));
+        }
     };
 
     if (!isActive) return null;

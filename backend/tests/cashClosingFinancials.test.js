@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const ExcelJS = require('exceljs');
 
 const cashClosingRouter = require('../routes/cashClosing');
 const { calculateCashClosingStats } = require('../utils/financialCalculations');
@@ -483,14 +484,21 @@ test('export returns snapshot totals saved at close time', async () => {
     const exportReq = {
         user: { id: 1, role: 'admin' },
         params: { id: String(closeId) },
-        query: { format: 'json' },
+        query: { format: 'xlsx' },
         prisma
     };
     const exportRes = createMockRes();
     await exportHandler(exportReq, exportRes);
 
     assert.equal(exportRes.statusCode, 200);
-    const exportedPayload = JSON.parse(exportRes.sent);
-    assert.equal(exportedPayload.totals.expectedCashAmount, closedPeriod.expectedCashAmount);
-    assert.equal(exportedPayload.totals.expectedTotalAmount, closedPeriod.expectedTotalAmount);
+    assert.equal(exportRes.headers['content-type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    assert.match(exportRes.headers['content-disposition'], /cash-close-\d{1,}-\d{4}-\d{2}-\d{2}\.xlsx/);
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(exportRes.sent);
+    const summarySheet = workbook.getWorksheet('Summary');
+    assert.ok(summarySheet, 'Summary sheet should exist');
+    assert.equal(summarySheet.getCell('A10').value, 'Item');
+    assert.equal(Number(summarySheet.getCell('B11').value), Number(closedPeriod.expectedCashAmount));
+    assert.equal(Number(summarySheet.getCell('B13').value), Number(closedPeriod.expectedTotalAmount));
 });

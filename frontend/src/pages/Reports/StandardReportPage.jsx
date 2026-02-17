@@ -59,6 +59,12 @@ const KPICard = ({ label, value, icon: Icon, gradient, isCurrency = false, delay
     );
 };
 
+const parseContentDispositionFilename = (headerValue, fallbackName) => {
+    if (!headerValue || typeof headerValue !== 'string') return fallbackName;
+    const match = headerValue.match(/filename="(.+?)"/i);
+    return match?.[1] || fallbackName;
+};
+
 const StandardReportPage = ({ type }) => {
     const { t, i18n } = useTranslation();
     const location = useLocation();
@@ -483,40 +489,48 @@ const StandardReportPage = ({ type }) => {
         );
     };
 
-    const exportPaymentsCsv = () => {
+    const exportPaymentsExcel = async () => {
         if (!paymentsRows.length) {
             toast.error(i18n.language === 'ar' ? 'لا توجد بيانات للتصدير' : 'No data to export');
             return;
         }
-        const headers = [
-            i18n.language === 'ar' ? 'التاريخ/الوقت' : 'Date/Time',
-            i18n.language === 'ar' ? 'العميل' : 'Customer',
-            i18n.language === 'ar' ? 'النوع' : 'Type',
-            i18n.language === 'ar' ? 'المبلغ' : 'Amount',
-            i18n.language === 'ar' ? 'الطريقة' : 'Method',
-            i18n.language === 'ar' ? 'الموظف' : 'Employee',
-            i18n.language === 'ar' ? 'المرجع' : 'Reference'
-        ];
-        const csvRows = [headers.join(',')];
-        paymentsRows.forEach((row) => {
-            const line = [
-                row.paidAt,
-                row.customerLabel || '',
-                row.type || '',
-                row.amount ?? 0,
-                row.method || '',
-                row.employee || '',
-                row.reference || ''
-            ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',');
-            csvRows.push(line);
-        });
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', 'payments-ledger.csv');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+
+        try {
+            const normalized = normalizeRange(dateRange.startDate, dateRange.endDate);
+            if (normalized.swapped) {
+                setDateRange({ startDate: normalized.from, endDate: normalized.to });
+                return;
+            }
+
+            const params = new URLSearchParams();
+            params.append('from', toStartOfDay(normalized.from));
+            params.append('to', toEndOfDay(normalized.to));
+            params.append('format', 'excel');
+            if (paymentMethod) params.append('method', paymentMethod);
+            if (employeeFilter) params.append('employeeId', employeeFilter);
+            if (paymentType) params.append('type', paymentType.toLowerCase());
+            if (debouncedNameFilter.trim()) params.append('q', debouncedNameFilter.trim());
+            params.append('limit', '300');
+
+            const response = await apiClient.get(`/reports/payments/transactions?${params.toString()}`, {
+                responseType: 'blob'
+            });
+
+            const fallbackName = `payments-ledger-${dateRange.startDate || 'report'}.xlsx`;
+            const filename = parseContentDispositionFilename(response.headers?.['content-disposition'], fallbackName);
+            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(i18n.language === 'ar' ? 'تم التصدير بنجاح' : 'Exported successfully');
+        } catch (error) {
+            toast.error(i18n.language === 'ar' ? 'فشل التصدير' : 'Export failed');
+        }
     };
 
     const paymentsColumns = useMemo(() => ([
@@ -619,7 +633,7 @@ const StandardReportPage = ({ type }) => {
 
                 <div className="flex items-center justify-end mb-4">
                     <button
-                        onClick={exportPaymentsCsv}
+                        onClick={exportPaymentsExcel}
                         disabled={!paymentsRows.length}
                         className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all ${paymentsRows.length
                             ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-indigo-500/30'
@@ -627,7 +641,7 @@ const StandardReportPage = ({ type }) => {
                             }`}
                     >
                         <Download size={18} />
-                        {i18n.language === 'ar' ? 'تصدير CSV' : 'Export CSV'}
+                        {i18n.language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
                     </button>
                 </div>
 
