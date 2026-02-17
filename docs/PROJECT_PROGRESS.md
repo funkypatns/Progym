@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Export refactor completed: replaced raw CSV/key-value report exports with structured styled Excel (`.xlsx`) across cash close and reports, added shared backend Excel service (`exceljs`), and wired remaining report exports (payments ledger, gym income sessions, pending completion, cash movements) to server-side Excel endpoints. Status: done.
 - Cash Close end-to-end stability fixed: synced Prisma schema/client for `CashClosePeriod`, added explicit backend error codes + dev stack logging on create/current/history/list, hardened OPEN-period integrity checks, and updated frontend to show actionable cash-close toasts (no generic server-error masking). Status: done.
 - Cash Close modal now computes `difference = declaredCash - expectedCash` in real-time with 2-decimal rounding, safe empty-input handling, and dynamic status badge (`عجز`/`زيادة`/`متوازن`) with red/green styling. Status: done.
 - Post-login blank-screen loop fixed in frontend by preventing redundant auth-store user updates, decoupling POS init from `user` object changes, and hardening ErrorBoundary catch handling. Status: done.
@@ -81,6 +82,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 12cb575  | Refactor export stack to structured styled `.xlsx`: add shared backend `exceljs` export service, convert cash close export to multi-sheet workbook (summary/payments/payouts/cash-in/sales), migrate reports/receipts/trainer exports to consistent Excel output, and replace remaining frontend CSV export actions with backend Excel downloads (payments ledger, gym income sessions, pending completion, cash movements). |
 | 2026-02-17 | ff03374  | Fix Cash Close create/history/current failures end-to-end by enforcing Prisma cash-close model availability checks, returning endpoint-specific `errorCode` payloads with dev stack logs, preventing silent OPEN-period inconsistencies, adding regression tests for schema-mismatch handling, and updating frontend cash-close toasts for actionable errors. |
 | 2026-02-17 | f7ce6f6  | Enhance Cash Close modal difference behavior with rounded real-time calculation (`declared - expected`), safe zero fallback for empty input, and dynamic Arabic status badge/color states for shortage/overage/balanced. |
 | 2026-02-17 | 1b02134  | Fix post-login render crash loop by avoiding redundant `refreshSession` state writes, running POS initialization only on auth transition, and removing recursive ErrorBoundary catch-state updates. |
