@@ -75,6 +75,8 @@ model User {
   createdAppointments Appointment[] @relation("AppointmentCreatedBy")
   completedAppointments Appointment[] @relation("AppointmentCompletedBy")
   trainerPayouts      TrainerPayout[] @relation("TrainerPayoutPaidBy")
+  cashClosePeriodsCreated CashClosePeriod[] @relation("CashClosePeriodCreatedBy")
+  cashClosePeriodsClosed  CashClosePeriod[] @relation("CashClosePeriodClosedBy")
 }
 
 /// Activity log for audit trail
@@ -704,6 +706,55 @@ model StaffNotification {
   reminder    Reminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
   
   @@index([userId, seenAt])
+}
+
+/// POS-style cash close periods (single OPEN period, immutable CLOSED snapshots)
+model CashClosePeriod {
+  id                    Int      @id @default(autoincrement())
+  periodType            String   @default("MANUAL")
+  startAt               DateTime
+  endAt                 DateTime?
+  status                String   @default("OPEN") // OPEN, CLOSED
+
+  // Snapshot payload (closed period only)
+  snapshotJson          String?
+  exportVersion         Int      @default(1)
+
+  // Totals snapshot
+  expectedCashAmount    Float    @default(0)
+  expectedNonCashAmount Float    @default(0)
+  expectedCardAmount    Float    @default(0)
+  expectedTransferAmount Float   @default(0)
+  expectedTotalAmount   Float    @default(0)
+
+  actualCashAmount      Float    @default(0)
+  actualNonCashAmount   Float    @default(0)
+  actualTotalAmount     Float    @default(0)
+
+  differenceCash        Float    @default(0)
+  differenceNonCash     Float    @default(0)
+  differenceTotal       Float    @default(0)
+
+  revenueTotal          Float    @default(0)
+  sessionsTotal         Int      @default(0)
+  payoutsTotal          Float    @default(0)
+  cashInTotal           Float    @default(0)
+  cashRefundsTotal      Float    @default(0)
+  cashRevenue           Float    @default(0)
+  cardRevenue           Float    @default(0)
+  transferRevenue       Float    @default(0)
+
+  notes                 String?
+  createdBy             Int?
+  closedBy              Int?
+  createdAt             DateTime @default(now())
+  closedAt              DateTime?
+
+  createdByUser         User?    @relation("CashClosePeriodCreatedBy", fields: [createdBy], references: [id])
+  closedByUser          User?    @relation("CashClosePeriodClosedBy", fields: [closedBy], references: [id])
+
+  @@index([status, startAt])
+  @@index([closedAt])
 }
 
 /// Trainers (staff) available for sessions

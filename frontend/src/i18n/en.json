@@ -910,7 +910,24 @@
             "cashIn": "Cash In",
             "payouts": "Payouts",
             "cashRefunds": "Cash Refunds"
-        }
+        },
+        "tabs": {
+            "currentPeriod": "Current Period",
+            "history": "Close History"
+        },
+        "currentPeriodTitle": "Current open period",
+        "openPeriodStartsAt": "Open period starts at",
+        "loadPreviewFailed": "Failed to load close preview",
+        "historyLoadFailed": "Failed to load close history",
+        "successTitle": "Cash close created",
+        "successMessage": "Snapshot saved and a new open period has started.",
+        "closeId": "Close ID",
+        "downloadExport": "Download Export",
+        "downloadJson": "Download JSON",
+        "viewCloseHistory": "View close history",
+        "closeAt": "Close At",
+        "notesPlaceholder": "Optional notes",
+        "exportFailed": "Failed to download export"
     },
     "financials": {
         "cash": "Cash",

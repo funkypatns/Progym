@@ -1,837 +1,420 @@
-/**
- * ============================================
- * CASH CLOSING MODAL
- * ============================================
- * 
- * Admin-only modal for creating cash closings
- * Features live calculations and immutability warnings
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertTriangle, DollarSign, TrendingDown, TrendingUp, Minus, Users, CreditCard, FileText, CheckCircle, HelpCircle } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CalendarClock, CheckCircle2, Download, History, Wallet, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { formatCurrency } from '../utils/numberFormatter';
-import { useSettingsStore, useAuthStore } from '../store';
+import { useSettingsStore } from '../store';
 
-const CashClosingModal = ({ isOpen, onClose, onSuccess }) => {
-    const { t, i18n } = useTranslation();
-    const isRTL = i18n.language === 'ar';
-    const { getSetting } = useSettingsStore();
-    const { user } = useAuthStore();
-
-    const currencyConf = {
-        code: getSetting('currency_code', 'USD'),
-        symbol: getSetting('currency_symbol', '$')
-    };
-
-    // Form state
-    const [formData, setFormData] = useState({
-        employeeId: '',
-        periodType: 'daily',
-        startAt: '',
-        endAt: '',
-        declaredCashAmount: '', // Empty by default to detect "not entered"
-        declaredNonCashAmount: '',
-        notes: ''
-    });
-
-    // Expected amounts (fetched from API)
-    const [expectedAmounts, setExpectedAmounts] = useState({
+const EMPTY_PREVIEW = {
+    openPeriod: null,
+    range: { startAt: null, endAt: null },
+    expected: {
         expectedCashAmount: 0,
         expectedNonCashAmount: 0,
         expectedTotalAmount: 0,
         expectedCardAmount: 0,
         expectedTransferAmount: 0,
-        cardTotal: 0,
-        transferTotal: 0,
-        paymentCount: 0,
         payoutsTotal: 0,
-        payoutsCashTotal: 0,
-        payoutsTransferTotal: 0,
         cashInTotal: 0,
         cashRefundsTotal: 0
-    });
-    const [salesPreview, setSalesPreview] = useState({
-        totalRevenue: 0,
-        totalUnits: 0,
-        transactionsCount: 0,
-        topProducts: []
-    });
-
-    const [employees, setEmployees] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isFetchingExpected, setIsFetchingExpected] = useState(false);
-    const [isFetchingSales, setIsFetchingSales] = useState(false);
-
-    // NEW: Financial Snapshot State
-    const [financialSnapshot, setFinancialSnapshot] = useState({
+    },
+    summary: {
         totalSessions: 0,
         totalRevenue: 0,
-        cashRevenue: 0,
-        cardRevenue: 0,
-        transferRevenue: 0,
-        trainerCommissions: 0,
-        payoutsTotal: 0,
-        cashInTotal: 0,
         expectedCash: 0,
         expectedNonCash: 0
-    });
-    const [isFetchingSnapshot, setIsFetchingSnapshot] = useState(false);
-
-    const toLocalInputValue = (date) => {
-        const pad = (val) => String(val).padStart(2, '0');
-        const d = new Date(date);
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-
-    const getPeriodRange = (periodType) => {
-        const now = new Date();
-        if (periodType === 'daily') {
-            const start = new Date(now);
-            start.setHours(0, 0, 0, 0);
-            return { startAt: toLocalInputValue(start), endAt: toLocalInputValue(now) };
-        }
-        if (periodType === 'monthly') {
-            const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-            return { startAt: toLocalInputValue(start), endAt: toLocalInputValue(now) };
-        }
-        return null;
-    };
-
-    const getErrorMessage = (error, fallback) => {
-        const response = error?.response?.data;
-        if (response?.message) return response.message;
-        if (Array.isArray(response?.errors) && response.errors[0]?.msg) return response.errors[0].msg;
-        if (error?.message) return error.message;
-        return fallback;
-    };
-
-    // Fetch employees on mount
-    useEffect(() => {
-        if (isOpen) {
-            fetchEmployees();
-            const range = getPeriodRange('daily');
-            setFormData(prev => ({
-                ...prev,
-                startAt: range?.startAt || '',
-                endAt: range?.endAt || '',
-                declaredCashAmount: '',
-                declaredNonCashAmount: ''
-            }));
-        }
-    }, [isOpen]);
-
-    // Fetch expected amounts when dates or employee change
-    useEffect(() => {
-        if (formData.startAt && formData.endAt) {
-            fetchExpectedAmounts();
-            fetchSalesPreview();
-            fetchFinancialSnapshot();
-        }
-    }, [formData.startAt, formData.endAt, formData.employeeId]);
-
-    const fetchEmployees = async () => {
-        try {
-            const response = await api.get('/users/list');
-            const employeeList = response.data.data || [];
-            setEmployees(employeeList);
-        } catch (error) {
-            console.error('Failed to fetch employees:', error);
-            setEmployees([]);
-        }
-    };
-
-    const fetchExpectedAmounts = async () => {
-        if (!formData.startAt || !formData.endAt) return;
-
-        setIsFetchingExpected(true);
-        try {
-            const params = new URLSearchParams({
-                startAt: formData.startAt,
-                endAt: formData.endAt
-            });
-
-            // Only append employeeId if a specific one is selected (not 'all' or empty)
-            if (formData.employeeId && formData.employeeId !== 'all') {
-                params.append('employeeId', formData.employeeId);
-            }
-
-            const response = await api.get(`/cash-closings/calculate-expected?${params}`);
-
-            // Safe fallback for null/undefined values
-            const data = response.data.data || {};
-            setExpectedAmounts({
-                expectedCashAmount: Number(data.expectedCashAmount) || 0,
-                expectedNonCashAmount: Number(data.expectedNonCashAmount) || 0,
-                expectedTotalAmount: Number(data.expectedTotalAmount) || 0,
-                expectedCardAmount: Number(data.expectedCardAmount ?? data.cardTotal) || 0,
-                expectedTransferAmount: Number(data.expectedTransferAmount ?? data.transferTotal) || 0,
-                cardTotal: Number(data.expectedCardAmount ?? data.cardTotal) || 0,
-                transferTotal: Number(data.expectedTransferAmount ?? data.transferTotal) || 0,
-                paymentCount: Number(data.paymentCount) || 0,
-                payoutsTotal: Number(data.payoutsTotal) || 0,
-                payoutsCashTotal: Number(data.payoutsCashTotal) || 0,
-                payoutsTransferTotal: Number(data.payoutsTransferTotal) || 0,
-                cashInTotal: Number(data.cashInTotal ?? data.payInTotal) || 0,
-                cashRefundsTotal: Number(data.cashRefundsTotal) || 0
-            });
-        } catch (error) {
-            console.error('Failed to fetch expected amounts:', error);
-            toast.error(getErrorMessage(error, 'Failed to calculate expected amounts'));
-            // Reset to zero on error
-            setExpectedAmounts({
-                expectedCashAmount: 0,
-                expectedNonCashAmount: 0,
-                expectedTotalAmount: 0,
-                expectedCardAmount: 0,
-                expectedTransferAmount: 0,
-                cardTotal: 0,
-                transferTotal: 0,
-                paymentCount: 0,
-                payoutsTotal: 0,
-                payoutsCashTotal: 0,
-                payoutsTransferTotal: 0,
-                cashInTotal: 0,
-                cashRefundsTotal: 0
-            });
-        } finally {
-            setIsFetchingExpected(false);
-        }
-    };
-
-    const fetchSalesPreview = async () => {
-        if (!formData.startAt || !formData.endAt) return;
-
-        setIsFetchingSales(true);
-        try {
-            const params = new URLSearchParams({
-                startAt: formData.startAt,
-                endAt: formData.endAt
-            });
-
-            if (formData.employeeId && formData.employeeId !== 'all') {
-                params.append('employeeId', formData.employeeId);
-            }
-
-            const response = await api.get(`/cash-closings/sales-preview?${params}`);
-            const data = response.data.data || {};
-            setSalesPreview({
-                totalRevenue: Number(data.totalRevenue) || 0,
-                totalUnits: Number(data.totalUnits) || 0,
-                transactionsCount: Number(data.transactionsCount) || 0,
-                topProducts: Array.isArray(data.topProducts) ? data.topProducts : []
-            });
-        } catch (error) {
-            console.error('Failed to fetch sales preview:', error);
-            setSalesPreview({
-                totalRevenue: 0,
-                totalUnits: 0,
-                transactionsCount: 0,
-                topProducts: []
-            });
-        } finally {
-            setIsFetchingSales(false);
-        }
-    };
-
-    const fetchFinancialSnapshot = async () => {
-        if (!formData.startAt || !formData.endAt) return;
-        setIsFetchingSnapshot(true);
-        try {
-            const params = new URLSearchParams({ startAt: formData.startAt, endAt: formData.endAt });
-            const response = await api.get(`/cash-closings/financial-preview?${params}`);
-            const data = response.data.summary || response.data.data || {};
-            setFinancialSnapshot({
-                totalSessions: Number(data.totalSessions) || 0,
-                totalRevenue: Number(data.totalRevenue ?? data.grossRevenue) || 0,
-                cashRevenue: Number(data.cashRevenue) || 0,
-                cardRevenue: Number(data.cardRevenue) || 0,
-                transferRevenue: Number(data.transferRevenue) || 0,
-                trainerCommissions: Number(data.trainerCommissions ?? data.totalCoachCommissions) || 0,
-                payoutsTotal: Number(data.payoutsTotal) || 0,
-                cashInTotal: Number(data.cashInTotal) || 0,
-                expectedCash: Number(data.expectedCash) || 0,
-                expectedNonCash: Number(data.expectedNonCash) || 0
-            });
-        } catch (error) {
-            console.error('Failed to fetch financial snapshot:', error);
-            setFinancialSnapshot({
-                totalSessions: 0,
-                totalRevenue: 0,
-                cashRevenue: 0,
-                cardRevenue: 0,
-                transferRevenue: 0,
-                trainerCommissions: 0,
-                payoutsTotal: 0,
-                cashInTotal: 0,
-                expectedCash: 0,
-                expectedNonCash: 0
-            });
-        } finally {
-            setIsFetchingSnapshot(false);
-        }
-    };
-
-    // Calculate declared total and differences
-    // Treat empty string as 0 for calculation, but keep raw for status check
-    const rawDeclaredCash = formData.declaredCashAmount;
-    const rawDeclaredNonCash = formData.declaredNonCashAmount;
-    const valDeclaredCash = rawDeclaredCash === '' ? 0 : parseFloat(rawDeclaredCash);
-    const valDeclaredNonCash = rawDeclaredNonCash === '' ? 0 : parseFloat(rawDeclaredNonCash);
-
-    const declaredTotal = valDeclaredCash + valDeclaredNonCash;
-    const differenceCash = valDeclaredCash - expectedAmounts.expectedCashAmount;
-    const differenceNonCash = valDeclaredNonCash - expectedAmounts.expectedNonCashAmount;
-    const differenceTotal = declaredTotal - expectedAmounts.expectedTotalAmount;
-    const hasDeclaredCash = rawDeclaredCash !== '';
-    const diffNonCashColor = differenceNonCash < -0.01 ? 'text-red-500' : differenceNonCash > 0.01 ? 'text-orange-500' : 'text-emerald-500';
-    const diffTotalColor = differenceTotal < -0.01 ? 'text-red-500' : differenceTotal > 0.01 ? 'text-orange-500' : 'text-emerald-500';
-    const formatSignedDiff = (value) => {
-        if (!hasDeclaredCash) return '--';
-        const safeValue = Number.isFinite(value) ? value : 0;
-        const sign = safeValue > 0 ? '+' : '';
-        return `${sign}${formatCurrency(safeValue, i18n.language, currencyConf)}`;
-    };
-    const declaredTotalDisplay = hasDeclaredCash
-        ? formatCurrency(declaredTotal || 0, i18n.language, currencyConf)
-        : '--';
-
-    // Determine status
-    let status = 'pending';
-    let statusColor = 'text-gray-400';
-    let StatusIcon = AlertTriangle; // Neutral icon
-    let statusText = t('common.pending') || 'Pending';
-
-    if (hasDeclaredCash) {
-        if (differenceCash < -0.01) { // Tolerance
-            status = 'shortage';
-            statusColor = 'text-red-500';
-            StatusIcon = TrendingDown;
-            statusText = t('cashClosing.status.shortage') || 'Shortage';
-        } else if (differenceCash > 0.01) {
-            status = 'overage';
-            statusColor = 'text-orange-500';
-            StatusIcon = TrendingUp;
-            statusText = t('cashClosing.status.overage') || 'Overage';
-        } else {
-            status = 'balanced';
-            statusColor = 'text-emerald-500';
-            StatusIcon = CheckCircle;
-            statusText = t('cashClosing.status.balanced') || 'Balanced';
-        }
     }
+};
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+const toLocalInputValue = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
-        if (!formData.startAt || !formData.endAt) {
-            toast.error('Please select start and end dates');
-            return;
-        }
+const parseContentDispositionFilename = (contentDispositionValue, fallbackName) => {
+    if (!contentDispositionValue || typeof contentDispositionValue !== 'string') return fallbackName;
+    const match = contentDispositionValue.match(/filename="(.+?)"/i);
+    return match?.[1] || fallbackName;
+};
 
-        if (formData.declaredCashAmount === '') {
-            toast.error(t('cashClosing.enterDeclaredCash') || 'Please enter declared cash amount');
-            return;
-        }
+const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
+    const { t, i18n } = useTranslation();
+    const { getSetting } = useSettingsStore();
+    const isRTL = i18n.language === 'ar';
 
-        setIsLoading(true);
-        try {
-            const payload = {
-                ...formData,
-                employeeId: (formData.employeeId && formData.employeeId !== 'all') ? parseInt(formData.employeeId) : undefined,
-                declaredCashAmount: parseFloat(formData.declaredCashAmount || 0),
-                declaredNonCashAmount: parseFloat(formData.declaredNonCashAmount || 0)
-            };
+    const currencyConf = useMemo(() => ({
+        code: getSetting('currency_code', 'USD'),
+        symbol: getSetting('currency_symbol', '$')
+    }), [getSetting]);
 
-            await api.post('/cash-closings', payload);
-            toast.success(t('cashClosing.closingCreated'));
-            onSuccess();
-            handleClose();
-        } catch (error) {
-            console.error('Failed to create closing:', error);
-            toast.error(getErrorMessage(error, t('cashClosing.closingFailed')));
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const [preview, setPreview] = useState(EMPTY_PREVIEW);
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [successData, setSuccessData] = useState(null);
+    const [formData, setFormData] = useState({
+        periodType: 'manual',
+        endAt: '',
+        declaredCashAmount: '',
+        declaredNonCashAmount: '',
+        notes: ''
+    });
 
-    const handleClose = () => {
+    const resetState = () => {
+        setPreview(EMPTY_PREVIEW);
+        setIsLoadingPreview(false);
+        setIsSubmitting(false);
+        setIsDownloading(false);
+        setSuccessData(null);
         setFormData({
-            employeeId: '',
-            periodType: 'daily',
-            startAt: '',
-            endAt: '',
+            periodType: 'manual',
+            endAt: toLocalInputValue(new Date()),
             declaredCashAmount: '',
             declaredNonCashAmount: '',
             notes: ''
         });
-        setExpectedAmounts({
-            expectedCashAmount: 0,
-            expectedNonCashAmount: 0,
-            expectedTotalAmount: 0,
-            expectedCardAmount: 0,
-            expectedTransferAmount: 0,
-            cardTotal: 0,
-            transferTotal: 0,
-            paymentCount: 0,
-            payoutsTotal: 0,
-            payoutsCashTotal: 0,
-            payoutsTransferTotal: 0,
-            cashInTotal: 0,
-            cashRefundsTotal: 0
-        });
-        setSalesPreview({
-            totalRevenue: 0,
-            totalUnits: 0,
-            transactionsCount: 0,
-            topProducts: []
-        });
-        setFinancialSnapshot({
-            totalSessions: 0,
-            totalRevenue: 0,
-            cashRevenue: 0,
-            cardRevenue: 0,
-            transferRevenue: 0,
-            trainerCommissions: 0,
-            payoutsTotal: 0,
-            cashInTotal: 0,
-            expectedCash: 0,
-            expectedNonCash: 0
-        });
-        onClose();
     };
 
-    const getBadgeStyle = (status) => {
-        switch (status) {
-            case 'shortage': return 'bg-red-500/10 text-red-400 border border-red-500/20';
-            case 'overage': return 'bg-orange-500/10 text-orange-400 border border-orange-500/20';
-            case 'balanced': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-            default: return 'bg-gray-500/10 text-gray-400 border border-gray-500/20';
+    useEffect(() => {
+        if (!isOpen) return;
+
+        let isMounted = true;
+        const loadPreview = async () => {
+            setIsLoadingPreview(true);
+            try {
+                const response = await api.get('/cash-closings/period/current');
+                if (!isMounted) return;
+                const data = response?.data?.data || EMPTY_PREVIEW;
+                setPreview({
+                    openPeriod: data.openPeriod || null,
+                    range: data.range || { startAt: null, endAt: null },
+                    expected: { ...EMPTY_PREVIEW.expected, ...(data.expected || {}) },
+                    summary: { ...EMPTY_PREVIEW.summary, ...(data.summary || {}) }
+                });
+                setFormData((prev) => ({
+                    ...prev,
+                    endAt: prev.endAt || toLocalInputValue(new Date())
+                }));
+            } catch (error) {
+                console.error('Failed to load cash close preview', error);
+                setPreview(EMPTY_PREVIEW);
+                toast.error(t('cashClosing.loadPreviewFailed', 'Failed to load close preview'));
+            } finally {
+                if (isMounted) setIsLoadingPreview(false);
+            }
+        };
+
+        resetState();
+        loadPreview();
+        return () => {
+            isMounted = false;
+        };
+    }, [isOpen, t]);
+
+    const expectedCash = Number(preview.expected.expectedCashAmount) || 0;
+    const expectedNonCash = Number(preview.expected.expectedNonCashAmount) || 0;
+    const expectedTotal = Number(preview.expected.expectedTotalAmount) || 0;
+    const declaredCash = Number(formData.declaredCashAmount || 0);
+    const declaredNonCash = Number(formData.declaredNonCashAmount || 0);
+    const declaredTotal = declaredCash + declaredNonCash;
+    const cashDiff = declaredCash - expectedCash;
+
+    const closeModal = () => {
+        resetState();
+        onClose?.();
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+
+        if (formData.declaredCashAmount === '') {
+            toast.error(t('cashClosing.enterDeclaredCash', 'Please enter declared cash amount'));
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const payload = {
+                periodType: formData.periodType,
+                declaredCashAmount: Number(formData.declaredCashAmount || 0),
+                declaredNonCashAmount: Number(formData.declaredNonCashAmount || 0),
+                endAt: formData.endAt ? new Date(formData.endAt).toISOString() : undefined,
+                notes: formData.notes?.trim() || undefined
+            };
+            const response = await api.post('/cash-closings', payload);
+            const data = response?.data?.data || {};
+            setSuccessData(data);
+            onSuccess?.(data);
+            toast.success(t('cashClosing.closingCreated', 'Closing created successfully'));
+        } catch (error) {
+            console.error('Failed to create cash close', error);
+            toast.error(error?.response?.data?.message || t('cashClosing.closingFailed', 'Failed to create closing'));
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
+    const handleDownloadExport = async (format) => {
+        if (!successData?.closeId) return;
+        setIsDownloading(true);
+        try {
+            const response = await api.get(`/cash-closings/${successData.closeId}/export?format=${format}`, {
+                responseType: 'blob'
+            });
+            const fallbackName = `cash-close-${successData.closeId}.${format}`;
+            const filename = parseContentDispositionFilename(response.headers?.['content-disposition'], fallbackName);
+            const blob = new Blob([response.data], { type: response.headers?.['content-type'] || 'application/octet-stream' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to download cash close export', error);
+            toast.error(t('cashClosing.exportFailed', 'Failed to download export'));
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
+    const differenceColor = cashDiff > 0.01
+        ? 'text-amber-400'
+        : cashDiff < -0.01
+            ? 'text-red-400'
+            : 'text-emerald-400';
 
     if (!isOpen) return null;
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    initial={{ opacity: 0, scale: 0.96, y: 16 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto flex flex-col"
+                    exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                    className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+                    dir={isRTL ? 'rtl' : 'ltr'}
                 >
-                    {/* Header */}
-                    <div className="sticky top-0 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 p-6 flex items-center justify-between z-10">
+                    <div className="sticky top-0 z-10 flex items-center justify-between p-5 border-b border-slate-700 bg-slate-900/95 backdrop-blur">
                         <div>
-                            <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                                {t('cashClosing.createClosing')}
-                            </h2>
-                            <p className="text-sm text-gray-400 mt-1 flex items-center gap-2">
-                                <AlertTriangle size={14} className="text-amber-500" />
-                                {t('cashClosing.immutableWarning')}
+                            <h2 className="text-xl font-bold text-white">{t('cashClosing.createClosing', 'Create Closing')}</h2>
+                            <p className="text-xs text-slate-400 mt-1">
+                                {t('cashClosing.openPeriodStartsAt', 'Open period starts at')}:{' '}
+                                {preview.range?.startAt ? new Date(preview.range.startAt).toLocaleString(i18n.language) : '--'}
                             </p>
                         </div>
                         <button
-                            onClick={handleClose}
-                            className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-gray-400 hover:text-white"
+                            type="button"
+                            onClick={closeModal}
+                            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                         >
-                            <X className="w-5 h-5" />
+                            <X size={18} />
                         </button>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="p-6 space-y-8">
+                    {successData ? (
+                        <div className="p-6 space-y-6">
+                            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+                                <div className="flex items-center gap-3">
+                                    <CheckCircle2 className="text-emerald-400" size={24} />
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-white">
+                                            {t('cashClosing.successTitle', 'Cash close created')}
+                                        </h3>
+                                        <p className="text-sm text-slate-300">
+                                            {t('cashClosing.successMessage', 'Snapshot saved and a new open period has started.')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-xs text-slate-300">
+                                    {t('cashClosing.closeId', 'Close ID')}: <span className="font-semibold text-white">#{successData.closeId}</span>
+                                </p>
+                            </div>
 
-                        {/* 1. Configuration Section */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{t('cashClosing.employee')}</label>
-                                <select
-                                    className="w-full h-11 px-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm text-white"
-                                    value={formData.employeeId}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, employeeId: e.target.value }))}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => handleDownloadExport('csv')}
+                                    disabled={isDownloading}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold transition-colors"
                                 >
-                                    <option value="">{t('cashClosing.selectEmployee') || 'اختر موظف'}</option>
-                                    <option value="all">{t('cashClosing.allEmployees')}</option>
-                                    {employees.map(emp => (
-                                        <option key={emp.id} value={emp.id}>
-                                            {emp.firstName} {emp.lastName}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{t('cashClosing.period')}</label>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <select
-                                        className="w-full h-11 px-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm text-white"
-                                        value={formData.periodType}
-                                        onChange={(e) => {
-                                            const nextPeriod = e.target.value;
-                                            const range = getPeriodRange(nextPeriod);
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                periodType: nextPeriod,
-                                                ...(range ? { startAt: range.startAt, endAt: range.endAt } : {})
-                                            }));
-                                        }}
-                                    >
-                                        <option value="daily">{t('cashClosing.periodType.daily')}</option>
-                                        <option value="monthly">{t('cashClosing.periodType.monthly')}</option>
-                                        <option value="custom">{t('cashClosing.periodType.custom')}</option>
-                                        <option value="shift">{t('cashClosing.periodType.shift')}</option>
-                                    </select>
-                                </div>
+                                    <Download size={16} />
+                                    {t('cashClosing.downloadExport', 'تحميل Export')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleDownloadExport('json')}
+                                    disabled={isDownloading}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-600 hover:bg-slate-800 disabled:opacity-60 text-slate-200 font-semibold transition-colors"
+                                >
+                                    <Download size={16} />
+                                    {t('cashClosing.downloadJson', 'Download JSON')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onViewHistory?.();
+                                        closeModal();
+                                    }}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-600 hover:bg-slate-800 text-slate-200 font-semibold transition-colors"
+                                >
+                                    <History size={16} />
+                                    {t('cashClosing.viewCloseHistory', 'عرض التقفيلات السابقة')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={closeModal}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-600 hover:bg-slate-800 text-slate-200 font-semibold transition-colors"
+                                >
+                                    {t('common.close', 'Close')}
+                                </button>
                             </div>
                         </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+                                    <p className="text-xs text-slate-400">{t('cashClosing.expectedCash', 'Expected Cash')}</p>
+                                    <p className="text-lg font-bold text-emerald-400 mt-1">
+                                        {formatCurrency(expectedCash, i18n.language, currencyConf)}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+                                    <p className="text-xs text-slate-400">{t('cashClosing.expectedNonCash', 'Expected Non-Cash')}</p>
+                                    <p className="text-lg font-bold text-blue-400 mt-1">
+                                        {formatCurrency(expectedNonCash, i18n.language, currencyConf)}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+                                    <p className="text-xs text-slate-400">{t('cashClosing.expectedTotal', 'Total Expected')}</p>
+                                    <p className="text-lg font-bold text-white mt-1">
+                                        {formatCurrency(expectedTotal, i18n.language, currencyConf)}
+                                    </p>
+                                </div>
+                            </div>
 
-                        {/* Date Range Selection */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-800/30 rounded-xl border border-slate-700/30">
-                            <div className="space-y-2">
-                                <label className="text-xs font-medium text-gray-400">{t('reports.from')}</label>
-                                <input
-                                    type="datetime-local"
-                                    className="w-full h-10 px-3 bg-slate-900/50 border border-slate-700 rounded-lg text-sm text-white focus:border-indigo-500 outline-none"
-                                    value={formData.startAt}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, startAt: e.target.value }))}
-                                    required
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-3">
+                                    <p className="text-[11px] text-slate-400">{t('cashClosing.preview.cashIn', 'Cash In')}</p>
+                                    <p className="text-sm font-semibold text-emerald-300 mt-1">
+                                        {formatCurrency(preview.expected.cashInTotal || 0, i18n.language, currencyConf)}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-3">
+                                    <p className="text-[11px] text-slate-400">{t('cashClosing.preview.payouts', 'Payouts')}</p>
+                                    <p className="text-sm font-semibold text-amber-300 mt-1">
+                                        {formatCurrency(preview.expected.payoutsTotal || 0, i18n.language, currencyConf)}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-3">
+                                    <p className="text-[11px] text-slate-400">{t('cashClosing.financialSnapshot.totalSessions', 'Total Sessions')}</p>
+                                    <p className="text-sm font-semibold text-slate-200 mt-1">{preview.summary.totalSessions || 0}</p>
+                                </div>
+                                <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-3">
+                                    <p className="text-[11px] text-slate-400">{t('cashClosing.financialSnapshot.totalRevenue', 'Total Revenue')}</p>
+                                    <p className="text-sm font-semibold text-slate-200 mt-1">
+                                        {formatCurrency(preview.summary.totalRevenue || 0, i18n.language, currencyConf)}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs text-slate-400 block mb-2">{t('cashClosing.declaredCash', 'Declared Cash')}</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={formData.declaredCashAmount}
+                                        onChange={(event) => setFormData((prev) => ({ ...prev, declaredCashAmount: event.target.value }))}
+                                        className="w-full h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white focus:outline-none focus:border-indigo-500"
+                                        placeholder="0.00"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400 block mb-2">{t('cashClosing.declaredNonCash', 'Declared Non-Cash')}</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={formData.declaredNonCashAmount}
+                                        onChange={(event) => setFormData((prev) => ({ ...prev, declaredNonCashAmount: event.target.value }))}
+                                        className="w-full h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white focus:outline-none focus:border-indigo-500"
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-2">{t('cashClosing.closeAt', 'Close At')}</label>
+                                <div className="relative">
+                                    <CalendarClock className={`absolute top-1/2 -translate-y-1/2 text-slate-500 ${isRTL ? 'right-3' : 'left-3'}`} size={16} />
+                                    <input
+                                        type="datetime-local"
+                                        value={formData.endAt}
+                                        onChange={(event) => setFormData((prev) => ({ ...prev, endAt: event.target.value }))}
+                                        className={`w-full h-11 rounded-lg border border-slate-700 bg-slate-950 text-white focus:outline-none focus:border-indigo-500 ${isRTL ? 'pr-10 pl-3' : 'pl-10 pr-3'}`}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-2">{t('cashClosing.notes', 'Notes')}</label>
+                                <textarea
+                                    value={formData.notes}
+                                    onChange={(event) => setFormData((prev) => ({ ...prev, notes: event.target.value }))}
+                                    className="w-full min-h-[84px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:outline-none focus:border-indigo-500 resize-y"
+                                    placeholder={t('cashClosing.notesPlaceholder', 'Optional notes')}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-medium text-gray-400">{t('reports.to')}</label>
-                                <input
-                                    type="datetime-local"
-                                    className="w-full h-10 px-3 bg-slate-900/50 border border-slate-700 rounded-lg text-sm text-white focus:border-indigo-500 outline-none"
-                                    value={formData.endAt}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, endAt: e.target.value }))}
-                                    required
-                                />
-                            </div>
-                        </div>
 
-
-                        {/* 2. Financial Snapshot (Redesigned) */}
-                        <div className="space-y-4">
-                            <h4 className="flex items-center gap-2 text-sm font-bold text-indigo-400 uppercase tracking-widest pl-1">
-                                <TrendingUp size={16} />
-                                {t('cashClosing.financialSnapshot.title', 'Financial Snapshot (Performance)')}
-                            </h4>
-
-                            {isFetchingSnapshot ? (
-                                <div className="h-32 flex items-center justify-center bg-slate-800/30 rounded-xl border border-dashed border-slate-700">
-                                    <div className="flex items-center gap-3 text-indigo-400/70 text-sm animate-pulse">
-                                        <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" />
-                                        {t('common.calculating', 'Calculating financial data...')}
+                            <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <Wallet size={16} className="text-slate-400" />
+                                        <span className="text-sm text-slate-300">{t('cashClosing.differenceCash', 'Cash Difference')}</span>
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {/* Card 1: Total Sessions */}
-                                    <div className="group relative bg-slate-800/40 hover:bg-slate-800/60 transition-all duration-300 rounded-2xl p-5 border border-slate-700/50 hover:border-indigo-500/30 overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                            <Users size={48} className="text-white" />
-                                        </div>
-                                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.totalSessions', 'Total Sessions')}</p>
-                                        <p className="text-3xl font-black text-white mb-1">{financialSnapshot.totalSessions}</p>
-                                        <div className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 w-fit px-2 py-0.5 rounded-full">
-                                            <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                                            {t('cashClosing.financialSnapshot.completedOnly', 'Completed only')}
-                                        </div>
-                                    </div>
-
-                                    {/* Card 2: Gross Revenue */}
-                                    <div className="group relative bg-slate-800/40 hover:bg-slate-800/60 transition-all duration-300 rounded-2xl p-5 border border-slate-700/50 hover:border-blue-500/30 overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                            <DollarSign size={48} className="text-blue-400" />
-                                        </div>
-                                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.totalRevenue', 'Total Revenue')}</p>
-                                        <p className="text-3xl font-black text-blue-400 mb-1">{formatCurrency(financialSnapshot.totalRevenue, i18n.language, currencyConf)}</p>
-                                        <p className="text-[10px] text-gray-500 font-medium">{t('cashClosing.financialSnapshot.collectedRevenue', 'Collected from payments + sales')}</p>
-                                    </div>
-
-                                    {/* Card 3: Commissions */}
-                                    <div className="group relative bg-slate-800/40 hover:bg-slate-800/60 transition-all duration-300 rounded-2xl p-5 border border-slate-700/50 hover:border-amber-500/30 overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                            <CreditCard size={48} className="text-amber-400" />
-                                        </div>
-                                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.totalCommissions', 'Total Commissions')}</p>
-                                        <p className="text-3xl font-black text-amber-500 mb-1">{formatCurrency(financialSnapshot.trainerCommissions, i18n.language, currencyConf)}</p>
-                                        <p className="text-[10px] text-amber-500/60 font-medium">{t('cashClosing.financialSnapshot.toBePaidOut', 'To be paid out')}</p>
-                                    </div>
-
-                                    {/* Card 4: Expected Cash */}
-                                    <div className="group relative bg-gradient-to-br from-emerald-900/20 to-slate-900/40 hover:from-emerald-900/30 transition-all duration-300 rounded-2xl p-5 border border-emerald-500/20 hover:border-emerald-500/40 overflow-hidden">
-                                        <div className="absolute -right-4 -bottom-4 opacity-10">
-                                            <div className="w-24 h-24 bg-emerald-500 rounded-full blur-2xl"></div>
-                                        </div>
-                                        <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">{t('cashClosing.financialSnapshot.expectedCashAfterAdjustments', 'Expected Cash After Adjustments')}</p>
-                                        <p className="text-3xl font-black text-emerald-400 mb-1">{formatCurrency(financialSnapshot.expectedCash, i18n.language, currencyConf)}</p>
-                                        <p className="text-[10px] text-emerald-400/60 font-medium">{t('cashClosing.financialSnapshot.adjustedFormulaHint', 'Cash Revenue + Cash In - Payouts - Cash Refunds')}</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 3. Preview Section */}
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest pl-1 border-b border-gray-700 pb-2">
-                                {t('cashClosing.preview.title', 'Preview')}
-                            </h4>
-
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                {/* Cash Expected */}
-                                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-1.5">{t('cashClosing.expectedCash')}</p>
-                                        <p className="text-xl font-bold text-emerald-400">
-                                            {formatCurrency(expectedAmounts.expectedCashAmount || 0, i18n.language, currencyConf)}
-                                        </p>
-                                    </div>
-                                    <p className="text-[10px] text-gray-600 font-medium mt-2 pt-2 border-t border-slate-700/50">
-                                        {t('cashClosing.preview.cashFormulaAdjusted', 'Cash Revenue + Cash In - Payouts - Cash Refunds')}
-                                    </p>
-                                </div>
-
-                                {/* Non-Cash Expected */}
-                                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-1.5">{t('cashClosing.expectedNonCash')}</p>
-                                        <p className="text-xl font-bold text-blue-400">
-                                            {formatCurrency(expectedAmounts.expectedNonCashAmount || 0, i18n.language, currencyConf)}
-                                        </p>
-                                    </div>
-                                    <div className="space-y-1 mt-2 pt-2 border-t border-slate-700/50 text-[10px] text-gray-500">
-                                        <div className="flex justify-between">
-                                            <span>{t('payments.card')}</span>
-                                            <span className="text-gray-400">{formatCurrency(expectedAmounts.cardTotal || 0, i18n.language, currencyConf)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>{t('payments.transfer')}</span>
-                                            <span className="text-gray-400">{formatCurrency(expectedAmounts.transferTotal || 0, i18n.language, currencyConf)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Total Expected */}
-                                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-indigo-500/10 to-transparent"></div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 mb-1.5">{t('cashClosing.expectedTotal')}</p>
-                                        <p className="text-xl font-bold text-white">
-                                            {formatCurrency(expectedAmounts.expectedTotalAmount || 0, i18n.language, currencyConf)}
-                                        </p>
-                                    </div>
-                                    <p className="text-[10px] text-indigo-400 font-medium mt-2">{t('cashClosing.preview.total', 'Total')}</p>
-                                </div>
-
-                                {/* Cash Adjustments */}
-                                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center">
-                                            <FileText size={14} className="text-gray-400" />
-                                        </div>
-                                        <p className="text-xs text-gray-500">{t('cashClosing.preview.adjustments', 'Adjustments')}</p>
-                                    </div>
-                                    <div className="space-y-1.5 text-[11px]">
-                                        <div className="flex justify-between text-gray-400">
-                                            <span>{t('cashClosing.preview.cashIn', 'Cash In')}</span>
-                                            <span className="text-emerald-400">{formatCurrency(expectedAmounts.cashInTotal || 0, i18n.language, currencyConf)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-gray-400">
-                                            <span>{t('cashClosing.preview.payouts', 'Payouts')}</span>
-                                            <span className="text-orange-400">{formatCurrency(expectedAmounts.payoutsTotal || 0, i18n.language, currencyConf)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-gray-400">
-                                            <span>{t('cashClosing.preview.cashRefunds', 'Cash Refunds')}</span>
-                                            <span className="text-red-400">{formatCurrency(expectedAmounts.cashRefundsTotal || 0, i18n.language, currencyConf)}</span>
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-gray-500 mt-3 pt-2 border-t border-slate-700/50">
-                                        {t('cashClosing.preview.paymentsCount', 'Payments')}: {expectedAmounts.paymentCount || 0}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Sales Preview */}
-                            <div className="bg-slate-800/20 rounded-xl p-4 border border-dashed border-slate-700/50 mt-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                                        <TrendingUp size={12} />
-                                        {t('cashClosing.salesPreview') || 'Product sales preview'}
-                                    </p>
-                                    <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-gray-400 border border-slate-700">
-                                        {isFetchingSales ? t('common.loading') : `${salesPreview.transactionsCount} ${t('cashClosing.salesCount', 'sales')}`}
+                                    <span className={`text-lg font-bold ${differenceColor}`}>
+                                        {formatCurrency(cashDiff, i18n.language, currencyConf)}
                                     </span>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <div className="flex justify-between items-center p-3 bg-slate-800/40 rounded-lg">
-                                        <span className="text-xs text-gray-500">{t('cashClosing.salesTotal') || 'Sales total'}</span>
-                                        <span className="text-sm font-bold text-indigo-400">{formatCurrency(salesPreview.totalRevenue || 0, i18n.language, currencyConf)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center p-3 bg-slate-800/40 rounded-lg">
-                                        <span className="text-xs text-gray-500">{t('cashClosing.unitsSold') || 'Units sold'}</span>
-                                        <span className="text-sm font-bold text-white">{salesPreview.totalUnits || 0}</span>
-                                    </div>
-                                </div>
-                                {salesPreview.topProducts.length > 0 && (
-                                    <div className="mt-3 pt-3 border-t border-slate-700/30">
-                                        <p className="text-[10px] text-gray-500 mb-2 uppercase">{t('cashClosing.topProducts') || 'Top products'}</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {salesPreview.topProducts.slice(0, 3).map((item) => (
-                                                <div key={item.productId} className="text-xs bg-slate-700/30 px-2 py-1 rounded border border-slate-700/50 text-gray-300 flex items-center gap-2">
-                                                    <span className="truncate max-w-[100px]">{item.name}</span>
-                                                    <span className="w-1 h-3 bg-slate-600 rounded-full" />
-                                                    <span className="font-bold text-white">{item.quantity}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* 4. Declaration Actions (The Cash Drawer) */}
-                        <div className="bg-gradient-to-b from-slate-800/40 to-slate-900/40 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
-                            <h4 className="flex items-center gap-2 text-sm font-bold text-white mb-6 uppercase tracking-wider">
-                                <DollarSign size={16} className="text-emerald-500" />
-                                {t('cashClosing.declaredTotal') || 'Cash Drawer (Declaration)'}
-                            </h4>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                                <div className="relative group">
-                                    <label className="text-xs font-bold text-emerald-400 mb-2 block uppercase tracking-wide">{t('cashClosing.declaredCash')}</label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            placeholder="0.00"
-                                            className="w-full h-14 pl-12 pr-4 bg-slate-900 border-2 border-slate-700 rounded-xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-2xl font-bold text-white placeholder-gray-600"
-                                            value={formData.declaredCashAmount}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, declaredCashAmount: e.target.value }))}
-                                            required
-                                        />
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 bg-emerald-500/20 rounded-lg text-emerald-500">
-                                            <DollarSign size={20} />
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-gray-500 mt-2">Enter the physical cash amount in the drawer.</p>
-                                </div>
-                                <div className="relative group">
-                                    <label className="text-xs font-bold text-blue-400 mb-2 block uppercase tracking-wide">{t('cashClosing.declaredNonCash')} <span className="text-gray-500 font-normal normal-case">(Optional)</span></label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            placeholder="0.00"
-                                            className="w-full h-14 pl-12 pr-4 bg-slate-900 border-2 border-slate-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-2xl font-bold text-white placeholder-gray-600"
-                                            value={formData.declaredNonCashAmount}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, declaredNonCashAmount: e.target.value }))}
-                                        />
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 bg-blue-500/20 rounded-lg text-blue-500">
-                                            <CreditCard size={20} />
-                                        </div>
-                                    </div>
+                                <div className="mt-2 text-xs text-slate-400 flex items-center justify-between">
+                                    <span>{t('cashClosing.declaredTotal', 'Total Declared')}</span>
+                                    <span className="text-slate-200 font-semibold">
+                                        {formatCurrency(declaredTotal, i18n.language, currencyConf)}
+                                    </span>
                                 </div>
                             </div>
 
-                            {/* LIVE STATUS CARD */}
-                            <div className={`relative overflow-hidden rounded-xl border-2 transition-all duration-500 ${status === 'shortage' ? 'bg-red-500/5 border-red-500/30' :
-                                status === 'overage' ? 'bg-orange-500/5 border-orange-500/30' :
-                                    status === 'balanced' ? 'bg-emerald-500/5 border-emerald-500/30' :
-                                        'bg-slate-800/50 border-slate-700'
-                                }`}>
-                                {/* Background Glow */}
-                                <div className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl opacity-10 -translate-y-1/2 translate-x-1/2 transition-colors duration-500 ${status === 'shortage' ? 'bg-red-500' :
-                                    status === 'overage' ? 'bg-orange-500' :
-                                        status === 'balanced' ? 'bg-emerald-500' :
-                                            'bg-gray-500'
-                                    }`}></div>
-
-                                <div className="relative p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                                    <div className="flex items-center gap-5">
-                                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-colors duration-500 ${status === 'shortage' ? 'bg-red-500 text-white' :
-                                            status === 'overage' ? 'bg-orange-500 text-white' :
-                                                status === 'balanced' ? 'bg-emerald-500 text-white' :
-                                                    'bg-slate-700 text-gray-400'
-                                            }`}>
-                                            <StatusIcon size={32} />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{t('common.status')}</p>
-                                            <h3 className={`text-2xl font-black ${statusColor} transition-colors duration-300`}>{statusText}</h3>
-                                        </div>
-                                    </div>
-
-                                    <div className="text-right">
-                                        <p className="text-xs text-gray-500 mb-1">{t('cashClosing.differenceCash')}</p>
-                                        <p className={`text-4xl font-black ${statusColor} transition-colors duration-300 tracking-tight`}>
-                                            {formatSignedDiff(differenceCash)}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="bg-black/20 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-white/5">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-gray-400">{t('cashClosing.declaredTotal')}</span>
-                                        <span className="text-sm font-bold text-white">{declaredTotalDisplay}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-gray-400">{t('cashClosing.differenceNonCash')}</span>
-                                        <span className={`text-sm font-bold ${hasDeclaredCash ? diffNonCashColor : 'text-gray-500'}`}>{formatSignedDiff(differenceNonCash)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-gray-400">{t('cashClosing.differenceTotal')}</span>
-                                        <span className={`text-sm font-bold ${hasDeclaredCash ? diffTotalColor : 'text-gray-500'}`}>{formatSignedDiff(differenceTotal)}</span>
-                                    </div>
-                                </div>
+                            <div className="flex items-center justify-between gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={closeModal}
+                                    className="px-4 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors"
+                                >
+                                    {t('common.cancel', 'Cancel')}
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting || isLoadingPreview}
+                                    className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold transition-colors"
+                                >
+                                    {isSubmitting
+                                        ? t('common.loading', 'Loading...')
+                                        : t('cashClosing.confirmCreate', 'إنشاء تقفيل')}
+                                </button>
                             </div>
-                        </div>
-
-                        {/* Notes */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{t('cashClosing.notes')}</label>
-                            <textarea
-                                className="w-full min-h-[100px] p-4 bg-slate-800/50 border border-slate-700 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 outline-none transition-all text-sm text-white resize-none"
-                                value={formData.notes}
-                                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                placeholder={t('cashClosing.notes')}
-                            />
-                        </div>
-
-                        {/* Footer Actions */}
-                        <div className="pt-6 border-t border-slate-700/50 flex justify-between items-center">
-                            <button
-                                type="button"
-                                onClick={handleClose}
-                                className="px-6 py-3 rounded-xl font-semibold text-sm transition-all text-gray-400 hover:text-white hover:bg-slate-800"
-                                disabled={isLoading}
-                            >
-                                {t('common.cancel')}
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                                disabled={isLoading || isFetchingExpected || (!formData.employeeId)}
-                            >
-                                {isLoading ? (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        <span>{t('common.loading')}</span>
-                                    </div>
-                                ) : (
-                                    t('cashClosing.confirmCreate')
-                                )}
-                            </button>
-                        </div>
-                    </form>
+                        </form>
+                    )}
                 </motion.div>
             </div>
         </AnimatePresence>

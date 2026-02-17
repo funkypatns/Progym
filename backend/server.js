@@ -159,6 +159,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/packages', packagesRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/cash-closings', cashClosingRoutes);
+app.use('/api/cash-close', cashClosingRoutes);
 app.use('/api/reminders', remindersRoutes);
 app.use('/api/notifications', staffNotificationsRoutes);
 app.use('/api/alerts', alertsRoutes);

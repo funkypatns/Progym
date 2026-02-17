@@ -103,3 +103,21 @@ App runs on: http://localhost:5173 (or 5174 if busy)
   - writes attendance row
   - auto marks exhausted when remaining reaches 0
 - Repeated check-in with the same idempotency key returns existing result (no second decrement).
+
+## Cash Close (POS-Style Periods)
+
+### Setup
+```powershell
+cd backend
+npx prisma migrate deploy
+```
+
+### Use Flow
+1. Open **Reports -> Cash Closing**.
+2. In **Current Period**, review live expected totals from the open period.
+3. Click **Create Closing**.
+4. Enter declared cash/non-cash and notes, then confirm.
+5. After success:
+   - download snapshot export (`CSV` or `JSON`)
+   - open **Close History** to review old closings
+6. System automatically starts a new open period (new baseline, no transaction deletion).

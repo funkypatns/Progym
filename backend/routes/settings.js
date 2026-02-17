@@ -272,6 +272,7 @@ router.post('/reset', authorize('admin'), async (req, res) => {
 
             // 6. Cash Closings (Reconciliation)
             if (isFullReset) {
+                await tx.cashClosePeriod.deleteMany({ where: createdAtFilter });
                 await tx.cashClosingAdjustment.deleteMany({ where: createdAtFilter });
                 await tx.cashClosing.deleteMany({ where: createdAtFilter });
                 // Delete receipts
