@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Gym Income - Sessions ledger drawer (eye action + detailed right-side ledger with payment timeline and adjustment history). Status: done, needs manual verification.
 - Gym Income - Sessions report now uses dedicated backend endpoint so adjusted price details appear (original/final/diff/reason/adjusted-by). Status: done, needs manual verification.
 - Tentative booking appointment flow (book tentative, complete with payment, convert to member, auto no-show after 3 days). Status: done, needs manual verification.
 - Session Packs end-to-end flow (templates, assignments, attendance deduction, new page/nav). Status: done, needs manual verification.
@@ -64,6 +65,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 010ffc6  | Add Gym Income - Sessions ledger drawer UI with row action, backend ledger details endpoint, payment timeline, adjustment history, and AR/EN i18n keys. |
 | 2026-02-17 | 10733a6  | Route Gym Income - Sessions report through `/reports/gym-income-sessions`, include adjustment details/phone in backend rows, and polish report formatting/export labels. |
 | 2026-02-17 | a4ec6da  | Refactor appointments to tentative booking flow with direct appointment fullName/phone, hourly auto no-show scanner, and UI badges/actions updates. |
 | 2026-02-17 | c645e15  | Add tentative lead booking flow with transactional completion/member conversion, lead-aware appointments UI, and route-level tests. |
@@ -134,6 +136,7 @@ Phase 4 - Receipts system
 - Verify partial payments dedupe using stable idempotency key.
  - Verify transactionRef idempotency prevents duplicate partial payments.
 - Verify adjusted price details (original/final/diff/reason/adjusted-by) render in `Gym Income - Sessions` after appointment price adjustment.
+- Verify Gym Income - Sessions `View Ledger` drawer opens from row action and shows session info, price breakdown, payment timeline, and adjustment history without horizontal table scrolling.
 - Run session package smoke test: create package plan, assign to member, verify check-in decrements remaining sessions.
 - Verify `/api/attendance` shows session name/price history for package usage.
 
