@@ -38,6 +38,39 @@ const ensureDefaultAdminUser = async (prisma) => {
     });
 };
 
+const isBcryptHash = (value = '') => /^\$2[aby]\$/.test(value);
+
+const verifyPasswordWithFallback = async ({ prisma, user, password }) => {
+    if (!user?.password) return false;
+
+    const inputPassword = String(password ?? '');
+    if (!inputPassword) return false;
+
+    // Normal flow: compare bcrypt hash.
+    const directMatch = await bcrypt.compare(inputPassword, user.password).catch(() => false);
+    if (directMatch) return true;
+
+    // Legacy safeguard: if a plaintext password exists from older environments, accept once then hash.
+    if (!isBcryptHash(user.password) && user.password === inputPassword) {
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { password: await bcrypt.hash(inputPassword, 10) }
+        });
+        return true;
+    }
+
+    // Support common typo for default local admin password casing (Admin123 vs admin123).
+    if (user.username === 'admin') {
+        const lowered = inputPassword.toLowerCase();
+        if (lowered !== inputPassword) {
+            const loweredMatch = await bcrypt.compare(lowered, user.password).catch(() => false);
+            if (loweredMatch) return true;
+        }
+    }
+
+    return false;
+};
+
 /**
  * POST /api/auth/login
  * User login
@@ -57,14 +90,26 @@ router.post('/login', [
             });
         }
 
-        const { username, password } = req.body;
+        const usernameInput = String(req.body.username ?? '').trim();
+        const password = String(req.body.password ?? '');
+
+        if (!usernameInput) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username is required'
+            });
+        }
+
+        const normalizedUsername = usernameInput.toLowerCase();
 
         // Bootstrap admin on first run (fresh database)
         await ensureDefaultAdminUser(req.prisma);
 
         // Find user
         const user = await req.prisma.user.findUnique({
-            where: { username }
+            where: { username: normalizedUsername }
+        }) || await req.prisma.user.findUnique({
+            where: { username: usernameInput }
         });
 
         if (!user) {
@@ -83,7 +128,11 @@ router.post('/login', [
         }
 
         // Verify password
-        const isValidPassword = await bcrypt.compare(password, user.password);
+        const isValidPassword = await verifyPasswordWithFallback({
+            prisma: req.prisma,
+            user,
+            password
+        });
 
         if (!isValidPassword) {
             return res.status(401).json({

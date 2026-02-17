@@ -23,7 +23,10 @@ export const useAuthStore = create(
             login: async (username, password) => {
                 set({ isLoading: true });
                 try {
-                    const response = await api.post('/auth/login', { username, password });
+                    const response = await api.post('/auth/login', {
+                        username: typeof username === 'string' ? username.trim() : '',
+                        password: typeof password === 'string' ? password : '',
+                    });
                     const { user, token } = response.data.data;
 
                     set({
