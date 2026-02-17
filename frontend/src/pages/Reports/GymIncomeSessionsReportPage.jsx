@@ -9,9 +9,7 @@ import {
     Wallet,
     CreditCard,
     Eye,
-    X,
-    Clock3,
-    FileText
+    X
 } from 'lucide-react';
 import apiClient, { getStaffTrainers } from '../../utils/api';
 import ReportsPageShell from '../../components/Reports/ReportsPageShell';
@@ -49,15 +47,14 @@ const SessionLedgerDrawer = ({
 }) => {
     if (!open) return null;
 
-    const customerLabel = data?.customerCode
-        ? `${data.customerName || ''} (${data.customerCode})`
-        : (data?.customerName || '—');
-    const adjustmentValue = Number(data?.adjustmentDifference || 0);
-    const adjustmentTone = adjustmentValue > 0
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : adjustmentValue < 0
-            ? 'text-red-600 dark:text-red-400'
-            : 'text-gray-600 dark:text-gray-300';
+    const customerLabel = data?.customerCode ? `${data.customerName || ''} (${data.customerCode})` : (data?.customerName || '—');
+    const finalPrice = Number(data?.finalPrice || 0);
+    const paidAmount = Number(data?.totalPaid || 0);
+    const originalPrice = Number(data?.originalPrice ?? finalPrice);
+    const discountAmount = Math.max(0, originalPrice - finalPrice);
+    const remainingAmount = Number(data?.remaining ?? Math.max(0, finalPrice - paidAmount));
+    const statusRaw = String(data?.appointmentStatus || '').toLowerCase();
+    const isCompleted = statusRaw.includes('complete');
 
     return (
         <div className="fixed inset-0 z-50">
@@ -91,169 +88,101 @@ const SessionLedgerDrawer = ({
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                    <div className="flex-1 overflow-y-auto px-5 py-4">
                         {loading && (
-                            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-300">
+                            <div className="py-8 text-sm text-gray-600 dark:text-gray-300">
                                 {t('reports.gymIncomeSessionsLedger.loading', 'Loading details...')}
                             </div>
                         )}
 
                         {!loading && error && (
-                            <div className="p-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-900/10 text-sm text-red-700 dark:text-red-300">
+                            <div className="py-4 text-sm text-red-700 dark:text-red-300">
                                 {error}
                             </div>
                         )}
 
                         {!loading && !error && data && (
                             <>
-                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3">
-                                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                                        <FileText size={16} />
-                                        {t('reports.gymIncomeSessionsLedger.sessionInfo', 'Session Information')}
+                                <section className="space-y-3 pb-4 border-b border-gray-200 dark:border-gray-700">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="text-base font-semibold text-gray-900 dark:text-white">{customerLabel}</div>
+                                        <span className={`inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold ${isCompleted ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                                            {data.appointmentStatus || (isRTL ? 'مكتملة' : 'Completed')}
+                                        </span>
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
                                         <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.member', 'Member')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">{customerLabel || '—'}</div>
+                                            <span className="text-gray-500 dark:text-gray-400">{t('reports.fields.phone', 'Phone')}: </span>
+                                            <span className="text-gray-900 dark:text-white">{data.customerPhone || '—'}</span>
                                         </div>
                                         <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.phone', 'Phone')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">{data.customerPhone || '—'}</div>
+                                            <span className="text-gray-500 dark:text-gray-400">{t('reports.fields.service', 'Service')}: </span>
+                                            <span className="text-gray-900 dark:text-white">{data.serviceName || '—'}</span>
                                         </div>
                                         <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.service', 'Service')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">{data.serviceName || '—'}</div>
+                                            <span className="text-gray-500 dark:text-gray-400">{t('reports.gymIncome.coach', 'Coach')}: </span>
+                                            <span className="text-gray-900 dark:text-white">{data.trainerName || '—'}</span>
                                         </div>
                                         <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.employee', 'Employee')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">{data.employeeName || '—'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncome.coach', 'Coach')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">{data.trainerName || '—'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.status', 'Status')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">{data.appointmentStatus || '—'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.paidAt', 'Date')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">
-                                                {formatDate(data.sessionDate)} {formatTime(data.sessionDate)}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.sessionId', 'Session ID')}</div>
-                                            <div className="font-semibold text-gray-900 dark:text-white">#{data.appointmentId || '—'}</div>
+                                            <span className="text-gray-500 dark:text-gray-400">{t('reports.fields.paidAt', 'Date')}: </span>
+                                            <span className="text-gray-900 dark:text-white">{formatDate(data.sessionDate)} {formatTime(data.sessionDate)}</span>
                                         </div>
                                     </div>
                                 </section>
 
-                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                                        {t('reports.gymIncomeSessionsLedger.priceBreakdown', 'Price Breakdown')}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3 text-sm">
-                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.originalPrice', 'Original Price')}</div>
-                                            <div className="font-bold text-gray-900 dark:text-white">
-                                                {formatMoney(Number(data.originalPrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                                <section className="py-4 border-b border-gray-200 dark:border-gray-700">
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('reports.gymIncomeSessionsLedger.priceBreakdown', 'Price Breakdown')}</div>
+                                    <div className={`grid gap-3 text-sm ${remainingAmount > 0 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-3'}`}>
+                                        <div>
                                             <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.finalPrice', 'Final Price')}</div>
-                                            <div className="font-bold text-gray-900 dark:text-white">
-                                                {formatMoney(Number(data.finalPrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                            <div className="font-semibold text-gray-900 dark:text-white">{formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.fields.paidAmount', 'Paid Amount')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">{formatMoney(paidAmount, language, { code: 'EGP', symbol: 'EGP' })}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-500 dark:text-gray-400">{t('payments.discount', 'Discount')}</div>
+                                            <div className="font-semibold text-gray-900 dark:text-white">
+                                                {discountAmount > 0 ? formatMoney(discountAmount, language, { code: 'EGP', symbol: 'EGP' }) : '—'}
                                             </div>
                                         </div>
-                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.adjustment', 'Adjustment')}</div>
-                                            <div className={`font-bold ${adjustmentTone}`}>
-                                                {adjustmentValue > 0 ? '+' : adjustmentValue < 0 ? '-' : ''}
-                                                {formatMoney(Math.abs(adjustmentValue), language, { code: 'EGP', symbol: 'EGP' })}
+                                        {remainingAmount > 0 && (
+                                            <div>
+                                                <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.remaining', 'Remaining')}</div>
+                                                <div className="font-semibold text-amber-600 dark:text-amber-400">{formatMoney(remainingAmount, language, { code: 'EGP', symbol: 'EGP' })}</div>
                                             </div>
-                                        </div>
-                                        <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
-                                            <div className="text-gray-500 dark:text-gray-400">{t('reports.gymIncomeSessionsLedger.totalPaid', 'Total Paid')}</div>
-                                            <div className="font-bold text-gray-900 dark:text-white">
-                                                {formatMoney(Number(data.totalPaid || 0), language, { code: 'EGP', symbol: 'EGP' })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
-                                        {t('reports.gymIncomeSessionsLedger.remaining', 'Remaining')}: {formatMoney(Number(data.remaining || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                        )}
                                     </div>
                                 </section>
 
-                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                                        {t('reports.gymIncomeSessionsLedger.paymentTimeline', 'Payment Timeline')}
-                                    </div>
+                                <section className="pt-4">
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('reports.gymIncomeSessionsLedger.paymentTimeline', 'Payment Timeline')}</div>
                                     {Array.isArray(data.paymentTimeline) && data.paymentTimeline.length > 0 ? (
-                                        <div className="space-y-2">
+                                        <div className="space-y-1.5">
                                             {data.paymentTimeline.map((item) => (
-                                                <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800/50">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                                                            {formatMoney(Number(item.amount || 0), language, { code: 'EGP', symbol: 'EGP' })}
-                                                        </div>
-                                                        <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
-                                                            <Clock3 size={12} />
-                                                            {formatDate(item.paidAt)} {formatTime(item.paidAt)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                                                        <div>{t('reports.fields.method', 'Method')}: {methodLabel(item.method)}</div>
-                                                        <div>{t('reports.fields.paidBy', 'Paid By')}: {item.paidBy || '—'}</div>
-                                                        <div>{t('reports.fields.status', 'Status')}: {item.status || '—'}</div>
-                                                        <div>{t('reports.gymIncomeSessionsLedger.reference', 'Reference')}: {item.reference || '—'}</div>
-                                                    </div>
-                                                    {!!item.notes && (
-                                                        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                                            {t('reports.gymIncomeSessionsLedger.notes', 'Notes')}: {item.notes}
-                                                        </div>
-                                                    )}
+                                                <div key={item.id} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+                                                    <span className="inline-flex items-center px-2 py-1 rounded text-[11px] font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                                                        {methodLabel(item.method)}
+                                                    </span>
+                                                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                        {formatMoney(Number(item.amount || 0), language, { code: 'EGP', symbol: 'EGP' })}
+                                                    </span>
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-300">
+                                                        {item.status || '—'}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                                        {formatDate(item.paidAt)} {formatTime(item.paidAt)}
+                                                    </span>
+                                                    <span className={`text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ${isRTL ? 'mr-auto text-left' : 'ml-auto text-right'}`}>
+                                                        {t('reports.fields.paidBy', 'Paid By')}: {item.paidBy || '—'}
+                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
                                         <div className="text-sm text-gray-500 dark:text-gray-400">
                                             {t('reports.gymIncomeSessionsLedger.noPayments', 'No payments recorded for this session')}
-                                        </div>
-                                    )}
-                                </section>
-
-                                <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                                        {t('reports.gymIncomeSessionsLedger.adjustmentHistory', 'Adjustment History')}
-                                    </div>
-                                    {Array.isArray(data.adjustmentHistory) && data.adjustmentHistory.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {data.adjustmentHistory.map((item) => (
-                                                <div key={item.id} className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-3">
-                                                    <div className="text-xs text-gray-600 dark:text-gray-300">
-                                                        {formatDate(item.changedAt)} {formatTime(item.changedAt)}
-                                                    </div>
-                                                    <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                                                        {formatMoney(Number(item.oldEffectivePrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
-                                                        {' -> '}
-                                                        {formatMoney(Number(item.newEffectivePrice || 0), language, { code: 'EGP', symbol: 'EGP' })}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                                                        {t('reports.gymIncomeSessionsLedger.adjustment', 'Adjustment')}: {item.delta > 0 ? '+' : ''}{formatMoney(Math.abs(Number(item.delta || 0)), language, { code: 'EGP', symbol: 'EGP' })}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                                                        {t('reports.gymIncomeSessionsLedger.adjustedBy', 'Adjusted By')}: {item.changedBy || '—'}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                                                        {t('reports.gymIncomeSessionsLedger.adjustmentReason', 'Adjustment Reason')}: {item.reason || '—'}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                                            {t('reports.gymIncomeSessionsLedger.noAdjustments', 'No adjustment history')}
                                         </div>
                                     )}
                                 </section>
