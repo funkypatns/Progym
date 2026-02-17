@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Recurring `INTEGRITY_MISMATCH` fixed with release-only signed manifest validation (versioned `/api/integrity/manifest`, RSA signature verification with embedded public key, production-only strict enforcement, and dev warn mode). Status: done.
 - Post-licensing security layer implemented (device fingerprint binding, approved-device enforcement, RS256 activation tokens, 24h validation + 72h grace, integrity manifest verification, admin device management APIs/UI, and baseline security tests/docs). Status: done, needs manual verification.
 - Cash Close now uses POS-style periods (single OPEN period, immutable CLOSED snapshot, export CSV/JSON, auto-open new period, and close history tab in reports). Status: done, needs manual verification.
 - Session Packs assign-member autocomplete now requires at least 2 letters, shows matching members, and writes the selected member name into the input on click. Status: done, needs manual verification.
@@ -76,6 +77,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 31d329f  | Permanently fix recurring integrity mismatch by replacing source-file/token manifest checks with release-artifact SHA-256 manifests, RSA signature verification via embedded public key, versioned `/api/integrity/manifest` endpoint, production-only enforcement with dev warn mode, and updated integrity tests/docs. |
 | 2026-02-17 | a6c3256  | Implement full post-licensing security layer: machine-id device fingerprint binding and approval workflow, RS256 activation token signing/verification, 24h revalidation with 72h offline grace, signed integrity manifest checks, audited device/license management endpoints, admin device dashboard page, and baseline security tests/docs. |
 | 2026-02-17 | c0c492f  | Implement POS-style Cash Close periods with immutable snapshot close + CSV/JSON export, auto-open next period baseline, backend history/export endpoints, refreshed close modal/history UI, and period lifecycle tests. |
 | 2026-02-17 | 4145293  | Fix Settings reset FK crash by deleting appointment-linked children (including `SessionPriceAdjustment`) before appointments and add regression test for reset order. |
