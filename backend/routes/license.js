@@ -20,6 +20,8 @@ function mapActivationCodeToStatus(code) {
     if (code === 'NETWORK_ERROR') return 503;
     if (code === 'DEVICE_NOT_APPROVED') return 403;
     if (code === 'LICENSE_REVOKED') return 403;
+    if (typeof code === 'string' && code.startsWith('INTEGRITY_')) return 403;
+    if (code === 'MANIFEST_INVALID' || code === 'UNSUPPORTED_HASH_ALGORITHM') return 403;
     if (code === 'EXPIRED') return 403;
     if (code === 'INVALID_KEY' || code === 'INVALID_KEY_FORMAT' || code === 'GYM_NAME_REQUIRED') return 400;
     if (code === 'NOT_FOUND') return 404;
