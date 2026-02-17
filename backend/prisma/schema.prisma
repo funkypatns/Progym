@@ -236,6 +236,9 @@ model MemberPackage {
   remainingSessions Int
   sessionName String?
   sessionPrice Float?
+  paymentMethod String?
+  paymentStatus String? @default("unpaid") // paid, partial, unpaid
+  amountPaid   Float?   @default(0)
   status      String   @default("ACTIVE") // ACTIVE, EXPIRED, PAUSED, COMPLETED
   createdByEmployeeId Int?
   createdAt   DateTime @default(now())

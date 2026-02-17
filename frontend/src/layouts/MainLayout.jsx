@@ -89,6 +89,7 @@ const MainLayout = () => {
         { path: '/', icon: LayoutDashboard, label: safeT('nav.dashboard', isRTL ? 'لوحة التحكم' : 'Dashboard'), permission: PERMISSIONS.DASHBOARD_VIEW_BASIC },
         { path: '/members', icon: Users, label: safeT('nav.members', isRTL ? 'الأعضاء' : 'Members'), permission: PERMISSIONS.MEMBERS_VIEW },
         { path: '/subscriptions', icon: CreditCard, label: safeT('nav.subscriptions', isRTL ? 'الاشتراكات' : 'Subscriptions'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
+        { path: '/session-packs', icon: CalendarCheck, label: safeT('nav.sessionPacks', isRTL ? 'باقات الجلسات' : 'Session Packs'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
         { path: '/plans', icon: ClipboardList, label: safeT('nav.plans', isRTL ? 'الخطط' : 'Plans'), permission: PERMISSIONS.PLANS_VIEW },
         { path: '/checkin', icon: CalendarCheck, label: safeT('nav.checkin', isRTL ? 'تسجيل الحضور' : 'Check-in'), permission: PERMISSIONS.CHECKINS_VIEW },
         { path: '/appointments', icon: Calendar, label: safeT('nav.appointments', isRTL ? 'المواعيد' : 'Appointments'), permission: PERMISSIONS.APPOINTMENTS_VIEW },

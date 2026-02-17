@@ -1128,7 +1128,7 @@ router.get('/:memberId/active-package', requirePermission(PERMISSIONS.MEMBERS_VI
 router.post('/:memberId/packages', requireActiveShift, requirePermission(PERMISSIONS.SUBSCRIPTIONS_CREATE), async (req, res) => {
     try {
         const parsedMemberId = Number.parseInt(req.params.memberId, 10);
-        const { planId, packagePlanId, startDate, sessionName, sessionPrice } = req.body || {};
+        const { planId, packagePlanId, startDate, sessionName, sessionPrice, paymentMethod, paymentStatus, amountPaid } = req.body || {};
         const parsedPlanId = Number.parseInt(planId ?? packagePlanId, 10);
 
         if (!Number.isInteger(parsedMemberId) || !Number.isInteger(parsedPlanId)) {
@@ -1159,6 +1159,19 @@ router.post('/:memberId/packages', requireActiveShift, requirePermission(PERMISS
         const resolvedSessionPrice = Number.isFinite(parsedSessionPrice) && parsedSessionPrice >= 0
             ? parsedSessionPrice
             : fallbackPrice;
+        const normalizedPaymentMethod = paymentMethod ? String(paymentMethod).toLowerCase() : null;
+        const normalizedPaymentStatus = paymentStatus ? String(paymentStatus).toLowerCase() : 'unpaid';
+        const parsedAmountPaid = amountPaid === undefined || amountPaid === null || amountPaid === '' ? 0 : Number(amountPaid);
+
+        if (normalizedPaymentMethod && !['cash', 'card', 'transfer', 'wallet'].includes(normalizedPaymentMethod)) {
+            return res.status(400).json({ success: false, message: 'Invalid payment method' });
+        }
+        if (!['paid', 'partial', 'unpaid'].includes(normalizedPaymentStatus)) {
+            return res.status(400).json({ success: false, message: 'Invalid payment status' });
+        }
+        if (!Number.isFinite(parsedAmountPaid) || parsedAmountPaid < 0) {
+            return res.status(400).json({ success: false, message: 'Invalid amount paid' });
+        }
 
         const created = await req.prisma.$transaction(async (tx) => {
             const existing = await tx.memberPackage.findFirst({
@@ -1184,6 +1197,9 @@ router.post('/:memberId/packages', requireActiveShift, requirePermission(PERMISS
                     sessionName: cleanedSessionName,
                     sessionPrice: resolvedSessionPrice,
                     status: 'ACTIVE',
+                    paymentMethod: normalizedPaymentMethod,
+                    paymentStatus: normalizedPaymentStatus,
+                    amountPaid: parsedAmountPaid,
                     createdByEmployeeId: req.user?.id ?? null
                 },
                 include: { plan: true }

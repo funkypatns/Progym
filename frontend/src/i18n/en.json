@@ -7,6 +7,7 @@
         "dashboard": "Dashboard",
         "members": "Members",
         "subscriptions": "Subscriptions",
+        "sessionPacks": "Session Packs",
         "checkin": "Check-in",
         "payments": "Payments",
         "reports": "Reports",
@@ -610,6 +611,76 @@
             "total": "Total Packages",
             "active": "Active Packages",
             "avgPrice": "Avg. Price"
+        }
+    },
+    "sessionPacks": {
+        "title": "Session Packs",
+        "subtitle": "Manage member session packs and attendance deduction",
+        "assignPack": "Assign Pack +",
+        "searchPlaceholder": "Search by member name / member ID",
+        "sessions": "sessions",
+        "empty": "No session packs found",
+        "assignedSuccess": "Pack assigned successfully",
+        "checkinSuccess": "Check-in saved successfully",
+        "checkinSuccessWithRemaining": "Check-in successful. Remaining sessions: {{count}}",
+        "pausedSuccess": "Pack paused",
+        "resumedSuccess": "Pack resumed",
+        "wallet": "Wallet",
+        "status": {
+            "all": "All",
+            "active": "Active",
+            "exhausted": "Exhausted",
+            "paused": "Paused",
+            "expired": "Expired"
+        },
+        "table": {
+            "member": "Member",
+            "pack": "Pack",
+            "purchasedAt": "Purchased At",
+            "remaining": "Remaining Sessions",
+            "expiresAt": "Validity / Expires",
+            "paymentStatus": "Payment Status",
+            "actions": "Actions"
+        },
+        "actions": {
+            "view": "View",
+            "checkin": "Check-in",
+            "pause": "Pause",
+            "resume": "Resume"
+        },
+        "form": {
+            "member": "Member",
+            "memberSearch": "Search member by name / ID",
+            "packTemplate": "Pack Template",
+            "paymentMethod": "Payment method",
+            "paymentStatus": "Payment status",
+            "amountPaid": "Amount paid",
+            "sessionName": "Session name override",
+            "sessionPrice": "Session price override",
+            "assign": "Assign"
+        },
+        "paymentStatus": {
+            "paid": "Paid",
+            "partial": "Partial",
+            "unpaid": "Unpaid"
+        },
+        "historyTitle": "Assignment Details & History",
+        "history": {
+            "sessionName": "Session Name",
+            "sessionPrice": "Session Price",
+            "checkedInAt": "Checked In At",
+            "by": "By",
+            "empty": "No check-in history yet"
+        },
+        "errors": {
+            "load": "Failed to load session packs",
+            "history": "Failed to load history",
+            "selectMemberAndPack": "Select member and pack template first",
+            "invalidAmount": "Invalid amount paid",
+            "invalidSessionPrice": "Invalid session price",
+            "assign": "Failed to assign pack",
+            "checkin": "Failed to check-in",
+            "status": "Failed to update status"
         }
     },
     "backup": {

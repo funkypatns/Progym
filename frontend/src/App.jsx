@@ -25,6 +25,7 @@ import Members from './pages/Members';
 import MemberForm from './pages/Members/MemberForm';
 import MemberProfile from './pages/Members/MemberProfile';
 import Subscriptions from './pages/Subscriptions';
+import SessionPacks from './pages/SessionPacks';
 import CheckIn from './pages/CheckIn';
 import Payments from './pages/Payments';
 import PaymentReceiptPage from './pages/Payments/PaymentReceiptPage';
@@ -222,6 +223,9 @@ function App() {
                     {/* Subscriptions */}
                     <Route path="/subscriptions" element={
                         <PermissionGuard permission={PERMISSIONS.SUBSCRIPTIONS_VIEW}><Subscriptions /></PermissionGuard>
+                    } />
+                    <Route path="/session-packs" element={
+                        <PermissionGuard permission={PERMISSIONS.SUBSCRIPTIONS_VIEW}><SessionPacks /></PermissionGuard>
                     } />
 
                     {/* Operations */}

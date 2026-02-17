@@ -30,7 +30,7 @@ const normalizeSessionDefaults = (plan, payload) => {
 
 const createMemberPackage = async (req, res) => {
     try {
-        const { memberId, planId, startDate } = req.body || {};
+        const { memberId, planId, startDate, paymentMethod, paymentStatus, amountPaid } = req.body || {};
         const parsedMemberId = Number.parseInt(memberId, 10);
         const parsedPlanId = Number.parseInt(planId, 10);
 
@@ -58,6 +58,22 @@ const createMemberPackage = async (req, res) => {
             : null;
 
         const defaults = normalizeSessionDefaults(plan, req.body || {});
+        const normalizedPaymentMethod = paymentMethod ? String(paymentMethod).toLowerCase() : null;
+        const normalizedPaymentStatus = paymentStatus ? String(paymentStatus).toLowerCase() : 'unpaid';
+        const parsedAmountPaid = amountPaid === undefined || amountPaid === null || amountPaid === ''
+            ? 0
+            : Number(amountPaid);
+
+        if (normalizedPaymentMethod && !['cash', 'card', 'transfer', 'wallet'].includes(normalizedPaymentMethod)) {
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST', message: 'Invalid payment method' });
+        }
+        if (!['paid', 'partial', 'unpaid'].includes(normalizedPaymentStatus)) {
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST', message: 'Invalid payment status' });
+        }
+        if (!Number.isFinite(parsedAmountPaid) || parsedAmountPaid < 0) {
+            return res.status(400).json({ success: false, reason: 'BAD_REQUEST', message: 'Invalid amount paid' });
+        }
+
         const created = await req.prisma.$transaction(async (tx) => {
             const existing = await tx.memberPackage.findFirst({
                 where: {
@@ -82,6 +98,9 @@ const createMemberPackage = async (req, res) => {
                     sessionName: defaults.sessionName,
                     sessionPrice: defaults.sessionPrice,
                     status: 'ACTIVE',
+                    paymentMethod: normalizedPaymentMethod,
+                    paymentStatus: normalizedPaymentStatus,
+                    amountPaid: parsedAmountPaid,
                     createdByEmployeeId: req.user?.id ?? null
                 },
                 include: { plan: true }

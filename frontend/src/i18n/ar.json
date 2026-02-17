@@ -7,6 +7,7 @@
         "dashboard": "لوحة التحكم",
         "members": "الأعضاء",
         "subscriptions": "الاشتراكات",
+        "sessionPacks": "باقات الجلسات",
         "checkin": "تسجيل الدخول",
         "payments": "المدفوعات",
         "reports": "التقارير",
@@ -568,6 +569,76 @@
             "total": "إجمالي الباقات",
             "active": "الباقات النشطة",
             "avgPrice": "متوسط السعر"
+        }
+    },
+    "sessionPacks": {
+        "title": "باقات الجلسات",
+        "subtitle": "إدارة باقات الجلسات والخصم التلقائي عند الحضور",
+        "assignPack": "تعيين باقة +",
+        "searchPlaceholder": "ابحث باسم العضو / رقم العضوية",
+        "sessions": "جلسة",
+        "empty": "لا توجد باقات جلسات",
+        "assignedSuccess": "تم تعيين الباقة بنجاح",
+        "checkinSuccess": "تم تسجيل الحضور بنجاح",
+        "checkinSuccessWithRemaining": "تم تسجيل الحضور - المتبقي {{count}} جلسة",
+        "pausedSuccess": "تم إيقاف الباقة",
+        "resumedSuccess": "تم استئناف الباقة",
+        "wallet": "محفظة",
+        "status": {
+            "all": "الكل",
+            "active": "نشط",
+            "exhausted": "مستنفد",
+            "paused": "موقوف",
+            "expired": "منتهي"
+        },
+        "table": {
+            "member": "العضو",
+            "pack": "الباقة",
+            "purchasedAt": "تاريخ الشراء",
+            "remaining": "الجلسات المتبقية",
+            "expiresAt": "الصلاحية / الانتهاء",
+            "paymentStatus": "حالة الدفع",
+            "actions": "الإجراءات"
+        },
+        "actions": {
+            "view": "عرض",
+            "checkin": "تسجيل حضور",
+            "pause": "إيقاف",
+            "resume": "استئناف"
+        },
+        "form": {
+            "member": "العضو",
+            "memberSearch": "ابحث عن العضو بالاسم / رقم العضوية",
+            "packTemplate": "قالب الباقة",
+            "paymentMethod": "طريقة الدفع",
+            "paymentStatus": "حالة الدفع",
+            "amountPaid": "المبلغ المدفوع",
+            "sessionName": "اسم الجلسة (اختياري)",
+            "sessionPrice": "سعر الجلسة (اختياري)",
+            "assign": "تعيين"
+        },
+        "paymentStatus": {
+            "paid": "مدفوع",
+            "partial": "جزئي",
+            "unpaid": "غير مدفوع"
+        },
+        "historyTitle": "تفاصيل التعيين وسجل الحضور",
+        "history": {
+            "sessionName": "اسم الجلسة",
+            "sessionPrice": "سعر الجلسة",
+            "checkedInAt": "وقت الحضور",
+            "by": "بواسطة",
+            "empty": "لا يوجد سجل حضور حتى الآن"
+        },
+        "errors": {
+            "load": "فشل تحميل باقات الجلسات",
+            "history": "فشل تحميل السجل",
+            "selectMemberAndPack": "يرجى اختيار العضو وقالب الباقة أولاً",
+            "invalidAmount": "المبلغ المدفوع غير صحيح",
+            "invalidSessionPrice": "سعر الجلسة غير صحيح",
+            "assign": "فشل تعيين الباقة",
+            "checkin": "فشل تسجيل الحضور",
+            "status": "فشل تحديث الحالة"
         }
     },
     "backup": {

@@ -11,6 +11,24 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const toTemplateResponse = (row) => ({
+    id: row.id,
+    name: row.name,
+    nameAr: row.nameAr || null,
+    total_sessions: row.packageTotalSessions,
+    totalSessions: row.packageTotalSessions,
+    price_total: row.price,
+    price: row.price,
+    validity_days: row.packageValidityDays ?? null,
+    validityDays: row.packageValidityDays ?? null,
+    description: row.description || null,
+    descriptionAr: row.descriptionAr || null,
+    isActive: Boolean(row.isActive),
+    businessTypeScope: null,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt
+});
+
 const toPackagePayload = (input = {}) => {
     const packageTotalSessions = parsePositiveInt(input.packageTotalSessions ?? input.total_sessions ?? input.totalSessions);
     const packageValidityDays = parsePositiveInt(input.packageValidityDays ?? input.validity_days ?? input.validityDays);
@@ -37,15 +55,24 @@ const toPackagePayload = (input = {}) => {
 router.get('/', requirePermission(PERMISSIONS.PLANS_VIEW), async (req, res) => {
     try {
         const includeInactive = req.query.all === 'true';
+        const q = String(req.query.q || '').trim();
         const items = await req.prisma.subscriptionPlan.findMany({
             where: {
                 type: 'PACKAGE',
-                ...(includeInactive ? {} : { isActive: true })
+                ...(includeInactive ? {} : { isActive: true }),
+                ...(q
+                    ? {
+                        OR: [
+                            { name: { contains: q } },
+                            { nameAr: { contains: q } }
+                        ]
+                    }
+                    : {})
             },
             orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }]
         });
 
-        return res.json({ success: true, data: items });
+        return res.json({ success: true, data: items.map(toTemplateResponse) });
     } catch (error) {
         console.error('Get package plans error:', error);
         return res.status(500).json({ success: false, reason: 'SERVER_ERROR', message: 'Failed to fetch package plans' });
@@ -66,7 +93,7 @@ router.post('/', requirePermission(PERMISSIONS.PLANS_MANAGE), async (req, res) =
         }
 
         const created = await req.prisma.subscriptionPlan.create({ data: payload });
-        return res.status(201).json({ success: true, data: created });
+        return res.status(201).json({ success: true, data: toTemplateResponse(created) });
     } catch (error) {
         console.error('Create package plan error:', error);
         return res.status(500).json({ success: false, reason: 'SERVER_ERROR', message: 'Failed to create package plan' });
@@ -119,7 +146,7 @@ router.patch('/:id', requirePermission(PERMISSIONS.PLANS_MANAGE), async (req, re
             data: updates
         });
 
-        return res.json({ success: true, data: updated });
+        return res.json({ success: true, data: toTemplateResponse(updated) });
     } catch (error) {
         console.error('Update package plan error:', error);
         return res.status(500).json({ success: false, reason: 'SERVER_ERROR', message: 'Failed to update package plan' });
