@@ -18,7 +18,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = 'postgresql://gym:gym@localhost:5432/gymdb?schema=public';
+    process.env.DATABASE_URL = 'postgresql://postgres@localhost:5432/postgres?schema=public';
 }
 if (!process.env.PRISMA_CLIENT_ENGINE_TYPE) {
     process.env.PRISMA_CLIENT_ENGINE_TYPE = 'library';
