@@ -21,16 +21,110 @@ import { formatDateTime, formatMoney } from '../../utils/numberFormatter';
 import toast from 'react-hot-toast';
 
 const SummaryCard = ({ label, value, icon: Icon }) => (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+    <div className="relative overflow-hidden rounded-xl border border-slate-200/70 bg-white/95 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/90">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5" />
+        <div className="relative flex items-start justify-between gap-4">
+            <div>
+                <div className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+                <div className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white">{value}</div>
+            </div>
+            <div className="mt-0.5 h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center">
                 <Icon size={18} />
             </div>
-            <div>
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">{value}</div>
-            </div>
         </div>
+    </div>
+);
+
+const normalizeToken = (value) => String(value || '').trim().toUpperCase();
+
+const getCommissionStatusMeta = (status, isRTL) => {
+    const token = normalizeToken(status);
+    if (token === 'PAID' || token === 'SETTLED') {
+        return {
+            label: isRTL ? 'مدفوع' : 'Paid',
+            className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+        };
+    }
+    return {
+        label: isRTL ? 'غير مدفوع' : 'Unpaid',
+        className: 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+    };
+};
+
+const getPaymentStatusMeta = (status, isRTL) => {
+    const token = normalizeToken(status);
+    if (token === 'PAID' || token === 'COMPLETED') {
+        return {
+            label: isRTL ? 'مدفوع' : 'Paid',
+            className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+        };
+    }
+    if (token === 'OVERPAID') {
+        return {
+            label: isRTL ? 'زيادة' : 'Overpaid',
+            className: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
+        };
+    }
+    if (token === 'DUE' || token === 'PARTIAL' || token === 'PENDING') {
+        return {
+            label: isRTL ? 'مستحق' : 'Due',
+            className: 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+        };
+    }
+    if (token === 'UNPAID') {
+        return {
+            label: isRTL ? 'غير مدفوع' : 'Unpaid',
+            className: 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+        };
+    }
+    return {
+        label: status || '-',
+        className: 'border-slate-500/30 bg-slate-500/10 text-slate-400'
+    };
+};
+
+const getSessionStatusMeta = (status, isRTL) => {
+    const token = normalizeToken(status);
+    if (token === 'COMPLETED') {
+        return {
+            label: isRTL ? 'مكتملة' : 'Completed',
+            className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+        };
+    }
+    if (token === 'CANCELLED') {
+        return {
+            label: isRTL ? 'ملغاة' : 'Cancelled',
+            className: 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+        };
+    }
+    if (token === 'NO_SHOW') {
+        return {
+            label: isRTL ? 'غياب' : 'No Show',
+            className: 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+        };
+    }
+    if (token === 'TENTATIVE') {
+        return {
+            label: isRTL ? 'مبدئية' : 'Tentative',
+            className: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
+        };
+    }
+    return {
+        label: status || '-',
+        className: 'border-slate-500/30 bg-slate-500/10 text-slate-400'
+    };
+};
+
+const StatusBadge = ({ label, className }) => (
+    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${className}`}>
+        {label}
+    </span>
+);
+
+const DetailField = ({ label, value }) => (
+    <div className="rounded-lg border border-gray-200/80 bg-gray-50/70 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/60">
+        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</div>
+        <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{value}</div>
     </div>
 );
 
@@ -64,92 +158,48 @@ const TrainerDetailsModal = ({ isOpen, onClose, earning, language }) => {
                 </div>
 
                 <div className="p-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'العميل' : 'Customer'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">{customerLabel || '-'}</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'المدرب' : 'Trainer'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">{earning.trainerName || '-'}</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'الخدمة' : 'Service'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">{earning.serviceName || '-'}</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'الوقت' : 'Date/Time'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">
-                                {formatDateTime(earning.sessionDate, language)}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'السعر الأصلي' : 'Original Price'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">
-                                {formatMoney(originalPrice, language, { code: 'EGP', symbol: 'EGP' })}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'السعر النهائي' : 'Final Price'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">
-                                {formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'فرق التعديل' : 'Adjustment'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">
-                                {adjustmentApplied
-                                    ? `${adjustmentDifference > 0 ? '+' : ''}${formatMoney(Math.abs(adjustmentDifference), language, { code: 'EGP', symbol: 'EGP' })}`
-                                    : '-'}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'حالة الدفع' : 'Payment Status'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">{earning.paymentStatus || '-'}</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'حالة الجلسة' : 'Session Status'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">{earning.appointmentStatus || '-'}</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'الموظف' : 'Employee'}
-                            </div>
-                            <div className="font-semibold text-gray-900 dark:text-white">{earning.employeeName || '-'}</div>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {(() => {
+                            const paymentMeta = getPaymentStatusMeta(earning.paymentStatus, language === 'ar');
+                            const sessionMeta = getSessionStatusMeta(earning.appointmentStatus, language === 'ar');
+                            return (
+                                <>
+                                    <StatusBadge label={paymentMeta.label} className={paymentMeta.className} />
+                                    <StatusBadge label={sessionMeta.label} className={sessionMeta.className} />
+                                </>
+                            );
+                        })()}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <DetailField label={language === 'ar' ? 'العميل' : 'Customer'} value={customerLabel || '-'} />
+                        <DetailField label={language === 'ar' ? 'المدرب' : 'Trainer'} value={earning.trainerName || '-'} />
+                        <DetailField label={language === 'ar' ? 'الخدمة' : 'Service'} value={earning.serviceName || '-'} />
+                        <DetailField label={language === 'ar' ? 'الوقت' : 'Date/Time'} value={formatDateTime(earning.sessionDate, language)} />
+                        <DetailField
+                            label={language === 'ar' ? 'السعر الأصلي' : 'Original Price'}
+                            value={<span className="tabular-nums">{formatMoney(originalPrice, language, { code: 'EGP', symbol: 'EGP' })}</span>}
+                        />
+                        <DetailField
+                            label={language === 'ar' ? 'السعر النهائي' : 'Final Price'}
+                            value={<span className="tabular-nums">{formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}</span>}
+                        />
+                        <DetailField
+                            label={language === 'ar' ? 'فرق التعديل' : 'Adjustment'}
+                            value={adjustmentApplied
+                                ? (
+                                    <span className={`tabular-nums ${adjustmentDifference > 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
+                                        {`${adjustmentDifference > 0 ? '+' : ''}${formatMoney(Math.abs(adjustmentDifference), language, { code: 'EGP', symbol: 'EGP' })}`}
+                                    </span>
+                                )
+                                : '-'}
+                        />
+                        <DetailField label={language === 'ar' ? 'الموظف' : 'Employee'} value={earning.employeeName || '-'} />
                         {adjustmentApplied && (
-                            <div>
-                                <div className="text-gray-500 dark:text-gray-400">
-                                    {language === 'ar' ? 'تم التعديل بواسطة' : 'Adjusted By'}
-                                </div>
-                                <div className="font-semibold text-gray-900 dark:text-white">{adjustedBy || '-'}</div>
-                            </div>
+                            <DetailField label={language === 'ar' ? 'تم التعديل بواسطة' : 'Adjusted By'} value={adjustedBy || '-'} />
                         )}
                         {adjustmentApplied && (
-                            <div>
-                                <div className="text-gray-500 dark:text-gray-400">
-                                    {language === 'ar' ? 'سبب التعديل' : 'Adjustment Reason'}
-                                </div>
-                                <div className="font-semibold text-gray-900 dark:text-white">{adjustmentReason || '-'}</div>
-                            </div>
+                            <DetailField label={language === 'ar' ? 'سبب التعديل' : 'Adjustment Reason'} value={adjustmentReason || '-'} />
                         )}
                     </div>
 
@@ -159,16 +209,20 @@ const TrainerDetailsModal = ({ isOpen, onClose, earning, language }) => {
                                 {language === 'ar' ? 'المدفوعات' : 'Payments'}
                             </div>
                             <div className="space-y-2 text-sm">
-                                {payments.map((payment) => (
-                                    <div key={payment.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
-                                        <div className="text-gray-600 dark:text-gray-300">
-                                            {payment.method || '-'} · {payment.status || '-'}
+                                {payments.map((payment) => {
+                                    const paymentMeta = getPaymentStatusMeta(payment.status, language === 'ar');
+                                    return (
+                                        <div key={payment.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                                            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                                                <span>{payment.method || '-'}</span>
+                                                <StatusBadge label={paymentMeta.label} className={paymentMeta.className} />
+                                            </div>
+                                            <div className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                                                {formatMoney(payment.amount || 0, language, { code: 'EGP', symbol: 'EGP' })}
+                                            </div>
                                         </div>
-                                        <div className="font-semibold text-gray-900 dark:text-white">
-                                            {formatMoney(payment.amount || 0, language, { code: 'EGP', symbol: 'EGP' })}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -697,156 +751,220 @@ const TrainerReportPage = () => {
         setDetailsOpen(true);
     }, []);
 
+    const tableHeaderCellClass = 'px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide';
+    const tableCellClass = 'px-4 py-3 text-gray-900 dark:text-white';
+
     const earningsColumns = useMemo(() => ([
         {
             key: 'sessionDate',
             label: isRTL ? 'الوقت' : 'Date/Time',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => formatDateTime(row.sessionDate, language)
+            render: (row) => (
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {formatDateTime(row.sessionDate, language)}
+                </span>
+            )
         },
         {
             key: 'customerName',
             label: isRTL ? 'العميل' : 'Customer',
             width: 'minmax(180px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => row.customerCode ? `${row.customerName} (${row.customerCode})` : row.customerName
+            render: (row) => (
+                <div className="leading-tight">
+                    <div className="font-semibold text-gray-900 dark:text-white">{row.customerName || '-'}</div>
+                    {row.customerCode && <div className="text-xs text-gray-500 dark:text-gray-400">{row.customerCode}</div>}
+                </div>
+            )
         },
         {
             key: 'serviceName',
             label: isRTL ? 'الخدمة' : 'Service',
             width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => row.serviceName || '-'
+            render: (row) => (
+                <span className="inline-flex rounded-md border border-slate-300/70 bg-slate-100/80 px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-700/50 dark:text-slate-200">
+                    {row.serviceName || '-'}
+                </span>
+            )
         },
         {
             key: 'originalPrice',
             label: isRTL ? 'السعر الأصلي' : 'Original Price',
             width: 'minmax(130px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => formatMoney(row.originalPrice ?? row.baseAmount ?? 0, language, { code: 'EGP', symbol: 'EGP' })
+            render: (row) => (
+                <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {formatMoney(row.originalPrice ?? row.baseAmount ?? 0, language, { code: 'EGP', symbol: 'EGP' })}
+                </span>
+            )
         },
         {
             key: 'finalPrice',
             label: isRTL ? 'السعر النهائي' : 'Final Price',
             width: 'minmax(130px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => formatMoney(row.finalPrice ?? row.baseAmount ?? 0, language, { code: 'EGP', symbol: 'EGP' })
+            render: (row) => (
+                <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {formatMoney(row.finalPrice ?? row.baseAmount ?? 0, language, { code: 'EGP', symbol: 'EGP' })}
+                </span>
+            )
         },
         {
             key: 'adjustmentDifference',
             label: isRTL ? 'فرق التعديل' : 'Adjustment',
             width: 'minmax(120px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
             render: (row) => {
                 const diff = Number(row.adjustmentDifference || 0);
                 if (!diff) return '-';
                 const sign = diff > 0 ? '+' : '';
-                return `${sign}${formatMoney(Math.abs(diff), language, { code: 'EGP', symbol: 'EGP' })}`;
+                return (
+                    <span className={`font-semibold tabular-nums ${diff > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {`${sign}${formatMoney(Math.abs(diff), language, { code: 'EGP', symbol: 'EGP' })}`}
+                    </span>
+                );
             }
         },
         {
             key: 'ruleText',
             label: isRTL ? 'قاعدة العمولة' : 'Commission Rule',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => row.ruleText || '-'
+            render: (row) => (
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {row.ruleText || '-'}
+                </span>
+            )
         },
         {
             key: 'commissionAmount',
             label: isRTL ? 'قيمة العمولة' : 'Commission Amount',
             width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => formatMoney(row.commissionAmount, language, { code: 'EGP', symbol: 'EGP' })
+            render: (row) => (
+                <span className="font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+                    {formatMoney(row.commissionAmount, language, { code: 'EGP', symbol: 'EGP' })}
+                </span>
+            )
         },
         {
             key: 'status',
             label: isRTL ? 'الحالة' : 'Status',
             width: 'minmax(120px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => row.status
+            render: (row) => {
+                const meta = getCommissionStatusMeta(row.status, isRTL);
+                return <StatusBadge label={meta.label} className={meta.className} />;
+            }
         },
         {
             key: 'employeeName',
             label: isRTL ? 'الموظف' : 'Employee',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => row.employeeName || '-'
+            render: (row) => <span className="text-sm text-gray-700 dark:text-gray-300">{row.employeeName || '-'}</span>
         },
         {
             key: 'action',
             label: '',
             width: 120,
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
             render: (row) => (
                 <button
                     onClick={() => handleOpenDetails(row)}
-                    className="text-indigo-600 hover:text-indigo-700 text-sm font-semibold"
+                    className="inline-flex items-center rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-500/20 dark:text-indigo-300"
                 >
                     {isRTL ? 'عرض' : 'View'}
                 </button>
             )
         }
-    ]), [isRTL, language, handleOpenDetails]);
+    ]), [handleOpenDetails, isRTL, language, tableCellClass, tableHeaderCellClass]);
 
     const payoutsColumns = useMemo(() => ([
         {
             key: 'totalAmount',
             label: isRTL ? 'المبلغ' : 'Amount',
             width: 'minmax(140px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => formatMoney(row.totalAmount, language, { code: 'EGP', symbol: 'EGP' })
+            render: (row) => (
+                <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {formatMoney(row.totalAmount, language, { code: 'EGP', symbol: 'EGP' })}
+                </span>
+            )
         },
         {
             key: 'paidAt',
             label: isRTL ? 'التاريخ' : 'Date',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => formatDateTime(row.paidAt, language)
+            render: (row) => <span className="text-sm text-gray-800 dark:text-gray-200">{formatDateTime(row.paidAt, language)}</span>
+        },
+        {
+            key: 'method',
+            label: isRTL ? 'الطريقة' : 'Method',
+            width: 'minmax(120px, 1fr)',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
+            align: 'left',
+            render: (row) => {
+                const methodToken = normalizeToken(row.method);
+                const methodLabel = methodToken === 'TRANSFER'
+                    ? (isRTL ? 'تحويل' : 'Transfer')
+                    : methodToken === 'CARD'
+                        ? (isRTL ? 'بطاقة' : 'Card')
+                        : (isRTL ? 'نقدي' : 'Cash');
+                return (
+                    <span className="inline-flex rounded-md border border-slate-500/30 bg-slate-500/10 px-2 py-0.5 text-xs font-medium text-slate-300">
+                        {methodLabel}
+                    </span>
+                );
+            }
         },
         {
             key: 'paidByEmployee',
             label: isRTL ? 'الموظف' : 'Paid By',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
             render: (row) => row.paidByEmployee
-                ? `${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()
+                ? <span className="text-sm text-gray-700 dark:text-gray-200">{`${row.paidByEmployee.firstName || ''} ${row.paidByEmployee.lastName || ''}`.trim()}</span>
                 : '-'
         },
         {
             key: 'trainerName',
             label: isRTL ? 'المدرب' : 'Trainer',
             width: 'minmax(160px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
             render: (row) => row.trainer?.name || selectedTrainer?.name || '-'
         },
@@ -854,12 +972,12 @@ const TrainerReportPage = () => {
             key: 'note',
             label: isRTL ? 'ملاحظة' : 'Notes',
             width: 'minmax(200px, 1fr)',
-            headerClassName: 'px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider',
-            cellClassName: 'px-4 py-3 text-gray-900 dark:text-white',
+            headerClassName: tableHeaderCellClass,
+            cellClassName: tableCellClass,
             align: 'left',
-            render: (row) => row.note || '-'
+            render: (row) => <span className="text-sm text-gray-700 dark:text-gray-300">{row.note || '-'}</span>
         }
-    ]), [isRTL, language, selectedTrainer?.name]);
+    ]), [isRTL, language, selectedTrainer?.name, tableCellClass, tableHeaderCellClass]);
 
     const handlePayoutConfirm = async ({ settleAll, amount, method, note }) => {
         if (!selectedTrainerId) return;
@@ -1041,9 +1159,9 @@ const TrainerReportPage = () => {
                             rows={earnings}
                             rowHeight={52}
                             maxHeight={520}
-                            headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
-                            headerCellClassName="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
-                            baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                            headerClassName="bg-slate-50/90 dark:bg-slate-900 border-b border-gray-200 dark:border-gray-700"
+                            headerCellClassName="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide"
+                            baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors"
                             emptyMessage={loading
                                 ? (isRTL ? 'جاري التحميل...' : 'Loading...')
                                 : (isDefaultRange
@@ -1063,9 +1181,9 @@ const TrainerReportPage = () => {
                             rows={payouts}
                             rowHeight={52}
                             maxHeight={420}
-                            headerClassName="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
-                            headerCellClassName="px-4 py-3 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
-                            baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                            headerClassName="bg-slate-50/90 dark:bg-slate-900 border-b border-gray-200 dark:border-gray-700"
+                            headerCellClassName="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide"
+                            baseRowClassName="border-b border-gray-200 dark:border-gray-700 hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors"
                             emptyMessage={loading
                                 ? (isRTL ? 'جاري التحميل...' : 'Loading...')
                                 : (isDefaultRange

@@ -335,6 +335,9 @@
         "memberReport": "تقرير الأعضاء",
         "subscriptionReport": "تقرير الاشتراكات",
         "attendanceReport": "تقرير الحضور",
+        "trainersReport": "تقرير المدربين",
+        "pendingCompletion": "جلسات تحتاج إكمال",
+        "pendingCompletionSubtitle": "جلسات انتهت ولم تُسجل كمكتملة",
         "coachEarnings": {
             "title": "أرباح المدربين",
             "subtitle": "عرض العمولات وتسوية المستحقات"
