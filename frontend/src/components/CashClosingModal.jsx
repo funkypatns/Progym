@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { formatCurrency } from '../utils/numberFormatter';
 import { useSettingsStore } from '../store';
+import { calculateCashDifference, getCashDifferenceState, parseMoney, roundMoney } from '../utils/cashCloseMoney';
 
 const EMPTY_PREVIEW = {
     openPeriod: null,
@@ -59,24 +60,8 @@ const getCashClosingErrorMessage = (error, t, fallbackKey = 'cashClosing.closing
     return error?.response?.data?.message || t(fallbackKey, fallbackText);
 };
 
-const roundToTwo = (value) => {
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) return 0;
-    return Math.round((numericValue + Number.EPSILON) * 100) / 100;
-};
-
-const toSafeAmount = (value) => {
-    if (value === '' || value === null || typeof value === 'undefined') return 0;
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? numericValue : 0;
-};
-
-const calculateCashDifference = (declaredCashAmount, expectedCashAmount) => (
-    roundToTwo(roundToTwo(declaredCashAmount) - roundToTwo(expectedCashAmount))
-);
-
-const getCashDifferenceMeta = (difference) => {
-    if (difference < 0) {
+const getCashDifferenceMeta = (state) => {
+    if (state === 'shortage') {
         return {
             labelKey: 'cashClosing.status.shortage',
             labelFallback: 'عجز',
@@ -84,7 +69,7 @@ const getCashDifferenceMeta = (difference) => {
             badgeClassName: 'text-red-300 bg-red-500/10 border border-red-500/30'
         };
     }
-    if (difference > 0) {
+    if (state === 'overage') {
         return {
             labelKey: 'cashClosing.status.overage',
             labelFallback: 'زيادة',
@@ -179,14 +164,14 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
         };
     }, [isOpen, t]);
 
-    const expectedCash = roundToTwo(toSafeAmount(preview.expected.expectedCashAmount));
-    const expectedNonCash = roundToTwo(toSafeAmount(preview.expected.expectedNonCashAmount));
-    const expectedTotal = roundToTwo(toSafeAmount(preview.expected.expectedTotalAmount));
-    const declaredCash = roundToTwo(toSafeAmount(formData.declaredCashAmount));
-    const declaredNonCash = roundToTwo(toSafeAmount(formData.declaredNonCashAmount));
-    const declaredTotal = roundToTwo(declaredCash + declaredNonCash);
+    const expectedCash = roundMoney(parseMoney(preview.expected.expectedCashAmount, i18n.language));
+    const expectedNonCash = roundMoney(parseMoney(preview.expected.expectedNonCashAmount, i18n.language));
+    const expectedTotal = roundMoney(parseMoney(preview.expected.expectedTotalAmount, i18n.language));
+    const declaredCash = roundMoney(parseMoney(formData.declaredCashAmount, i18n.language));
+    const declaredNonCash = roundMoney(parseMoney(formData.declaredNonCashAmount, i18n.language));
+    const declaredTotal = roundMoney(declaredCash + declaredNonCash);
     const cashDiff = calculateCashDifference(declaredCash, expectedCash);
-    const cashDifferenceMeta = getCashDifferenceMeta(cashDiff);
+    const cashDifferenceMeta = getCashDifferenceMeta(getCashDifferenceState(cashDiff));
 
     const closeModal = () => {
         resetState();
@@ -205,8 +190,8 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
         try {
             const payload = {
                 periodType: formData.periodType,
-                declaredCashAmount: Number(formData.declaredCashAmount || 0),
-                declaredNonCashAmount: Number(formData.declaredNonCashAmount || 0),
+                declaredCashAmount: parseMoney(formData.declaredCashAmount, i18n.language),
+                declaredNonCashAmount: parseMoney(formData.declaredNonCashAmount, i18n.language),
                 endAt: formData.endAt ? new Date(formData.endAt).toISOString() : undefined,
                 notes: formData.notes?.trim() || undefined
             };
@@ -384,9 +369,8 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
                                 <div>
                                     <label className="text-xs text-slate-400 block mb-2">{t('cashClosing.declaredCash', 'Declared Cash')}</label>
                                     <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
+                                        type="text"
+                                        inputMode="decimal"
                                         value={formData.declaredCashAmount}
                                         onChange={(event) => setFormData((prev) => ({ ...prev, declaredCashAmount: event.target.value }))}
                                         className="w-full h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white focus:outline-none focus:border-indigo-500"
@@ -397,9 +381,8 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
                                 <div>
                                     <label className="text-xs text-slate-400 block mb-2">{t('cashClosing.declaredNonCash', 'Declared Non-Cash')}</label>
                                     <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
+                                        type="text"
+                                        inputMode="decimal"
                                         value={formData.declaredNonCashAmount}
                                         onChange={(event) => setFormData((prev) => ({ ...prev, declaredNonCashAmount: event.target.value }))}
                                         className="w-full h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white focus:outline-none focus:border-indigo-500"
