@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Trainer Report now reads from unified `/api/commissions/summary` + `/api/commissions/transactions` APIs and settles via `/api/commissions/settle`. Status: done, needs manual verification.
 - Close Cash financial preview no longer crashes and now returns stable `summary` payload with null-safe totals. Status: done, needs manual verification.
 - Close Cash calculations now include cash movements (`IN`/`OUT`) and trainer payouts in expected cash/non-cash amounts. Status: done, needs manual verification.
 - Close Cash modal/report UI now surfaces payouts total, cash-in total, adjusted expected cash formula, and expected card/transfer snapshot. Status: done, needs manual verification.
@@ -70,6 +71,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | 1f3f0ef  | Unify Trainer Report with commissions APIs (summary/transactions/settle), add canonical trainer commission transaction upsert in commission service, and add integration tests for transaction generation and settlement flow. |
 | 2026-02-17 | f6f4e03  | Fix Close Cash financial preview crash, add null-safe summary response, include payouts/cash-in in expected calculations, persist new snapshot totals, and update close cash UI + tests. |
 | 2026-02-17 | e08e9da  | Replace Session Ledger `remaining` with `difference` (final - paid), compute paid from completed/paid payment timeline rows, and add paid-in-full/overpaid states. |
 | 2026-02-17 | 964414d  | Refactor Session Ledger drawer UI to essential information only, simplify pricing section, and streamline payment rows with cleaner paid-by alignment. |
