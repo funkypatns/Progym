@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Tentative lead appointment flow (book as visitor, complete with payment, convert to member). Status: done, needs manual verification.
 - Session Packs end-to-end flow (templates, assignments, attendance deduction, new page/nav). Status: done, needs manual verification.
 - Session packages (plan type + member package assignment + check-in consumption + attendance endpoint + UI wiring). Status: done, needs manual verification.
 - Quick payment in Assign Subscription flow, receipt fix, and reports refresh. Status: done, needs manual verification.
@@ -62,6 +63,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-17 | c645e15  | Add tentative lead booking flow with transactional completion/member conversion, lead-aware appointments UI, and route-level tests. |
 | 2026-02-17 | 16c1215  | Add Book Appointment UI tabs for existing member vs first-time visitor with lead payload fallback in notes JSON. |
 | 2026-02-17 | 9a029ca  | Harden login to normalize usernames, support safe admin password fallback, and trim frontend credentials. |
 | 2026-01-24 | 4280c22  | Quick payment toggle, receipt route, reports refresh, payment validation, audit script. |
