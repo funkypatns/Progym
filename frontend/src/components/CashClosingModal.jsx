@@ -42,6 +42,47 @@ const parseContentDispositionFilename = (contentDispositionValue, fallbackName) 
     return match?.[1] || fallbackName;
 };
 
+const roundToTwo = (value) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return 0;
+    return Math.round((numericValue + Number.EPSILON) * 100) / 100;
+};
+
+const toSafeAmount = (value) => {
+    if (value === '' || value === null || typeof value === 'undefined') return 0;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const calculateCashDifference = (declaredCashAmount, expectedCashAmount) => (
+    roundToTwo(roundToTwo(declaredCashAmount) - roundToTwo(expectedCashAmount))
+);
+
+const getCashDifferenceMeta = (difference) => {
+    if (difference < 0) {
+        return {
+            labelKey: 'cashClosing.status.shortage',
+            labelFallback: 'عجز',
+            valueClassName: 'text-red-400',
+            badgeClassName: 'text-red-300 bg-red-500/10 border border-red-500/30'
+        };
+    }
+    if (difference > 0) {
+        return {
+            labelKey: 'cashClosing.status.overage',
+            labelFallback: 'زيادة',
+            valueClassName: 'text-emerald-400',
+            badgeClassName: 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30'
+        };
+    }
+    return {
+        labelKey: 'cashClosing.status.balanced',
+        labelFallback: 'متوازن',
+        valueClassName: 'text-emerald-400',
+        badgeClassName: 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30'
+    };
+};
+
 const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
     const { t, i18n } = useTranslation();
     const { getSetting } = useSettingsStore();
@@ -116,13 +157,14 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
         };
     }, [isOpen, t]);
 
-    const expectedCash = Number(preview.expected.expectedCashAmount) || 0;
-    const expectedNonCash = Number(preview.expected.expectedNonCashAmount) || 0;
-    const expectedTotal = Number(preview.expected.expectedTotalAmount) || 0;
-    const declaredCash = Number(formData.declaredCashAmount || 0);
-    const declaredNonCash = Number(formData.declaredNonCashAmount || 0);
-    const declaredTotal = declaredCash + declaredNonCash;
-    const cashDiff = declaredCash - expectedCash;
+    const expectedCash = roundToTwo(toSafeAmount(preview.expected.expectedCashAmount));
+    const expectedNonCash = roundToTwo(toSafeAmount(preview.expected.expectedNonCashAmount));
+    const expectedTotal = roundToTwo(toSafeAmount(preview.expected.expectedTotalAmount));
+    const declaredCash = roundToTwo(toSafeAmount(formData.declaredCashAmount));
+    const declaredNonCash = roundToTwo(toSafeAmount(formData.declaredNonCashAmount));
+    const declaredTotal = roundToTwo(declaredCash + declaredNonCash);
+    const cashDiff = calculateCashDifference(declaredCash, expectedCash);
+    const cashDifferenceMeta = getCashDifferenceMeta(cashDiff);
 
     const closeModal = () => {
         resetState();
@@ -184,12 +226,6 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
             setIsDownloading(false);
         }
     };
-
-    const differenceColor = cashDiff > 0.01
-        ? 'text-amber-400'
-        : cashDiff < -0.01
-            ? 'text-red-400'
-            : 'text-emerald-400';
 
     if (!isOpen) return null;
 
@@ -383,9 +419,14 @@ const CashClosingModal = ({ isOpen, onClose, onSuccess, onViewHistory }) => {
                                         <Wallet size={16} className="text-slate-400" />
                                         <span className="text-sm text-slate-300">{t('cashClosing.differenceCash', 'Cash Difference')}</span>
                                     </div>
-                                    <span className={`text-lg font-bold ${differenceColor}`}>
-                                        {formatCurrency(cashDiff, i18n.language, currencyConf)}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[11px] font-semibold px-2 py-1 rounded-md ${cashDifferenceMeta.badgeClassName}`}>
+                                            {t(cashDifferenceMeta.labelKey, cashDifferenceMeta.labelFallback)}
+                                        </span>
+                                        <span className={`text-lg font-bold ${cashDifferenceMeta.valueClassName}`}>
+                                            {formatCurrency(cashDiff, i18n.language, currencyConf)}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="mt-2 text-xs text-slate-400 flex items-center justify-between">
                                     <span>{t('cashClosing.declaredTotal', 'Total Declared')}</span>
