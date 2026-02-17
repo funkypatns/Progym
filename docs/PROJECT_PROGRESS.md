@@ -219,3 +219,4 @@ Phase 4 - Receipts system
 | 2026-02-17 | 9ffa135 | Handle pack assignments schema-mismatch errors with explicit response instead of opaque 500. |
 | 2026-02-17 | c82b8c0 | Auto-fill Assign Pack amount from template price and default missing amount_paid server-side. |
 | 2026-02-17 | 90500ff | Switch backend defaults/config to PostgreSQL datasource and update setup commands. |
+| 2026-02-17 | 96eb18e | Require gymName in license activation, add frontend validation/input, and return backend 400 for missing gymName. |
