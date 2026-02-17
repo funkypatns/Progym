@@ -62,6 +62,7 @@ import Sales from './pages/Sales';
 import Appointments from './pages/Appointments';
 import Coaches from './pages/Coaches';
 import SessionNotificationsPage from './pages/Notifications/SessionNotificationsPage';
+import SupportContact from './pages/SupportContact';
 
 // Protected Route Component (Exists)
 const ProtectedRoute = ({ children }) => {
@@ -282,6 +283,7 @@ function App() {
                     <Route path="/pay-in-out" element={
                         <PermissionGuard permission={PERMISSIONS.PAYMENTS_VIEW}><PayInOut /></PermissionGuard>
                     } />
+                    <Route path="/support" element={<SupportContact />} />
                     <Route path="/settings" element={
                         <PermissionGuard permission={PERMISSIONS.SETTINGS_VIEW}><Settings /></PermissionGuard>
                     } />

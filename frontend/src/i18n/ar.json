@@ -23,7 +23,8 @@
         "permissions": "الصلاحيات",
         "appointments": "المواعيد",
         "staffTrainers": "قائمة المدربين",
-        "deviceManagement": "إدارة الأجهزة"
+        "deviceManagement": "إدارة الأجهزة",
+        "support": "الدعم / تواصل معنا"
     },
     "appointments": {
         "title": "المواعيد",
@@ -717,6 +718,18 @@
         "enterKey": "أدخل مفتاح الترخيص",
         "activate": "تفعيل",
         "activated": "تم تفعيل الترخيص بنجاح"
+    },
+    "support": {
+        "title": "الدعم / تواصل معنا",
+        "builtBy": "تم تطوير النظام بواسطة {{name}}",
+        "contactSupport": "الدعم / تواصل معنا",
+        "lastUpdated": "آخر تحديث",
+        "cached": "بيانات محفوظة",
+        "call": "اتصال",
+        "whatsapp": "واتساب",
+        "whatsappMessagePreview": "معاينة رسالة الواتساب",
+        "defaultWhatsappTemplate": "مرحباً فريق الدعم، رقم الترخيص {licenseKey}، اسم النادي {gymName}",
+        "unavailable": "لا يمكن تحميل بيانات الدعم حالياً"
     },
     "common": {
         "select": "اختر...",

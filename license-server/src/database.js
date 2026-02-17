@@ -152,6 +152,22 @@ function ensureSchemaMigrations() {
         )
     `);
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS vendor_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            display_name TEXT,
+            phone TEXT,
+            whatsapp TEXT,
+            email TEXT,
+            website TEXT,
+            support_hours TEXT,
+            whatsapp_template TEXT,
+            version INTEGER DEFAULT 1,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_by TEXT
+        )
+    `);
+
     const licenseColumns = getTableColumns('licenses');
     if (!licenseColumns.has('device_limit')) {
         db.run('ALTER TABLE licenses ADD COLUMN device_limit INTEGER DEFAULT 1');
@@ -176,6 +192,33 @@ function ensureSchemaMigrations() {
     if (!logColumns.has('device_id')) {
         db.run('ALTER TABLE license_logs ADD COLUMN device_id INTEGER');
     }
+
+    const vendorProfileColumns = getTableColumns('vendor_profile');
+    if (!vendorProfileColumns.has('version')) {
+        db.run('ALTER TABLE vendor_profile ADD COLUMN version INTEGER DEFAULT 1');
+    }
+    if (!vendorProfileColumns.has('updated_at')) {
+        db.run('ALTER TABLE vendor_profile ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP');
+    }
+    if (!vendorProfileColumns.has('updated_by')) {
+        db.run('ALTER TABLE vendor_profile ADD COLUMN updated_by TEXT');
+    }
+
+    db.run(`
+        INSERT OR IGNORE INTO vendor_profile (
+            id,
+            display_name,
+            phone,
+            whatsapp,
+            email,
+            website,
+            support_hours,
+            whatsapp_template,
+            version,
+            updated_at,
+            updated_by
+        ) VALUES (1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, datetime('now'), 'system')
+    `);
 }
 
 /**
@@ -618,12 +661,106 @@ const AdminModel = {
     }
 };
 
+function sanitizeVendorValue(value) {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    const normalized = String(value).trim();
+    return normalized || null;
+}
+
+const VendorProfileModel = {
+    get: () => {
+        return getOne('SELECT * FROM vendor_profile WHERE id = 1');
+    },
+
+    upsert: (data = {}, updatedBy = 'system') => {
+        return runInTransaction(() => {
+            const payload = {
+                displayName: sanitizeVendorValue(data.displayName),
+                phone: sanitizeVendorValue(data.phone),
+                whatsapp: sanitizeVendorValue(data.whatsapp),
+                email: sanitizeVendorValue(data.email),
+                website: sanitizeVendorValue(data.website),
+                supportHours: sanitizeVendorValue(data.supportHours),
+                whatsappTemplate: sanitizeVendorValue(data.whatsappTemplate)
+            };
+
+            const existing = VendorProfileModel.get();
+
+            if (!existing) {
+                run(
+                    `
+                    INSERT INTO vendor_profile (
+                        id,
+                        display_name,
+                        phone,
+                        whatsapp,
+                        email,
+                        website,
+                        support_hours,
+                        whatsapp_template,
+                        version,
+                        updated_at,
+                        updated_by
+                    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), ?)
+                `,
+                    [
+                        payload.displayName,
+                        payload.phone,
+                        payload.whatsapp,
+                        payload.email,
+                        payload.website,
+                        payload.supportHours,
+                        payload.whatsappTemplate,
+                        sanitizeVendorValue(updatedBy) || 'system'
+                    ],
+                    { skipSave: true }
+                );
+            } else {
+                run(
+                    `
+                    UPDATE vendor_profile
+                    SET
+                        display_name = ?,
+                        phone = ?,
+                        whatsapp = ?,
+                        email = ?,
+                        website = ?,
+                        support_hours = ?,
+                        whatsapp_template = ?,
+                        version = COALESCE(version, 1) + 1,
+                        updated_at = datetime('now'),
+                        updated_by = ?
+                    WHERE id = 1
+                `,
+                    [
+                        payload.displayName,
+                        payload.phone,
+                        payload.whatsapp,
+                        payload.email,
+                        payload.website,
+                        payload.supportHours,
+                        payload.whatsappTemplate,
+                        sanitizeVendorValue(updatedBy) || 'system'
+                    ],
+                    { skipSave: true }
+                );
+            }
+
+            return VendorProfileModel.get();
+        });
+    }
+};
+
 module.exports = {
     initDatabase,
     getDb,
     generateLicenseKey,
     LicenseModel,
     AdminModel,
+    VendorProfileModel,
     run,
     getOne,
     getAll,

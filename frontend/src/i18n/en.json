@@ -23,7 +23,8 @@
         "permissions": "Permissions",
         "appointments": "Appointments",
         "staffTrainers": "Trainers List",
-        "deviceManagement": "Device Management"
+        "deviceManagement": "Device Management",
+        "support": "Support / Contact Us"
     },
     "appointments": {
         "title": "Appointments",
@@ -755,6 +756,18 @@
         "enterKey": "Enter License Key",
         "activate": "Activate",
         "activated": "License activated successfully"
+    },
+    "support": {
+        "title": "Support / Contact Us",
+        "builtBy": "System developed by {{name}}",
+        "contactSupport": "Support / Contact Us",
+        "lastUpdated": "Last updated",
+        "cached": "cached data",
+        "call": "Call",
+        "whatsapp": "WhatsApp",
+        "whatsappMessagePreview": "WhatsApp message preview",
+        "defaultWhatsappTemplate": "Hello support team. License: {licenseKey}, Gym: {gymName}",
+        "unavailable": "لا يمكن تحميل بيانات الدعم حالياً"
     },
     "common": {
         "select": "Select...",

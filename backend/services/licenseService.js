@@ -1153,12 +1153,21 @@ const licenseService = {
             }
 
             const validation = await licenseService.validate(null, { forceOnline: true });
+            const licenseKey = cached?.licenseKey || null;
+            const licenseData = validation.license
+                ? {
+                    ...validation.license,
+                    licenseKey: validation.license?.licenseKey || licenseKey
+                }
+                : null;
+
             return {
                 valid: validation.valid,
                 state: validation.valid ? 'active' : (validation.code || 'invalid'),
                 status: validation.valid ? 'active' : 'invalid',
                 mode: validation.mode,
-                license: validation.license,
+                license: licenseData,
+                licenseKey,
                 graceRemaining: validation.graceRemaining,
                 code: validation.code,
                 message: validation.message,

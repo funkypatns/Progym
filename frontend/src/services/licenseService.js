@@ -27,12 +27,20 @@ export const licenseService = {
             const payload = response.data || {};
             const data = payload.data || {};
             const valid = typeof data.valid === 'boolean' ? data.valid : data.status === 'active';
+            const resolvedLicenseKey = data.licenseKey || data.license?.licenseKey || null;
+            const normalizedLicense = data.license
+                ? {
+                    ...data.license,
+                    licenseKey: data.license?.licenseKey || resolvedLicenseKey || null
+                }
+                : null;
 
             const result = {
                 valid,
                 status: data.status || (valid ? 'active' : 'invalid'),
                 mode: data.mode,
-                license: data.license,
+                license: normalizedLicense,
+                licenseKey: resolvedLicenseKey,
                 graceRemaining: data.graceRemaining,
                 code: data.code,
                 message: data.message || payload.message
@@ -82,7 +90,10 @@ export const licenseService = {
                 return {
                     valid: true,
                     success: true,
-                    license: response.data.data
+                    license: {
+                        ...(response.data.data || {}),
+                        licenseKey: normalizedLicenseKey || null
+                    }
                 };
             }
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { AdminModel, LicenseModel, getAll, getOne } = require('../database');
+const { AdminModel, LicenseModel, VendorProfileModel, getAll, getOne } = require('../database');
 const {
     issueLicenseAdminToken,
     requireLicenseAdminAuth
@@ -59,6 +59,27 @@ function mapDevice(device) {
     };
 }
 
+function mapVendorProfile(profile) {
+    return {
+        displayName: profile?.display_name || '',
+        phone: profile?.phone || '',
+        whatsapp: profile?.whatsapp || '',
+        email: profile?.email || '',
+        website: profile?.website || '',
+        supportHours: profile?.support_hours || '',
+        whatsappTemplate: profile?.whatsapp_template || '',
+        version: Number.isInteger(profile?.version) ? profile.version : 1,
+        updatedAt: profile?.updated_at || null,
+        updatedBy: profile?.updated_by || null
+    };
+}
+
+function expectsHtmlPage(req) {
+    const hasAuthHeader = Boolean(req.headers.authorization);
+    const accepts = String(req.headers.accept || '').toLowerCase();
+    return !hasAuthHeader && accepts.includes('text/html');
+}
+
 function getLicenseById(licenseId) {
     return getOne('SELECT * FROM licenses WHERE id = ?', [licenseId]);
 }
@@ -73,6 +94,13 @@ router.get('/login', (req, res) => {
 
 router.get('/', (req, res) => {
     return res.sendFile(path.join(ADMIN_UI_DIR, 'dashboard.html'));
+});
+
+router.get('/vendor-profile', (req, res, next) => {
+    if (expectsHtmlPage(req)) {
+        return res.sendFile(path.join(ADMIN_UI_DIR, 'vendor-profile.html'));
+    }
+    return next();
 });
 
 router.post('/auth/login', (req, res) => {
@@ -118,6 +146,54 @@ router.post('/auth/login', (req, res) => {
 
 router.post('/auth/logout', requireLicenseAdminAuth, (req, res) => {
     return res.json({ success: true });
+});
+
+router.get('/vendor-profile', requireLicenseAdminAuth, (req, res) => {
+    try {
+        const profile = VendorProfileModel.get();
+        return res.json({
+            success: true,
+            data: mapVendorProfile(profile)
+        });
+    } catch (error) {
+        console.error('[ADMIN] Get vendor profile error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'ADMIN_VENDOR_PROFILE_FETCH_ERROR',
+            message: 'Failed to fetch vendor profile'
+        });
+    }
+});
+
+router.put('/vendor-profile', requireLicenseAdminAuth, (req, res) => {
+    try {
+        const payload = req.body || {};
+        const updated = VendorProfileModel.upsert(
+            {
+                displayName: payload.displayName,
+                phone: payload.phone,
+                whatsapp: payload.whatsapp,
+                email: payload.email,
+                website: payload.website,
+                supportHours: payload.supportHours,
+                whatsappTemplate: payload.whatsappTemplate
+            },
+            req.licenseAdmin?.username || `admin:${req.licenseAdmin?.sub || 'unknown'}`
+        );
+
+        return res.json({
+            success: true,
+            message: 'Vendor profile updated',
+            data: mapVendorProfile(updated)
+        });
+    } catch (error) {
+        console.error('[ADMIN] Update vendor profile error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'ADMIN_VENDOR_PROFILE_UPDATE_ERROR',
+            message: 'Failed to update vendor profile'
+        });
+    }
 });
 
 router.get('/licenses', requireLicenseAdminAuth, (req, res) => {

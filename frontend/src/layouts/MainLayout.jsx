@@ -12,7 +12,7 @@ import {
     LayoutDashboard, Users, CreditCard, CalendarCheck, Receipt,
     BarChart3, Settings, LogOut, Sun, Moon, Globe, Dumbbell,
     ChevronLeft, ClipboardList, Package, ShieldCheck, Shield,
-    Bell, ArrowUpCircle, ShoppingCart, Menu, Search, Calendar, Briefcase
+    Bell, ArrowUpCircle, ShoppingCart, Menu, Search, Calendar, Briefcase, LifeBuoy
 } from 'lucide-react';
 import { useAuthStore, useThemeStore, useSidebarStore, usePosStore, useSettingsStore } from '../store';
 import PosShiftModal from '../components/PosShiftModal';
@@ -106,6 +106,7 @@ const MainLayout = () => {
         { path: '/payment-alerts', icon: Bell, label: safeT('nav.paymentAlerts', isRTL ? 'تنبيهات الدفع' : 'Payment Alerts'), permission: PERMISSIONS.REPORTS_VIEW },
         { path: '/subscription-alerts', icon: Bell, label: safeT('nav.subscriptionAlerts', isRTL ? 'تنبيهات الاشتراكات' : 'Subscription Alerts'), permission: PERMISSIONS.SUBSCRIPTIONS_VIEW },
         { path: '/pay-in-out', icon: ArrowUpCircle, label: safeT('nav.payInOut', isRTL ? 'صادر / وارد' : 'Pay In/Out'), permission: PERMISSIONS.PAYMENTS_VIEW },
+        { path: '/support', icon: LifeBuoy, label: safeT('nav.support', isRTL ? 'الدعم / تواصل معنا' : 'Support / Contact Us') },
         { path: '/settings', icon: Settings, label: safeT('nav.settings', isRTL ? 'الإعدادات' : 'Settings'), permission: PERMISSIONS.SETTINGS_VIEW },
     ];
 
@@ -120,7 +121,8 @@ const MainLayout = () => {
     const visibleNavItems = navItems.filter(item => !item.permission || can(item.permission));
 
     // Locked Screen (No Shift)
-    if (!currentShift) {
+    const allowSupportWithoutShift = location.pathname === '/support';
+    if (!currentShift && !allowSupportWithoutShift) {
         return (
             <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-purple-900/20 to-black z-0 pointer-events-none" />

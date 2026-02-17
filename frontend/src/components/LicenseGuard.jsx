@@ -26,8 +26,8 @@ const LicenseGuard = ({ children }) => {
     const isExpired = license?.expiresAt && new Date(license.expiresAt) < new Date();
 
     if (!isValid || isExpired) {
-        // Allow access to settings/license to fix the issue
-        if (location.pathname === '/settings' || location.pathname === '/license-expired') {
+        // Allow access to settings/license/support to recover from invalid or expired licenses.
+        if (location.pathname === '/settings' || location.pathname === '/license-expired' || location.pathname === '/support') {
             return children || <Outlet />;
         }
         return <Navigate to="/license-expired" replace />;

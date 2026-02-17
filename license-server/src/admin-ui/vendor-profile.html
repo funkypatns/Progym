@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vendor Support Profile</title>
+    <style>
+        body { margin: 0; font-family: Segoe UI, Tahoma, Arial, sans-serif; background: #020617; color: #e2e8f0; }
+        .layout { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+        .title h1 { margin: 0; font-size: 22px; }
+        .title p { margin: 4px 0 0; color: #94a3b8; font-size: 13px; }
+        .btn { border: 0; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .btn-primary { background: #2563eb; color: #fff; }
+        .btn-muted { background: #334155; color: #e2e8f0; }
+        .card { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        .field label { font-size: 12px; color: #94a3b8; }
+        input, textarea { border: 1px solid #334155; background: #020617; color: #e2e8f0; border-radius: 8px; padding: 10px; font-size: 13px; }
+        textarea { min-height: 88px; resize: vertical; }
+        .meta { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+        .message { min-height: 18px; color: #fda4af; font-size: 13px; margin-top: 10px; }
+        .preview { background: #020617; border: 1px dashed #334155; border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.6; }
+        .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+        .link { color: #93c5fd; text-decoration: none; }
+        @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <div class="topbar">
+            <div class="title">
+                <h1>Vendor Support Profile</h1>
+                <p>Manage support contact details shown to gym clients (read-only on client side).</p>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <a class="btn btn-muted" href="/admin">Device Dashboard</a>
+                <button id="logoutBtn" class="btn btn-muted">Logout</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div id="meta" class="meta">Last updated: -</div>
+            <form id="vendorForm">
+                <div class="grid">
+                    <div class="field">
+                        <label for="displayName">Display Name</label>
+                        <input id="displayName" name="displayName" type="text" />
+                    </div>
+                    <div class="field">
+                        <label for="phone">Phone</label>
+                        <input id="phone" name="phone" type="text" />
+                    </div>
+                    <div class="field">
+                        <label for="whatsapp">WhatsApp Number</label>
+                        <input id="whatsapp" name="whatsapp" type="text" />
+                    </div>
+                    <div class="field">
+                        <label for="email">Email</label>
+                        <input id="email" name="email" type="text" />
+                    </div>
+                    <div class="field">
+                        <label for="website">Website</label>
+                        <input id="website" name="website" type="text" />
+                    </div>
+                    <div class="field">
+                        <label for="supportHours">Support Hours</label>
+                        <input id="supportHours" name="supportHours" type="text" />
+                    </div>
+                </div>
+                <div class="field" style="margin-top:12px;">
+                    <label for="whatsappTemplate">WhatsApp Template</label>
+                    <textarea id="whatsappTemplate" name="whatsappTemplate" placeholder="Example: مرحباً، رقم الرخصة {licenseKey} واسم النادي {gymName}"></textarea>
+                </div>
+                <div class="actions">
+                    <button id="reloadBtn" type="button" class="btn btn-muted">Reload</button>
+                    <button id="saveBtn" type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+            <div id="message" class="message"></div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin:0 0 10px;">Client Preview</h3>
+            <div id="preview" class="preview"></div>
+        </div>
+    </div>
+
+    <script src="/admin/static/vendor-profile.js"></script>
+</body>
+</html>

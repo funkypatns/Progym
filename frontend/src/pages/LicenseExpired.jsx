@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldAlert, Key, RefreshCw, Lock } from 'lucide-react';
+import { ShieldAlert, Key, RefreshCw, Lock, LifeBuoy } from 'lucide-react';
 import { useLicenseStore, useSettingsStore } from '../store';
 import { useNavigate } from 'react-router-dom';
 
@@ -127,6 +127,15 @@ const LicenseExpired = () => {
                             ) : (
                                 <span>Activate License</span>
                             )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => navigate('/support')}
+                            className="w-full py-3 flex items-center justify-center gap-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700/40 transition-colors"
+                        >
+                            <LifeBuoy className="w-4 h-4" />
+                            <span>{t('support.contactSupport', 'الدعم / تواصل معنا')}</span>
                         </button>
                     </form>
 
