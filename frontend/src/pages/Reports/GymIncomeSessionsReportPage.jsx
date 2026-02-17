@@ -111,101 +111,36 @@ const GymIncomeSessionsReportPage = () => {
         }
         setLoading(true);
         try {
-            const startDate = toStartOfDay(normalized.from);
-            const endDate = toEndOfDay(normalized.to);
-            const params = new URLSearchParams({
-                type: 'SESSION',
-                startDate,
-                endDate,
-                page: '1',
-                limit: '10000'
-            });
-
-            const response = await apiClient.get(`/payments?${params.toString()}`, { signal: controller.signal });
-            const rawData = response.data?.data;
-            const payments = Array.isArray(rawData)
-                ? rawData
-                : (rawData?.payments || rawData?.docs || []);
-
             const normalizedMethod = filters.method ? filters.method.toLowerCase() : '';
             const trainerId = filters.trainerId ? String(filters.trainerId) : '';
             const employeeId = filters.employeeId ? String(filters.employeeId) : '';
-            const serviceName = filters.serviceId
-                ? (services.find(service => String(service.id) === String(filters.serviceId))?.name || '').toLowerCase()
-                : '';
+            const serviceId = filters.serviceId ? String(filters.serviceId) : '';
             const searchValue = debouncedSearch.trim().toLowerCase();
 
-            const byMethod = { CASH: 0, CARD: 0, TRANSFER: 0 };
-            const rowsMap = new Map();
-
-            payments.forEach((payment) => {
-                if (!payment?.appointmentId) return;
-                if (normalizedMethod && String(payment.method || '').toLowerCase() !== normalizedMethod) return;
-
-                const appointment = payment.appointment || {};
-                const member = payment.member || {};
-                const appointmentTrainerId = appointment.trainer?.id ? String(appointment.trainer.id) : '';
-                if (trainerId && trainerId !== appointmentTrainerId) return;
-
-                const creatorId = payment.createdBy ? String(payment.createdBy) : '';
-                const completedById = appointment.completedByEmployee?.id ? String(appointment.completedByEmployee.id) : '';
-                if (employeeId && employeeId !== creatorId && employeeId !== completedById) return;
-
-                const appointmentTitle = String(appointment.title || '').toLowerCase();
-                if (serviceName && !appointmentTitle.includes(serviceName)) return;
-
-                const methodKey = String(payment.method || '').toUpperCase();
-                if (byMethod[methodKey] !== undefined) {
-                    byMethod[methodKey] += payment.amount || 0;
-                }
-
-                if (!rowsMap.has(payment.appointmentId)) {
-                    rowsMap.set(payment.appointmentId, {
-                        appointmentId: payment.appointmentId,
-                        paidAt: payment.paidAt,
-                        sessionDate: appointment.start || payment.paidAt,
-                        methods: new Set(),
-                        amount: 0,
-                        customerName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
-                        customerCode: member.memberId || '',
-                        customerPhone: member.phone || '',
-                        serviceName: appointment.title || '',
-                        trainerName: appointment.trainer?.name || '',
-                        employeeName: payment.creator
-                            ? `${payment.creator.firstName || ''} ${payment.creator.lastName || ''}`.trim()
-                            : (appointment.completedByEmployee
-                                ? `${appointment.completedByEmployee.firstName || ''} ${appointment.completedByEmployee.lastName || ''}`.trim()
-                                : '')
-                    });
-                }
-
-                const row = rowsMap.get(payment.appointmentId);
-                row.amount += payment.amount || 0;
-                row.methods.add(methodKey || 'UNKNOWN');
-                if (payment.paidAt && payment.paidAt > row.paidAt) {
-                    row.paidAt = payment.paidAt;
-                }
+            const params = new URLSearchParams({
+                from: toStartOfDay(normalized.from),
+                to: toEndOfDay(normalized.to)
             });
+            if (trainerId) params.set('trainerId', trainerId);
+            if (serviceId) params.set('serviceId', serviceId);
+            if (employeeId) params.set('employeeId', employeeId);
+            if (normalizedMethod) params.set('method', normalizedMethod);
 
-            const rows = Array.from(rowsMap.values()).map((row) => ({
-                appointmentId: row.appointmentId,
-                paidAt: row.paidAt,
-                sessionDate: row.sessionDate,
-                customerName: row.customerName,
-                customerCode: row.customerCode,
-                customerPhone: row.customerPhone,
-                serviceName: row.serviceName,
-                trainerName: row.trainerName,
-                employeeName: row.employeeName,
-                paymentMethod: row.methods.size === 1 ? Array.from(row.methods)[0] : 'MIXED',
-                amount: row.amount || 0
-            })).filter((row) => {
+            const response = await apiClient.get(`/reports/gym-income-sessions?${params.toString()}`, { signal: controller.signal });
+            const reportData = response.data?.data || {};
+            const sourceRows = Array.isArray(reportData.rows) ? reportData.rows : [];
+            const byMethod = reportData.summary?.byMethod || { CASH: 0, CARD: 0, TRANSFER: 0 };
+
+            const rows = sourceRows.filter((row) => {
                 if (!searchValue) return true;
-                const haystack = `${row.customerName} ${row.customerCode} ${row.customerPhone}`.toLowerCase();
+                const haystack = `${row.customerName || ''} ${row.customerCode || ''} ${row.customerPhone || ''}`.toLowerCase();
                 return haystack.includes(searchValue);
             });
 
-            const totalRevenue = rows.reduce((sum, row) => sum + (row.amount || 0), 0);
+            const totalRevenue = rows.reduce((sum, row) => {
+                const rowValue = Number(row.finalPrice ?? row.amount ?? 0);
+                return sum + (Number.isFinite(rowValue) ? rowValue : 0);
+            }, 0);
             const sessionsCount = rows.length;
             const averagePrice = sessionsCount ? totalRevenue / sessionsCount : 0;
 
@@ -279,21 +214,37 @@ const GymIncomeSessionsReportPage = () => {
         }
 
         const csvRows = [
-            [
-                'التاريخ',
-                'الوقت',
-                'العميل',
-                'الخدمة',
-                'المدرب',
-                'الموظف',
-                'طريقة الدفع',
-                'السعر الأصلي',
-                'السعر النهائي',
-                'الفرق',
-                'سبب التعديل',
-                'تم التعديل بواسطة',
-                'رقم الحجز'
-            ].join(',')
+            (isRTL
+                ? [
+                    'التاريخ',
+                    'الوقت',
+                    'العميل',
+                    'الخدمة',
+                    'المدرب',
+                    'الموظف',
+                    'طريقة الدفع',
+                    'السعر الأصلي',
+                    'السعر النهائي',
+                    'الفرق',
+                    'سبب التعديل',
+                    'تم التعديل بواسطة',
+                    'رقم الحجز'
+                ]
+                : [
+                    'Date',
+                    'Time',
+                    'Customer',
+                    'Service',
+                    'Trainer',
+                    'Employee',
+                    'Payment Method',
+                    'Original Price',
+                    'Final Price',
+                    'Adjustment',
+                    'Adjustment Reason',
+                    'Adjusted By',
+                    'Booking ID'
+                ]).join(',')
         ];
 
         rows.forEach((row) => {
@@ -421,11 +372,15 @@ const GymIncomeSessionsReportPage = () => {
             headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
             cellClassName: 'px-4 py-3 text-center whitespace-nowrap',
             align: 'center',
-            render: (row) => (
-                <span className="font-bold text-gray-900 dark:text-white text-base">
-                    {row.amount ? `ج.م ${Number(row.amount).toLocaleString()}` : '—'}
-                </span>
-            )
+            render: (row) => {
+                const finalPrice = Number(row.finalPrice ?? row.amount ?? 0);
+                if (!Number.isFinite(finalPrice)) return '—';
+                return (
+                    <span className="font-bold text-gray-900 dark:text-white text-base">
+                        {formatMoney(finalPrice, language, { code: 'EGP', symbol: 'EGP' })}
+                    </span>
+                );
+            }
         },
         {
             key: 'originalPrice',
@@ -434,7 +389,11 @@ const GymIncomeSessionsReportPage = () => {
             headerClassName: 'px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap text-center',
             cellClassName: 'px-4 py-3 text-center whitespace-nowrap text-xs text-gray-600 dark:text-gray-300',
             align: 'center',
-            render: (row) => (Number.isFinite(row.originalPrice) ? `ج.م ${Number(row.originalPrice).toLocaleString()}` : '—')
+            render: (row) => (
+                Number.isFinite(Number(row.originalPrice))
+                    ? formatMoney(Number(row.originalPrice), language, { code: 'EGP', symbol: 'EGP' })
+                    : '—'
+            )
         },
         {
             key: 'adjustmentDifference',
@@ -446,7 +405,11 @@ const GymIncomeSessionsReportPage = () => {
             render: (row) => {
                 const diff = Number(row.adjustmentDifference || 0);
                 if (!diff) return '—';
-                return `${diff > 0 ? '+' : ''}ج.م ${Math.abs(diff).toLocaleString()}`;
+                return (
+                    <span className={diff > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'}>
+                        {diff > 0 ? '+' : '-'}{formatMoney(Math.abs(diff), language, { code: 'EGP', symbol: 'EGP' })}
+                    </span>
+                );
             }
         },
         {
@@ -467,7 +430,7 @@ const GymIncomeSessionsReportPage = () => {
             align: 'right',
             render: (row) => row.adjustmentReason || '—'
         }
-    ]), [formatDate, isRTL, methodLabel]);
+    ]), [formatDate, isRTL, methodLabel, language]);
 
     const rowClassName = useCallback((_, index) => (
         `hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-800/30'}`
@@ -602,7 +565,7 @@ const GymIncomeSessionsReportPage = () => {
                             <CreditCard className="w-8 h-8 text-gray-400" />
                         </div>
                         <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                            لا توجد جلسات مدفوعة خلال هذه الفترة
+                            {isRTL ? 'لا توجد جلسات مدفوعة خلال هذه الفترة' : 'No paid sessions in this period'}
                         </h3>
                     </div>
                 ) : (

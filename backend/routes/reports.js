@@ -2292,7 +2292,7 @@ router.get('/gym-income-sessions', async (req, res) => {
         const payments = await req.prisma.payment.findMany({
             where: paymentWhere,
             include: {
-                member: { select: { firstName: true, lastName: true, memberId: true } },
+                member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
                 creator: { select: { firstName: true, lastName: true } },
                 appointment: {
                     select: {
@@ -2302,7 +2302,7 @@ router.get('/gym-income-sessions', async (req, res) => {
                         end: true,
                         price: true,
                         finalPrice: true,
-                        member: { select: { firstName: true, lastName: true, memberId: true } },
+                        member: { select: { firstName: true, lastName: true, memberId: true, phone: true } },
                         trainer: { select: { id: true, name: true } },
                         completedByEmployee: { select: { firstName: true, lastName: true } },
                         priceAdjustments: {
@@ -2376,6 +2376,7 @@ router.get('/gym-income-sessions', async (req, res) => {
                 sessionDate: row.appointment?.start || row.paidAt,
                 customerName: memberName,
                 customerCode: row.member?.memberId || '',
+                customerPhone: row.member?.phone || '',
                 serviceName: row.appointment?.title || '',
                 trainerName,
                 employeeName,
