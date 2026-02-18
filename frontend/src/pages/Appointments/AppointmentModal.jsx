@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, Fragment } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
 
@@ -22,6 +22,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [memberSearch, setMemberSearch] = useState('');
     const [members, setMembers] = useState([]);
     const [selectedMember, setSelectedMember] = useState(null);
+    const [showMemberSuggestions, setShowMemberSuggestions] = useState(false);
+    const [activeMemberSuggestion, setActiveMemberSuggestion] = useState(-1);
+    const memberSearchRequestRef = useRef(0);
     const [bookingMode, setBookingMode] = useState('member');
     const [leadForm, setLeadForm] = useState({
         fullName: '',
@@ -93,6 +96,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setBookingMode('member');
                 setLeadForm({ fullName: '', phone: '', notes: '' });
                 setSelectedMember(appointment.member);
+                setMembers([]);
+                setShowMemberSuggestions(false);
+                setActiveMemberSuggestion(-1);
+                setMemberSearch(appointment.member ? `${appointment.member.firstName || ''} ${appointment.member.lastName || ''}`.trim() : '');
                 setSelectedCoachId((user?.id ? user.id.toString() : appointment.coachId?.toString()) || '');
                 setSelectedTrainerId(appointment.trainerId?.toString() || '');
 
@@ -135,7 +142,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 // Reset for create mode
                 setBookingMode('member');
                 setMemberSearch('');
+                setMembers([]);
                 setSelectedMember(null);
+                setShowMemberSuggestions(false);
+                setActiveMemberSuggestion(-1);
                 setLeadForm({ fullName: '', phone: '', notes: '' });
                 setSelectedCoachId(user?.id ? user.id.toString() : '');
                 setSelectedTrainerId('');
@@ -235,24 +245,67 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
         }
     };
 
-    const searchMembers = async (q) => {
-        setMemberSearch(q);
-        if (q.length < 2) {
-            if (q.length === 0) setMembers([]);
+    const getMemberFullName = (member) => `${member?.firstName || ''} ${member?.lastName || ''}`.trim();
+
+    const handleMemberSelect = (member) => {
+        if (!member) return;
+        setSelectedMember(member);
+        setMemberSearch(getMemberFullName(member));
+        setMembers([]);
+        setShowMemberSuggestions(false);
+        setActiveMemberSuggestion(-1);
+    };
+
+    useEffect(() => {
+        if (!open || appointment || bookingMode !== 'member') return;
+
+        const query = memberSearch.trim();
+        const selectedName = selectedMember ? getMemberFullName(selectedMember) : '';
+        if (selectedMember && query === selectedName) {
             return;
         }
-        setMemberLoading(true);
-        try {
-            const res = await apiClient.get(`/members/search/${encodeURIComponent(q)}`);
-            if (res.data.success) {
-                setMembers(res.data.data.slice(0, 5));
-            }
-        } catch (error) {
-            console.error(error);
-        } finally {
+
+        if (query.length < 2) {
+            setMembers([]);
             setMemberLoading(false);
+            setShowMemberSuggestions(false);
+            setActiveMemberSuggestion(-1);
+            return;
         }
-    };
+
+        const currentRequestId = memberSearchRequestRef.current + 1;
+        memberSearchRequestRef.current = currentRequestId;
+
+        const debounceTimer = setTimeout(async () => {
+            setMemberLoading(true);
+            try {
+                const res = await apiClient.get(`/members/search/${encodeURIComponent(query)}`);
+                if (memberSearchRequestRef.current !== currentRequestId) return;
+                if (res.data.success) {
+                    const rows = (res.data.data || []).slice(0, 8);
+                    setMembers(rows);
+                    setShowMemberSuggestions(rows.length > 0);
+                    setActiveMemberSuggestion(rows.length > 0 ? 0 : -1);
+                } else {
+                    setMembers([]);
+                    setShowMemberSuggestions(false);
+                    setActiveMemberSuggestion(-1);
+                }
+            } catch (error) {
+                if (memberSearchRequestRef.current !== currentRequestId) return;
+                setMembers([]);
+                setShowMemberSuggestions(false);
+                setActiveMemberSuggestion(-1);
+                console.error(error);
+            } finally {
+                if (memberSearchRequestRef.current === currentRequestId) {
+                    setMemberLoading(false);
+                }
+            }
+        }, 300);
+
+        return () => clearTimeout(debounceTimer);
+    }, [open, appointment, bookingMode, memberSearch, selectedMember]);
 
     // Calculate Start/End Date objects
     const parseTimeInput = (value) => {
@@ -391,22 +444,38 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 return;
             }
 
+            const selectedService = services.find((service) => service.name === form.title);
             const payload = {
-                ...form,
+                title: form.title,
                 start: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
                 end: format(currentEnd, "yyyy-MM-dd'T'HH:mm"),
-                coachId: parseInt(user.id),
+                startAt: format(currentStart, "yyyy-MM-dd'T'HH:mm"),
+                duration: durationNumber,
+                coachId: parseInt(user.id, 10),
                 price: parseFloat(form.price),
                 sessionName: form.title,
-                sessionPrice: parseFloat(form.price)
+                sessionPrice: parseFloat(form.price),
+                notes: form.notes
             };
+            if (selectedService?.id) {
+                payload.serviceId = parseInt(selectedService.id, 10);
+            }
             payload.durationMinutes = durationNumber;
             payload.startTime = selectedTime;
             payload.trainerId = selectedTrainerId ? parseInt(selectedTrainerId) : null;
-            if (appointment || bookingMode === 'member') {
+            if (appointment) {
                 payload.memberId = selectedMember?.id ?? appointment?.memberId;
+                if (appointment.bookingType === 'tentative' && !appointment.memberId) {
+                    payload.bookingType = 'tentative';
+                    payload.status = form.status || appointment.status || 'booked';
+                }
+            } else if (bookingMode === 'member') {
+                payload.memberId = selectedMember?.id ?? null;
+                payload.bookingType = 'confirmed';
+                payload.status = 'booked';
             } else {
                 payload.bookingType = 'tentative';
+                payload.status = form.status || 'booked';
                 payload.fullName = leadForm.fullName.trim();
                 payload.phone = leadForm.phone.trim();
                 payload.memberId = null;
@@ -720,7 +789,9 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const isTentativeAppointment = Boolean(appointment?.bookingType === 'tentative' && !appointment?.memberId);
     const isAlreadyCompleted = Boolean(appointment && (appointment.isCompleted || appointment.status === 'completed' || appointment.status === 'auto_completed' || appointment.completedAt));
     const canComplete = Boolean(appointment && isTentativeAppointment && appointment.status === 'booked' && !isAlreadyCompleted);
-    const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError;
+    const requiresMemberSelection = !appointment && bookingMode === 'member';
+    const isMemberSelectionMissing = requiresMemberSelection && !selectedMember;
+    const isSubmitDisabled = isReadOnly || loading || isOverlapping || isPastSelection || validationError || isMemberSelectionMissing;
 
     return (
         <Transition appear show={open} as={Fragment}>
@@ -763,7 +834,10 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-800/60 border border-white/5 p-1">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setBookingMode('member')}
+                                                    onClick={() => {
+                                                        setBookingMode('member');
+                                                        setForm((prev) => ({ ...prev, status: 'booked' }));
+                                                    }}
                                                     className={`rounded-lg px-3 py-2 text-xs font-bold transition ${bookingMode === 'member'
                                                         ? 'bg-blue-600 text-white'
                                                         : 'text-slate-300 hover:bg-slate-700/80'
@@ -775,9 +849,12 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                     type="button"
                                                     onClick={() => {
                                                         setBookingMode('tentative');
+                                                        setForm((prev) => ({ ...prev, status: 'booked' }));
                                                         setMembers([]);
                                                         setSelectedMember(null);
                                                         setMemberSearch('');
+                                                        setShowMemberSuggestions(false);
+                                                        setActiveMemberSuggestion(-1);
                                                     }}
                                                     className={`rounded-lg px-3 py-2 text-xs font-bold transition ${bookingMode === 'tentative'
                                                         ? 'bg-blue-600 text-white'
@@ -794,27 +871,78 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                                     <div className="relative">
                                                         <input
                                                             type="text"
-                                                            value={selectedMember ? `${selectedMember.firstName} ${selectedMember.lastName}` : memberSearch}
+                                                            value={memberSearch}
                                                             onChange={(e) => {
-                                                                setSelectedMember(null);
-                                                                searchMembers(e.target.value);
+                                                                const nextValue = e.target.value;
+                                                                setMemberSearch(nextValue);
+                                                                setActiveMemberSuggestion(-1);
+
+                                                                const selectedName = selectedMember ? getMemberFullName(selectedMember) : '';
+                                                                if (selectedMember && nextValue.trim() !== selectedName.trim()) {
+                                                                    setSelectedMember(null);
+                                                                }
+
+                                                                if (nextValue.trim().length >= 2) {
+                                                                    setShowMemberSuggestions(true);
+                                                                } else {
+                                                                    setShowMemberSuggestions(false);
+                                                                    setMembers([]);
+                                                                }
+                                                            }}
+                                                            onFocus={() => {
+                                                                if (members.length > 0 && !selectedMember) {
+                                                                    setShowMemberSuggestions(true);
+                                                                }
+                                                            }}
+                                                            onBlur={() => {
+                                                                setTimeout(() => setShowMemberSuggestions(false), 120);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (!showMemberSuggestions || members.length === 0 || selectedMember) return;
+                                                                if (e.key === 'ArrowDown') {
+                                                                    e.preventDefault();
+                                                                    setActiveMemberSuggestion((prev) => (prev + 1) % members.length);
+                                                                } else if (e.key === 'ArrowUp') {
+                                                                    e.preventDefault();
+                                                                    setActiveMemberSuggestion((prev) => (prev <= 0 ? members.length - 1 : prev - 1));
+                                                                } else if (e.key === 'Enter') {
+                                                                    if (activeMemberSuggestion >= 0 && activeMemberSuggestion < members.length) {
+                                                                        e.preventDefault();
+                                                                        handleMemberSelect(members[activeMemberSuggestion]);
+                                                                    }
+                                                                } else if (e.key === 'Escape') {
+                                                                    setShowMemberSuggestions(false);
+                                                                }
                                                             }}
                                                             placeholder={t('appointments.searchMemberPlaceholder')}
                                                             className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
                                                         />
                                                         {memberLoading && <div className="absolute right-3 top-3 text-white/50 animate-spin">?</div>}
                                                     </div>
-                                                    {members.length > 0 && !selectedMember && (
-                                                        <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-                                                            {members.map(m => (
-                                                                <div key={m.id}
-                                                                    className="p-3 hover:bg-white/5 cursor-pointer flex justify-between items-center"
-                                                                    onClick={() => { setSelectedMember(m); setMembers([]); }}>
-                                                                    <span className="text-white font-bold">{m.firstName} {m.lastName}</span>
-                                                                    <span className="text-xs text-slate-500">{m.memberId}</span>
-                                                                </div>
-                                                            ))}
+                                                    {showMemberSuggestions && members.length > 0 && !selectedMember && (
+                                                        <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                                                            {members.map((m, index) => {
+                                                                const isActive = index === activeMemberSuggestion;
+                                                                return (
+                                                                    <button
+                                                                        key={m.id}
+                                                                        type="button"
+                                                                        onMouseDown={(event) => event.preventDefault()}
+                                                                        onClick={() => handleMemberSelect(m)}
+                                                                        className={`w-full p-3 text-left transition flex flex-col gap-1 ${isActive ? 'bg-blue-600/30' : 'hover:bg-white/5'}`}
+                                                                    >
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <span className="text-white font-bold">{getMemberFullName(m) || '-'}</span>
+                                                                            <span className="text-xs text-slate-400">{m.memberId || '-'}</span>
+                                                                        </div>
+                                                                        <span className="text-xs text-slate-500" dir="ltr">{m.phone || '-'}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
                                                         </div>
+                                                    )}
+                                                    {isMemberSelectionMissing && (
+                                                        <p className="text-xs text-rose-400">{t('appointments.selectMemberRequired', 'Please select a member')}</p>
                                                     )}
                                                 </div>
                                             ) : (
@@ -886,8 +1014,8 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                         </div>
                                     </div>
 
-                                    {/* 3. Date & Status */}
-                                    <div className="grid grid-cols-2 gap-4">
+                                    {/* 3. Date & Tentative Status */}
+                                    <div className={`grid gap-4 ${((!appointment && bookingMode === 'tentative') || (appointment && appointment.bookingType === 'tentative' && !appointment.memberId)) ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.date')}</label>
                                             <div className="relative">
@@ -904,20 +1032,21 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                                             </div>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.status')}</label>
-                                            <select
-                                                value={form.status}
-                                                onChange={e => setForm({ ...form, status: e.target.value })}
-                                                className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
-                                            >
-                                                <option value="booked">{t('appointments.booked', 'Booked')}</option>
-                                                <option value="arrived">{t('appointments.arrived', 'Arrived')}</option>
-                                                <option value="completed">{t('appointments.completed')}</option>
-                                                <option value="no_show">{t('appointments.noShow')}</option>
-                                                <option value="cancelled">{t('appointments.cancelled')}</option>
-                                            </select>
-                                        </div>
+                                        {((!appointment && bookingMode === 'tentative') || (appointment && appointment.bookingType === 'tentative' && !appointment.memberId)) && (
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">{t('appointments.status')}</label>
+                                                <select
+                                                    value={form.status}
+                                                    onChange={e => setForm({ ...form, status: e.target.value })}
+                                                    className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 appearance-none"
+                                                >
+                                                    <option value="booked">{t('appointments.booked', 'Booked')}</option>
+                                                    <option value="arrived">{t('appointments.arrived', 'Arrived')}</option>
+                                                    <option value="no_show">{t('appointments.noShow')}</option>
+                                                    <option value="cancelled">{t('appointments.cancelled')}</option>
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
 
 

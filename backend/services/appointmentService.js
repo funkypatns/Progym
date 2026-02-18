@@ -80,10 +80,15 @@ const AppointmentService = {
      * Create a new appointment
      */
     async createAppointment(data) {
-        const durationMinutes = data.durationMinutes ?? ((new Date(data.end) - new Date(data.start)) / 60000);
-        const timeRange = buildTimeRange(data.start, durationMinutes);
+        const rawStart = data.start ?? data.startAt;
+        const rawEnd = data.end ?? data.endAt;
+        const durationMinutes = data.durationMinutes
+            ?? data.duration
+            ?? ((new Date(rawEnd) - new Date(rawStart)) / 60000);
+        const timeRange = buildTimeRange(rawStart, durationMinutes);
         const coachId = parseInt(data.coachId);
         const trainerId = data.trainerId ? parseInt(data.trainerId) : null;
+        const serviceId = data.serviceId ? parseInt(data.serviceId) : null;
         const rawMemberId = data.memberId;
         const parsedMemberId = rawMemberId !== undefined && rawMemberId !== null && rawMemberId !== ''
             ? parseInt(rawMemberId)
@@ -114,16 +119,33 @@ const AppointmentService = {
             }
         }
 
-        const title = String(data.sessionName || data.title || '').trim() || null;
-        const sessionPrice = parseFloat(data.sessionPrice ?? data.price);
-        const normalizedPrice = Number.isFinite(sessionPrice) ? sessionPrice : 0;
         const notes = data.notes ?? null;
-        const normalizedStatus = normalizeAppointmentStatus(data.status, 'booked');
+        const normalizedStatus = hasTentativePayload
+            ? normalizeAppointmentStatus(data.status, 'booked')
+            : 'booked';
         const bookingType = hasTentativePayload
             ? normalizeBookingType(data.bookingType || data.createdFrom, 'tentative')
             : normalizeBookingType(data.bookingType || data.createdFrom, 'confirmed');
 
         return await prisma.$transaction(async (tx) => {
+            let resolvedService = null;
+            if (Number.isInteger(serviceId)) {
+                resolvedService = await tx.service.findUnique({
+                    where: { id: serviceId },
+                    select: { id: true, name: true, defaultPrice: true }
+                });
+                if (!resolvedService) {
+                    throw new Error('Service not found');
+                }
+            }
+
+            const title = resolvedService?.name || String(data.sessionName || data.title || '').trim() || null;
+            const sessionPrice = parseFloat(data.sessionPrice ?? data.price);
+            const fallbackServicePrice = Number(resolvedService?.defaultPrice);
+            const normalizedPrice = Number.isFinite(sessionPrice)
+                ? sessionPrice
+                : (Number.isFinite(fallbackServicePrice) ? fallbackServicePrice : 0);
+
             if (hasMemberPayload) {
                 const memberExists = await tx.member.findUnique({
                     where: { id: parsedMemberId },
