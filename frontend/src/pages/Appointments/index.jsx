@@ -9,17 +9,22 @@ import toast from 'react-hot-toast';
 import AppointmentModal from './AppointmentModal';
 import DayDetailsModal from './DayDetailsModal';
 import AddPaymentDialog from '../../components/payments/AddPaymentDialog'; // Reusing payment dialog
-import { useAuthStore, useSettingsStore } from '../../store';
 import { usePermissions } from '../../hooks/usePermissions';
 
 const PENDING_COMPLETION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleC8KEIQ+WFBQZG54d2uDkIpxTDIvKjo8Oz5BWF9pcXx+d2ttaVtIRxEULztBOzQzMj9KVFhdV09FREJBQkBCQ0ZJTVFVWFlaWldWVFJQT05NTk5PUVNVVldYWFlZWllYV1ZVVFRUVFRVVlZXWFhZWVhaWVlZWFhXV1ZWVVVVVVVVVVZWVldXWFhYWFhYWFhXV1dXVldXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXVw==';
 const PENDING_ALERT_STORAGE_KEY = 'gym:pendingCompletionAlertState';
+const APPOINTMENT_META_DEFAULTS = Object.freeze({
+    appointmentAlertsEnabled: true,
+    appointmentAlertIntervalMinutes: 0,
+    appointmentAlertMaxRepeats: 1,
+    appointmentAlertSoundEnabled: true,
+    appointmentAlertUiEnabled: true,
+    appointmentAlertVolume: 100
+});
 
 const Appointments = () => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
-    const { user } = useAuthStore();
-    const { settings, getSetting, fetchSettings } = useSettingsStore();
     const { can, PERMISSIONS } = usePermissions();
     const canManageAppointments = can(PERMISSIONS.APPOINTMENTS_MANAGE);
 
@@ -36,6 +41,7 @@ const Appointments = () => {
     const [appointmentReadOnly, setAppointmentReadOnly] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentAppointment, setPaymentAppointment] = useState(null);
+    const [appointmentsMeta, setAppointmentsMeta] = useState(null);
 
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedDayDate, setSelectedDayDate] = useState(null);
@@ -88,17 +94,18 @@ const Appointments = () => {
         return { name: apt.fullName || '', phone: apt.phone || '', memberCode: '', isTentative: false };
     };
 
-    const appointmentAlertsEnabled = parseBoolean(getSetting('appointment_alerts_enabled', true), true);
-    const appointmentAlertIntervalMinutes = parseNumber(getSetting('appointment_alert_interval_minutes', 0), 0);
+    const metaConfig = appointmentsMeta?.config || APPOINTMENT_META_DEFAULTS;
+    const appointmentAlertsEnabled = parseBoolean(metaConfig.appointmentAlertsEnabled, true);
+    const appointmentAlertIntervalMinutes = parseNumber(metaConfig.appointmentAlertIntervalMinutes, 0);
     const appointmentAlertRepeatIntervalMs = Math.max(0, appointmentAlertIntervalMinutes * 60 * 1000);
-    const maxRepeatsRaw = parseInt(getSetting('appointment_alert_max_repeats', 1), 10);
+    const maxRepeatsRaw = parseInt(metaConfig.appointmentAlertMaxRepeats, 10);
     const appointmentAlertMaxRepeats = Number.isFinite(maxRepeatsRaw) ? Math.max(0, maxRepeatsRaw) : 1;
-    const appointmentAlertVolumeRaw = parseNumber(getSetting('appointment_alert_volume', 100), 100);
+    const appointmentAlertVolumeRaw = parseNumber(metaConfig.appointmentAlertVolume, 100);
     const appointmentAlertVolume = Math.min(Math.max(appointmentAlertVolumeRaw, 0), 100);
     const appointmentAlertVolumeNormalized = appointmentAlertVolume / 100;
     const pendingPollIntervalMs = 30000;
-    const appointmentAlertSoundEnabled = parseBoolean(getSetting('appointment_alert_sound_enabled', true), true);
-    const appointmentAlertUiEnabled = parseBoolean(getSetting('appointment_alert_ui_enabled', true), true);
+    const appointmentAlertSoundEnabled = parseBoolean(metaConfig.appointmentAlertSoundEnabled, true);
+    const appointmentAlertUiEnabled = parseBoolean(metaConfig.appointmentAlertUiEnabled, true);
 
     const appointmentsByDate = useMemo(() => {
         const map = {};
@@ -145,6 +152,17 @@ const Appointments = () => {
         }
     };
 
+    const fetchAppointmentsMeta = async () => {
+        try {
+            const res = await apiClient.get('/appointments/meta');
+            if (res.data?.success) {
+                setAppointmentsMeta(res.data.data || null);
+            }
+        } catch (error) {
+            console.error('[APPOINTMENTS] Failed to fetch appointments meta:', error);
+        }
+    };
+
     useEffect(() => {
         if (view === 'notifications') {
             fetchNotifications();
@@ -154,8 +172,8 @@ const Appointments = () => {
     }, [currentDate, view, statusFilter]);
 
     useEffect(() => {
-        fetchSettings().catch(() => {});
-    }, [fetchSettings]);
+        fetchAppointmentsMeta();
+    }, []);
 
     useEffect(() => {
         try {
@@ -270,7 +288,7 @@ const Appointments = () => {
         fetchPendingCompletion({ allowAlerts });
         const interval = setInterval(() => fetchPendingCompletion({ allowAlerts }), pendingPollIntervalMs);
         return () => clearInterval(interval);
-    }, [view, appointmentAlertsEnabled, appointmentAlertRepeatIntervalMs, appointmentAlertMaxRepeats, appointmentAlertSoundEnabled, appointmentAlertUiEnabled, pendingPollIntervalMs, settings]);
+    }, [view, appointmentAlertsEnabled, appointmentAlertRepeatIntervalMs, appointmentAlertMaxRepeats, appointmentAlertSoundEnabled, appointmentAlertUiEnabled, pendingPollIntervalMs]);
 
     const fetchNotifications = async () => {
         setLoading(true);
@@ -892,6 +910,7 @@ const Appointments = () => {
                     readOnly={appointmentReadOnly}
                     autoCompleteTriggerId={pendingCompletionId}
                     onAutoCompleteTriggered={() => setPendingCompletionId(null)}
+                    meta={appointmentsMeta}
                 />
             )}
 

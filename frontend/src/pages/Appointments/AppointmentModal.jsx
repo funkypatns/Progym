@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Dialog, Transition } from '@headlessui/react';
 
 import { X, User, Calendar, Clock, DollarSign, Activity, Eye, CheckCircle, Lock } from 'lucide-react';
-import apiClient, { getStaffTrainers } from '../../utils/api';
+import apiClient from '../../utils/api';
 import { useAuthStore } from '../../store';
 import toast from 'react-hot-toast';
 import { format, parseISO, startOfMonth, endOfMonth, addMonths, addMinutes, isBefore, isAfter, startOfDay } from 'date-fns';
@@ -13,7 +13,7 @@ import CompletionPreviewModal from './CompletionPreviewModal';
 import ReceiptModal from '../../components/payments/ReceiptModal';
 import { formatMoney } from '../../utils/numberFormatter';
 
-const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, autoCompleteTriggerId, onAutoCompleteTriggered, readOnly }) => {
+const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, autoCompleteTriggerId, onAutoCompleteTriggered, readOnly, meta = null }) => {
     const { t, i18n } = useTranslation();
     const isRtl = i18n.dir() === 'rtl';
     const isReadOnly = Boolean(readOnly);
@@ -87,10 +87,65 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
     const [loading, setLoading] = useState(false);
     const [memberLoading, setMemberLoading] = useState(false);
 
+    const toUniqueTrainers = (rows) => {
+        const unique = new Map();
+        (Array.isArray(rows) ? rows : []).forEach((trainer) => {
+            if (!trainer || !trainer.id || unique.has(trainer.id)) return;
+            unique.set(trainer.id, trainer);
+        });
+        return Array.from(unique.values());
+    };
+
+    const applyMetaPayload = (payload) => {
+        if (!payload) return;
+        setTrainers(toUniqueTrainers(payload.trainers));
+        setServices(Array.isArray(payload.services) ? payload.services : []);
+    };
+
+    const fetchAppointmentsMeta = async () => {
+        setTrainerLoading(true);
+        try {
+            try {
+                const res = await apiClient.get('/appointments/meta');
+                if (res.data?.success) {
+                    applyMetaPayload(res.data.data || {});
+                    return;
+                }
+            } catch (error) {
+                console.error('Failed to fetch appointments meta', error);
+            }
+
+            try {
+                const [trainerRes, serviceRes] = await Promise.all([
+                    apiClient.get('/staff-trainers'),
+                    apiClient.get('/services?type=SESSION&active=true')
+                ]);
+                if (trainerRes?.data?.success) {
+                    setTrainers(toUniqueTrainers(trainerRes.data.data));
+                }
+                if (serviceRes?.data?.success) {
+                    setServices(Array.isArray(serviceRes.data.data) ? serviceRes.data.data : []);
+                }
+            } catch (fallbackError) {
+                console.error('Failed to fetch trainer/service fallback data', fallbackError);
+            }
+        } finally {
+            setTrainerLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!open || !meta) return;
+        applyMetaPayload(meta);
+    }, [open, meta]);
+
     useEffect(() => {
         if (open) {
-            fetchTrainerOptions();
-            fetchServices();
+            if (meta) {
+                applyMetaPayload(meta);
+            } else {
+                fetchAppointmentsMeta();
+            }
             if (appointment) {
                 // Edit Mode
                 setBookingMode('member');
@@ -190,7 +245,7 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
                 setCompletionData(null);
             }
         }
-    }, [open, appointment]);
+    }, [open, appointment, meta]);
 
     // Fetch availability when coach or month changes
     useEffect(() => {
@@ -211,37 +266,6 @@ const AppointmentModal = ({ open, onClose, onSuccess, appointment, initialDate, 
             }
         } catch (error) {
             console.error('Failed to fetch availability');
-        }
-    };
-
-    const fetchTrainerOptions = async () => {
-        setTrainerLoading(true);
-        try {
-            const res = await getStaffTrainers();
-            if (res.data.success) {
-                const unique = new Map();
-                res.data.data.forEach(t => {
-                    if (!unique.has(t.id)) {
-                        unique.set(t.id, t);
-                    }
-                });
-                setTrainers(Array.from(unique.values()));
-            }
-        } catch (error) {
-            console.error('Failed to fetch trainers');
-        } finally {
-            setTrainerLoading(false);
-        }
-    };
-
-    const fetchServices = async () => {
-        try {
-            const res = await apiClient.get('/services?type=SESSION&active=true');
-            if (res.data.success) {
-                setServices(res.data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch services');
         }
     };
 

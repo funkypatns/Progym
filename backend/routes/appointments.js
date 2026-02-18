@@ -9,6 +9,78 @@ const CreditService = require('../services/creditService');
 const { addTableSheet, createWorkbook, sendWorkbook, toDateStamp } = require('../services/excelExportService');
 const isDev = process.env.NODE_ENV !== 'production';
 
+const APPOINTMENT_META_CONFIG_DEFAULTS = Object.freeze({
+    appointmentAlertsEnabled: true,
+    appointmentAlertIntervalMinutes: 0,
+    appointmentAlertMaxRepeats: 1,
+    appointmentAlertSoundEnabled: true,
+    appointmentAlertUiEnabled: true,
+    appointmentAlertVolume: 100,
+    defaultDurationMinutes: 60
+});
+
+const APPOINTMENT_META_SETTING_KEY_MAP = Object.freeze({
+    appointment_alerts_enabled: 'appointmentAlertsEnabled',
+    appointment_alert_interval_minutes: 'appointmentAlertIntervalMinutes',
+    appointment_alert_max_repeats: 'appointmentAlertMaxRepeats',
+    appointment_alert_sound_enabled: 'appointmentAlertSoundEnabled',
+    appointment_alert_ui_enabled: 'appointmentAlertUiEnabled',
+    appointment_alert_volume: 'appointmentAlertVolume',
+    appointment_default_duration_minutes: 'defaultDurationMinutes'
+});
+
+const APPOINTMENT_META_SETTING_KEYS = Object.freeze(Object.keys(APPOINTMENT_META_SETTING_KEY_MAP));
+
+function parseSettingValue(setting) {
+    if (!setting) return undefined;
+
+    const rawValue = setting.value;
+    if (setting.type === 'boolean') {
+        if (typeof rawValue === 'boolean') return rawValue;
+        return String(rawValue).toLowerCase() === 'true';
+    }
+
+    if (setting.type === 'number') {
+        const parsedNumber = Number(rawValue);
+        return Number.isFinite(parsedNumber) ? parsedNumber : undefined;
+    }
+
+    if (setting.type === 'json') {
+        try {
+            return JSON.parse(rawValue);
+        } catch (error) {
+            return undefined;
+        }
+    }
+
+    return rawValue;
+}
+
+function buildAppointmentsMetaConfig(settingRows) {
+    const config = { ...APPOINTMENT_META_CONFIG_DEFAULTS };
+    for (const row of settingRows || []) {
+        const mappedKey = APPOINTMENT_META_SETTING_KEY_MAP[row?.key];
+        if (!mappedKey) continue;
+        const parsedValue = parseSettingValue(row);
+        if (parsedValue === undefined || parsedValue === null || parsedValue === '') continue;
+        config[mappedKey] = parsedValue;
+    }
+
+    const intervalMinutes = Number(config.appointmentAlertIntervalMinutes);
+    config.appointmentAlertIntervalMinutes = Number.isFinite(intervalMinutes) ? Math.max(0, intervalMinutes) : 0;
+
+    const maxRepeats = Number(config.appointmentAlertMaxRepeats);
+    config.appointmentAlertMaxRepeats = Number.isFinite(maxRepeats) ? Math.max(0, Math.round(maxRepeats)) : 1;
+
+    const volume = Number(config.appointmentAlertVolume);
+    config.appointmentAlertVolume = Number.isFinite(volume) ? Math.min(Math.max(volume, 0), 100) : 100;
+
+    const defaultDuration = Number(config.defaultDurationMinutes);
+    config.defaultDurationMinutes = Number.isFinite(defaultDuration) ? Math.max(1, Math.round(defaultDuration)) : 60;
+
+    return config;
+}
+
 // Create
 router.post('/', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
@@ -56,6 +128,63 @@ router.get('/', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), 
             success: false,
             message: error.message,
             arabicMessage: error.arabicMessage
+        });
+    }
+});
+
+// Meta for appointments UI (no settings.view dependency)
+router.get('/meta', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
+    try {
+        const [trainers, services, settings] = await Promise.all([
+            req.prisma.staffTrainer.findMany({
+                where: { active: true },
+                select: {
+                    id: true,
+                    name: true
+                },
+                orderBy: { name: 'asc' }
+            }),
+            req.prisma.service.findMany({
+                where: {
+                    isActive: true,
+                    type: 'SESSION'
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    defaultPrice: true,
+                    defaultDuration: true
+                },
+                orderBy: { name: 'asc' }
+            }),
+            req.prisma.setting.findMany({
+                where: {
+                    key: {
+                        in: APPOINTMENT_META_SETTING_KEYS
+                    }
+                },
+                select: {
+                    key: true,
+                    value: true,
+                    type: true
+                }
+            })
+        ]);
+
+        return res.json({
+            success: true,
+            data: {
+                trainers: trainers || [],
+                services: services || [],
+                config: buildAppointmentsMetaConfig(settings || [])
+            }
+        });
+    } catch (error) {
+        console.error('[APPOINTMENTS] Failed to load meta:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'APPOINTMENTS_META_ERROR',
+            message: 'Failed to load appointments meta'
         });
     }
 });
