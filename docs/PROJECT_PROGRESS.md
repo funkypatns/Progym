@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- License-server admin zoom is now page-scoped: Ctrl/Cmd zoom (wheel and +/-/0) is captured inside admin UI and persisted per route path (`/admin/login`, `/admin`, `/admin/vendor-profile`) so zoom changes no longer leak across all admin pages. Status: done.
 - Check-in flow updated per product direction: manual check-in is restored and fully usable, while only QR scanner mode now shows "Coming Soon" (toggle-controlled via `VITE_ENABLE_CHECKIN_QR`, with fallback support for legacy `VITE_ENABLE_CHECKIN`). Status: done.
 - Persistent file-based error logging is now enabled for backend and license-server startup paths: errors/warnings/unhandled exceptions are mirrored to `data/logs/<service>-errors.log` (plus combined logs), and startup output now shows the exact error-log file path for quick support diagnostics. Status: done.
 - Appointments page no longer depends on `/api/settings`: added secured `/api/appointments/meta` (requires `appointments.view`) to provide appointments-only trainers/services/config payload, switched appointments UI alert config loading to meta endpoint, and passed meta into appointment modal with fallback loading; settings endpoints remain protected under settings permissions. Status: done.
@@ -94,6 +95,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-18 | 4376239  | Scope license-server admin zoom per page by adding shared `zoom-scope.js` (Ctrl/Cmd + wheel/+/−/0 handling) and storing zoom by pathname so each admin page keeps its own zoom level. |
 | 2026-02-18 | 427914a  | Restore full Check-in page access and scope "Coming Soon" to QR scanner mode only: remove full-page gate, keep manual entry + activity polling active, add QR-specific coming-soon messaging (AR/EN), and switch env toggle guidance to `VITE_ENABLE_CHECKIN_QR` with backward-compatible fallback. |
 | 2026-02-18 | cc24781  | Temporarily disable Check-in UI with a Coming Soon gate controlled by `VITE_ENABLE_CHECKIN` (default off), prevent check-in data polling while gated, add AR/EN i18n messaging for the disabled state, and document the env toggle in `frontend/.env.example`. |
 | 2026-02-18 | 661b33e  | Add persistent file logger utilities for backend and license-server, wire startup to initialize `data/logs` and mirror `console.error`/`console.warn` plus uncaught/unhandled failures to `<service>-errors.log`, and print active error-log path on boot for quick troubleshooting. |
