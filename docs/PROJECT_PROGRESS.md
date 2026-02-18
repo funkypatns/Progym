@@ -1,6 +1,6 @@
 # Project Progress
 
-Last updated: 2026-02-17
+Last updated: 2026-02-18
 
 Purpose:
 This file is the single source of truth for plans, tasks, and progress tracking. It is meant to help resume work after context compaction or a new chat session, and to prevent duplicate work.
@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Appointments page no longer depends on `/api/settings`: added secured `/api/appointments/meta` (requires `appointments.view`) to provide appointments-only trainers/services/config payload, switched appointments UI alert config loading to meta endpoint, and passed meta into appointment modal with fallback loading; settings endpoints remain protected under settings permissions. Status: done.
 - Appointments permissions are now explicit and enforced end-to-end: split permission categories to include dedicated `Appointments` (view/manage) in permissions UI, enforce `appointments.view` for read endpoints and `appointments.manage` for mutating endpoints, and gate appointments actions in UI for view-only users while keeping friendly access-denied behavior. Status: done.
 - Payments module now supports dedicated Package Payments flow: added `PACKAGE` type handling in `/api/payments`, new `/api/payments/export` structured Excel export, frontend tab (`مدفوعات الباقات`), package-aware table grouping/summary/search, and package payment coverage tests. Status: done.
 - Targeted audit fixes applied and validated: shift report date filtering now uses overlap logic, employee collections now derives rows from closed shifts (including zero-activity shifts) with correct employee grouping key, cash close create now returns `warningCode=NEGATIVE_EXPECTED_CASH` when expected cash is negative, and POS shift history response now includes compatibility aliases (`endedAt`, `endedCash`, `createdAt`). Status: done.
@@ -91,6 +92,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-18 | f87cc29  | Decouple appointments from settings permission by adding `GET /api/appointments/meta` (guarded by `appointments.view`) for trainers/services/appointment-alert config, updating appointments page/modal to consume meta instead of `/api/settings`, and extending appointments permission tests for `/appointments/meta` allow/deny behavior. |
 | 2026-02-18 | 7d6bf33  | Add missing Appointments permission module flow: backend appointments routes now require `appointments.view/manage` by operation type, permissions categories split into dedicated Appointments + Coaches sections for clearer toggles, appointments UI actions gated for view-only staff, and regression tests added for appointments permission middleware enforcement. |
 | 2026-02-18 | 47d567c  | Add Package Payments support end-to-end: backend `/api/payments` now returns finalized package purchases (`type=PACKAGE`) from `MemberPackage`, add `/api/payments/export` structured Excel output, add Payments UI package tab/export wiring with package-specific accounting rows, and include backend route tests for package filtering behavior. |
 | 2026-02-18 | 86a1872  | Apply targeted audit fixes: overlap-based POS shift range filtering, closed-shift-based employee collections with zero-shift visibility and corrected employee grouping key, cash-close negative expected-cash warning code in API response, and shift response compatibility aliases (`endedAt`, `endedCash`, `createdAt`). |
