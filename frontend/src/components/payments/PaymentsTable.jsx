@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, Trash2, ChevronLeft, ChevronRight, Download, XCircle, Banknote, RotateCcw, PauseCircle, Clock, ChevronDown, ChevronUp, History, User } from 'lucide-react';
-import api from '../../utils/api';
+import { Eye, Trash2, ChevronLeft, ChevronRight, Download, XCircle, Banknote, RotateCcw, PauseCircle, Clock, History, User } from 'lucide-react';
 import { formatDate, formatTime } from '../../utils/dateFormatter';
 import AddPaymentDialog from './AddPaymentDialog';
 import RefundSummaryModal from '../RefundSummaryModal';
 
-const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }) => {
+const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh, onExport }) => {
     const { t, i18n } = useTranslation();
     const [currentPage, setCurrentPage] = useState(1);
     const [filter, setFilter] = useState('');
@@ -26,9 +25,12 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
         payments.forEach(payment => {
             const subId = payment.subscription?.id;
             const aptId = payment.appointment?.id;
+            const packageId = payment.memberPackage?.id;
 
             const groupId = subId
                 ? `sub-${subId}`
+                : packageId
+                    ? `pkg-${packageId}`
                 : `pay-${payment.id}`;
 
             if (!groups[groupId]) {
@@ -64,7 +66,43 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                         isPaused: sub.isPaused,
                         lastPaymentDate: payment.createdAt || payment.date,
                         canPay: true,
-                        canRefund: true
+                        canRefund: true,
+                        canDelete: true
+                    };
+                } else if (packageId) {
+                    const pkg = payment.memberPackage || {};
+                    const total = Number(pkg.totalPrice ?? pkg.plan?.price ?? payment.amount ?? 0);
+                    const paid = Number(pkg.amountPaid ?? payment.amount ?? 0);
+                    const refunded = Number(pkg.refundedAmount || 0);
+                    const remaining = Math.max(0, Number(pkg.dueAmount ?? (total - paid)));
+                    let status = 'DUE';
+                    if (remaining <= 0.01) status = 'PAID';
+                    else if (paid > 0) status = 'PARTIAL';
+                    if (refunded > 0 && paid <= 0.01) status = 'REFUNDED';
+
+                    groups[groupId] = {
+                        type: 'package',
+                        uniqueId: groupId,
+                        subscription: {
+                            id: packageId,
+                            plan: { name: pkg.plan?.name || pkg.sessionName || t('payments.packagePayments', 'Package Payments') },
+                            status: pkg.status || 'ACTIVE',
+                            canceledAt: null,
+                            refundedAmount: refunded
+                        },
+                        member: payment.member,
+                        payments: [],
+                        total,
+                        paid,
+                        refunded,
+                        remaining,
+                        status,
+                        daysRemaining: 0,
+                        isPaused: false,
+                        lastPaymentDate: payment.paidAt || payment.createdAt || payment.date,
+                        canPay: false,
+                        canRefund: false,
+                        canDelete: false
                     };
                 } else if (aptId) {
                     // Appointment Logic
@@ -101,7 +139,8 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                         isPaused: false,
                         lastPaymentDate: payment.createdAt || payment.date,
                         canPay: false, // Disable Pay from here for now
-                        canRefund: false // Disable Refund from here for now
+                        canRefund: false, // Disable Refund from here for now
+                        canDelete: true
                     };
                 } else {
                     // General / Misc Payment Logic (Orphan)
@@ -125,31 +164,38 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                         isPaused: false,
                         lastPaymentDate: payment.createdAt || payment.date,
                         canPay: false,
-                        canRefund: false
+                        canRefund: false,
+                        canDelete: true
                     };
                 }
             }
 
             groups[groupId].payments.push(payment);
-            if (new Date(payment.createdAt) > new Date(groups[groupId].lastPaymentDate)) {
-                groups[groupId].lastPaymentDate = payment.createdAt;
+            if (new Date(payment.createdAt || payment.paidAt || payment.date) > new Date(groups[groupId].lastPaymentDate)) {
+                groups[groupId].lastPaymentDate = payment.createdAt || payment.paidAt || payment.date;
             }
 
             // Accumulate totals for general group
-            if (!subId && !aptId) {
+            if (!subId && !aptId && !packageId) {
                 groups[groupId].total += (parseFloat(payment.amount) || 0);
                 groups[groupId].paid += (parseFloat(payment.amount) || 0);
             }
         });
 
         return Object.values(groups).sort((a, b) => new Date(b.lastPaymentDate) - new Date(a.lastPaymentDate));
-    }, [payments]);
+    }, [payments, t]);
 
-    const filteredGroups = groupedData.filter(g =>
-        (g.member?.firstName || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (g.member?.lastName || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (g.subscription?.id || '').toString().includes(filter)
-    );
+    const filteredGroups = groupedData.filter((g) => {
+        const normalized = filter.toLowerCase();
+        return (
+            (g.member?.firstName || '').toLowerCase().includes(normalized)
+            || (g.member?.lastName || '').toLowerCase().includes(normalized)
+            || (g.member?.phone || '').toLowerCase().includes(normalized)
+            || (g.member?.memberId || '').toString().toLowerCase().includes(normalized)
+            || (g.subscription?.plan?.name || '').toLowerCase().includes(normalized)
+            || (g.subscription?.id || '').toString().includes(filter)
+        );
+    });
 
     const totalPages = Math.ceil(filteredGroups.length / itemsPerPage);
     const paginatedGroups = filteredGroups.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -202,7 +248,11 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                         <Eye size={18} />
                     </div>
                 </div>
-                <button className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-600 shadow-sm transition-all active:scale-95">
+                <button
+                    onClick={() => onExport && onExport()}
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-600 shadow-sm transition-all active:scale-95 disabled:opacity-60"
+                    disabled={!onExport}
+                >
                     <Download size={18} /> {t('common.export')}
                 </button>
             </div>
@@ -221,11 +271,10 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                         {paginatedGroups.map(group => {
                             const isExpanded = expandedGroups[group.uniqueId];
-                            const hasHistory = group.payments && group.payments.length > 0;
                             const subscriptionStatus = String(group.subscription?.status || '').toLowerCase();
                             const isCancelled = ['cancelled', 'canceled', 'terminated'].includes(subscriptionStatus);
                             const cancelledAt = group.subscription?.canceledAt ? new Date(group.subscription.canceledAt) : null;
-                            const showBalanceFields = group.type === 'subscription';
+                            const showBalanceFields = group.type === 'subscription' || group.type === 'package';
                             const trainerPayment = group.payments?.find(p => p.appointment?.trainer)
                                 || group.payments?.find(p => p.appointment?.coach)
                                 || null;
@@ -235,10 +284,10 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                     : null);
                             const summaryItems = showBalanceFields
                                 ? [
-                                    { label: 'Total', val: group.total, color: 'text-slate-600 dark:text-slate-400' },
-                                    { label: 'Paid', val: group.paid, color: 'text-emerald-600' },
-                                    { label: 'Refunded', val: group.subscription.refundedAmount || 0, color: 'text-rose-500' },
-                                    { label: 'Due', val: group.remaining, color: group.remaining > 0 ? 'text-rose-600' : 'text-slate-400', bold: true, highlight: group.remaining > 0 }
+                                    { label: t('payments.total', 'Total'), val: group.total, color: 'text-slate-600 dark:text-slate-400' },
+                                    { label: t('payments.paid', 'Paid'), val: group.paid, color: 'text-emerald-600' },
+                                    { label: t('common.refunded', 'Refunded'), val: (group.refunded ?? group.subscription.refundedAmount ?? 0), color: 'text-rose-500' },
+                                    { label: t('payments.due', 'Due'), val: group.remaining, color: group.remaining > 0 ? 'text-rose-600' : 'text-slate-400', bold: true, highlight: group.remaining > 0 }
                                 ]
                                 : [
                                     { label: t('payments.total', 'Total'), val: group.total, color: 'text-slate-600 dark:text-slate-400' },
@@ -376,13 +425,15 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                 )}
 
                                                 {/* Delete Action */}
-                                                <button
-                                                    onClick={() => onDelete && onDelete(group.payments[0]?.id)}
-                                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all active:scale-95"
-                                                    title="Delete Record"
-                                                >
-                                                    <Trash2 size={20} />
-                                                </button>
+                                                {group.canDelete !== false && (
+                                                    <button
+                                                        onClick={() => onDelete && onDelete(group.payments[0]?.id)}
+                                                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all active:scale-95"
+                                                        title="Delete Record"
+                                                    >
+                                                        <Trash2 size={20} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -423,12 +474,16 @@ const PaymentsTable = ({ payments, loading, onViewReceipt, onDelete, onRefresh }
                                                                         {parseFloat(p.amount) < 0 ? '' : '+'}{parseFloat(p.amount).toLocaleString()} EGP
                                                                     </div>
                                                                     <div className="flex items-center gap-1">
-                                                                        <button onClick={() => onViewReceipt(p)} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all" title="View Receipt">
-                                                                            <Eye size={18} />
-                                                                        </button>
-                                                                        <button onClick={() => onDelete(p.id)} className="p-2 text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-all" title="Delete">
-                                                                            <Trash2 size={18} />
-                                                                        </button>
+                                                                        {!p.memberPackage && (
+                                                                            <button onClick={() => onViewReceipt(p)} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all" title="View Receipt">
+                                                                                <Eye size={18} />
+                                                                            </button>
+                                                                        )}
+                                                                        {!p.memberPackage && (
+                                                                            <button onClick={() => onDelete(p.id)} className="p-2 text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-all" title="Delete">
+                                                                                <Trash2 size={18} />
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>

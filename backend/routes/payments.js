@@ -14,6 +14,70 @@ const { normalizePaymentMethod, resolvePaymentReference, recordPaymentTransactio
 const CommissionService = require('../services/commissionService');
 const { createReceipt, buildTransactionId, parseReceiptJson } = require('../services/receiptService');
 const { roundMoney, clampMoney } = require('../utils/money');
+const {
+    addTableSheet,
+    createWorkbook,
+    sendWorkbook,
+    toDateStamp
+} = require('../services/excelExportService');
+
+const FINALIZED_PACKAGE_PAYMENT_STATUSES = ['paid', 'PAID', 'completed', 'COMPLETED'];
+
+const buildMemberSearchFilter = (queryValue) => {
+    const normalized = String(queryValue || '').trim();
+    if (!normalized) return null;
+
+    const or = [
+        { firstName: { contains: normalized } },
+        { lastName: { contains: normalized } },
+        { phone: { contains: normalized } },
+        { memberId: { contains: normalized } }
+    ];
+
+    const numericId = Number.parseInt(normalized, 10);
+    if (Number.isInteger(numericId)) {
+        or.push({ id: numericId });
+    }
+
+    return { OR: or };
+};
+
+const normalizePackagePaymentRecord = (memberPackage) => {
+    const total = Number(memberPackage?.plan?.price || 0);
+    const paid = Number(memberPackage?.amountPaid || 0);
+    const due = Math.max(0, total - paid);
+
+    return {
+        id: `pkg-${memberPackage.id}`,
+        amount: paid,
+        method: memberPackage.paymentMethod || 'cash',
+        status: 'completed',
+        paidAt: memberPackage.createdAt,
+        createdAt: memberPackage.createdAt,
+        type: 'PACKAGE',
+        member: memberPackage.member,
+        memberPackage: {
+            id: memberPackage.id,
+            status: memberPackage.status,
+            paymentStatus: memberPackage.paymentStatus || 'unpaid',
+            paymentMethod: memberPackage.paymentMethod || null,
+            totalPrice: total,
+            amountPaid: paid,
+            refundedAmount: 0,
+            dueAmount: due,
+            totalSessions: memberPackage.totalSessions,
+            remainingSessions: memberPackage.remainingSessions,
+            createdAt: memberPackage.createdAt,
+            sessionName: memberPackage.sessionName,
+            sessionPrice: memberPackage.sessionPrice,
+            plan: memberPackage.plan,
+            createdByEmployee: memberPackage.createdByEmployee || null
+        },
+        subscription: null,
+        appointment: null,
+        refunds: []
+    };
+};
 
 router.use(authenticate);
 
@@ -88,12 +152,17 @@ const buildPaymentResponsePayload = async (payment, prisma, receiptError = null)
  */
 router.get('/', async (req, res) => {
     try {
-        const { page = 1, limit = 20, memberId, status, startDate, endDate } = req.query;
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const { page = 1, limit = 20, memberId, status, startDate, endDate, q } = req.query;
+        const pageNumber = Number.parseInt(page, 10) || 1;
+        const limitNumber = Number.parseInt(limit, 10) || 20;
+        const skip = Math.max(0, (pageNumber - 1) * limitNumber);
 
         const where = {};
+        const packageWhere = {};
         const rawTypeFilter = String(req.query.type || '').trim().toUpperCase();
         const debugTypeFilter = process.env.DEBUG_PAYMENT_TYPE_FILTER === '1';
+        const includePackagePayments = rawTypeFilter === 'PACKAGE' || rawTypeFilter === 'ALL' || !rawTypeFilter;
+        const includeRegularPayments = rawTypeFilter !== 'PACKAGE';
 
         const userRole = (req.user.role || '').toLowerCase();
         const privilegedRoles = ['admin', 'owner', 'superadmin'];
@@ -117,9 +186,17 @@ router.get('/', async (req, res) => {
             if (openShift) {
                 where.OR.push({ shiftId: openShift.id });
             }
+
+            packageWhere.createdByEmployeeId = req.user.id;
         }
 
-        if (memberId) where.memberId = parseInt(memberId);
+        if (memberId) {
+            const parsedMemberId = Number.parseInt(memberId, 10);
+            if (Number.isInteger(parsedMemberId)) {
+                where.memberId = parsedMemberId;
+                packageWhere.memberId = parsedMemberId;
+            }
+        }
         if (status) where.status = status;
 
         // Type Filtering (session = appointmentId, subscription = subscriptionId)
@@ -128,8 +205,19 @@ router.get('/', async (req, res) => {
         } else if (rawTypeFilter === 'SUBSCRIPTION') {
             where.subscriptionId = { not: null };
         }
+
+        const memberSearchFilter = buildMemberSearchFilter(q);
+        if (memberSearchFilter) {
+            where.member = memberSearchFilter;
+            packageWhere.member = memberSearchFilter;
+        }
+
         if (debugTypeFilter) {
-            console.log(`[PAYMENTS] role=${userRole} type=${rawTypeFilter || 'ALL'} filters`, { appointment: where.appointmentId, subscription: where.subscriptionId });
+            console.log(`[PAYMENTS] role=${userRole} type=${rawTypeFilter || 'ALL'} filters`, {
+                appointment: where.appointmentId,
+                subscription: where.subscriptionId,
+                includePackagePayments
+            });
         }
 
 
@@ -137,50 +225,95 @@ router.get('/', async (req, res) => {
             where.paidAt = {};
             if (startDate) where.paidAt.gte = new Date(startDate);
             if (endDate) where.paidAt.lte = new Date(endDate);
+
+            packageWhere.createdAt = {};
+            if (startDate) packageWhere.createdAt.gte = new Date(startDate);
+            if (endDate) packageWhere.createdAt.lte = new Date(endDate);
         }
 
-        const [payments, total] = await Promise.all([
-            req.prisma.payment.findMany({
-                where,
-                skip,
-                take: parseInt(limit),
-                orderBy: { paidAt: 'desc' },
+        packageWhere.paymentStatus = { in: FINALIZED_PACKAGE_PAYMENT_STATUSES };
+
+        let payments = [];
+        let total = 0;
+        let regularPayments = [];
+        let regularTotal = 0;
+
+        if (includeRegularPayments) {
+            [regularPayments, regularTotal] = await Promise.all([
+                req.prisma.payment.findMany({
+                    where,
+                    ...(includePackagePayments ? {} : { skip, take: limitNumber }),
+                    orderBy: { paidAt: 'desc' },
+                    include: {
+                        member: {
+                            select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
+                        },
+                        subscription: {
+                            include: {
+                                plan: true,
+                                payments: {
+                                    select: { amount: true, status: true }
+                                }
+                            }
+                        },
+                        creator: {
+                            select: { id: true, firstName: true, lastName: true, role: true }
+                        },
+                        appointment: {
+                            include: {
+                                payments: {
+                                    select: { amount: true, status: true }
+                                },
+                                coach: {
+                                    select: { id: true, firstName: true, lastName: true }
+                                },
+                                trainer: {
+                                    select: { id: true, name: true }
+                                },
+                                completedByEmployee: {
+                                    select: { id: true, firstName: true, lastName: true }
+                                }
+                            }
+                        },
+                        refunds: true
+                    }
+                }),
+                req.prisma.payment.count({ where })
+            ]);
+        }
+
+        let packagePayments = [];
+        if (includePackagePayments) {
+            const packageRows = await req.prisma.memberPackage.findMany({
+                where: packageWhere,
+                orderBy: { createdAt: 'desc' },
                 include: {
                     member: {
                         select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
                     },
-                    subscription: {
-                        include: {
-                            plan: true,
-                            payments: {
-                                select: { amount: true, status: true }
-                            }
-                        }
+                    plan: {
+                        select: { id: true, name: true, price: true, packageTotalSessions: true }
                     },
-                    creator: {
-                        select: { id: true, firstName: true, lastName: true, role: true }
-                    },
-                    appointment: {
-                        include: {
-                            payments: {
-                                select: { amount: true, status: true }
-                            },
-                            coach: {
-                                select: { id: true, firstName: true, lastName: true }
-                            },
-                            trainer: {
-                                select: { id: true, name: true }
-                            },
-                            completedByEmployee: {
-                                select: { id: true, firstName: true, lastName: true }
-                            }
-                        }
-                    },
-                    refunds: true
+                    createdByEmployee: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
                 }
-            }),
-            req.prisma.payment.count({ where })
-        ]);
+            });
+            packagePayments = packageRows.map(normalizePackagePaymentRecord);
+        }
+
+        if (includeRegularPayments && includePackagePayments) {
+            const combined = [...regularPayments, ...packagePayments]
+                .sort((a, b) => new Date(b.paidAt || b.createdAt) - new Date(a.paidAt || a.createdAt));
+            total = regularTotal + packagePayments.length;
+            payments = combined.slice(skip, skip + limitNumber);
+        } else if (includePackagePayments) {
+            total = packagePayments.length;
+            payments = packagePayments.slice(skip, skip + limitNumber);
+        } else {
+            total = regularTotal;
+            payments = regularPayments;
+        }
 
         if (debugTypeFilter) {
             console.log(`[PAYMENTS] returning ${payments.length} rows for role=${userRole} type=${rawTypeFilter || 'ALL'}`);
@@ -197,10 +330,10 @@ router.get('/', async (req, res) => {
             data: {
                 payments,
                 pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
+                    page: pageNumber,
+                    limit: limitNumber,
                     total,
-                    totalPages: Math.ceil(total / parseInt(limit))
+                    totalPages: Math.ceil(total / limitNumber)
                 }
             }
         });
@@ -1124,6 +1257,199 @@ router.get('/latest', async (req, res) => {
     } catch (error) {
         console.error('Get latest receipt error:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch latest receipt' });
+    }
+});
+
+/**
+ * GET /api/payments/export
+ * Export payments ledger as structured Excel
+ */
+router.get('/export', async (req, res) => {
+    try {
+        const { memberId, status, startDate, endDate, q } = req.query;
+        const rawTypeFilter = String(req.query.type || '').trim().toUpperCase();
+        const includePackagePayments = rawTypeFilter === 'PACKAGE' || rawTypeFilter === 'ALL' || !rawTypeFilter;
+        const includeRegularPayments = rawTypeFilter !== 'PACKAGE';
+
+        const where = {};
+        const packageWhere = {
+            paymentStatus: { in: FINALIZED_PACKAGE_PAYMENT_STATUSES }
+        };
+
+        if (memberId) {
+            const parsedMemberId = Number.parseInt(memberId, 10);
+            if (Number.isInteger(parsedMemberId)) {
+                where.memberId = parsedMemberId;
+                packageWhere.memberId = parsedMemberId;
+            }
+        }
+        if (status) where.status = status;
+
+        if (rawTypeFilter === 'SESSION') {
+            where.appointmentId = { not: null };
+        } else if (rawTypeFilter === 'SUBSCRIPTION') {
+            where.subscriptionId = { not: null };
+        }
+
+        const memberSearchFilter = buildMemberSearchFilter(q);
+        if (memberSearchFilter) {
+            where.member = memberSearchFilter;
+            packageWhere.member = memberSearchFilter;
+        }
+
+        if (startDate || endDate) {
+            where.paidAt = {};
+            if (startDate) where.paidAt.gte = new Date(startDate);
+            if (endDate) where.paidAt.lte = new Date(endDate);
+
+            packageWhere.createdAt = {};
+            if (startDate) packageWhere.createdAt.gte = new Date(startDate);
+            if (endDate) packageWhere.createdAt.lte = new Date(endDate);
+        }
+
+        const regularPayments = includeRegularPayments
+            ? await req.prisma.payment.findMany({
+                where,
+                orderBy: { paidAt: 'desc' },
+                include: {
+                    member: {
+                        select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
+                    },
+                    subscription: {
+                        include: {
+                            plan: {
+                                select: { id: true, name: true, price: true }
+                            }
+                        }
+                    },
+                    appointment: {
+                        select: { id: true, title: true, price: true, finalPrice: true, paidAmount: true, dueAmount: true }
+                    },
+                    creator: {
+                        select: { id: true, firstName: true, lastName: true }
+                    },
+                    refunds: {
+                        select: { amount: true }
+                    }
+                }
+            })
+            : [];
+
+        const packagePayments = includePackagePayments
+            ? (await req.prisma.memberPackage.findMany({
+                where: packageWhere,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    member: {
+                        select: { id: true, memberId: true, firstName: true, lastName: true, phone: true }
+                    },
+                    plan: {
+                        select: { id: true, name: true, price: true, packageTotalSessions: true }
+                    },
+                    createdByEmployee: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
+                }
+            })).map(normalizePackagePaymentRecord)
+            : [];
+
+        const rows = [];
+
+        regularPayments.forEach((payment) => {
+            const refunded = (payment.refunds || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+            const memberName = `${payment.member?.firstName || ''} ${payment.member?.lastName || ''}`.trim();
+            const totalPrice = Number(
+                payment.subscription?.price
+                || payment.subscription?.plan?.price
+                || payment.appointment?.finalPrice
+                || payment.appointment?.price
+                || payment.amount
+                || 0
+            );
+            const paidAmount = Number(
+                payment.subscription?.paidAmount
+                || payment.appointment?.paidAmount
+                || payment.amount
+                || 0
+            );
+            const dueAmount = Math.max(0, Number(payment.appointment?.dueAmount ?? (totalPrice - paidAmount)));
+
+            rows.push({
+                paymentType: payment.subscriptionId ? 'Subscription' : payment.appointmentId ? 'Session' : 'General',
+                referenceId: payment.id,
+                memberCode: payment.member?.memberId || '',
+                memberName,
+                memberPhone: payment.member?.phone || '',
+                itemName: payment.subscription?.plan?.name || payment.appointment?.title || 'Payment',
+                totalPrice,
+                paid: paidAmount,
+                refunded,
+                due: dueAmount,
+                lastActivity: payment.paidAt || payment.createdAt,
+                method: payment.method || '',
+                status: payment.status || '',
+                createdBy: `${payment.creator?.firstName || ''} ${payment.creator?.lastName || ''}`.trim()
+            });
+        });
+
+        packagePayments.forEach((payment) => {
+            const memberName = `${payment.member?.firstName || ''} ${payment.member?.lastName || ''}`.trim();
+            const packageData = payment.memberPackage || {};
+            rows.push({
+                paymentType: 'Package',
+                referenceId: packageData.id,
+                memberCode: payment.member?.memberId || '',
+                memberName,
+                memberPhone: payment.member?.phone || '',
+                itemName: packageData.plan?.name || packageData.sessionName || 'Package',
+                totalPrice: Number(packageData.totalPrice || 0),
+                paid: Number(packageData.amountPaid || 0),
+                refunded: Number(packageData.refundedAmount || 0),
+                due: Number(packageData.dueAmount || 0),
+                lastActivity: payment.paidAt || payment.createdAt,
+                method: payment.method || packageData.paymentMethod || '',
+                status: packageData.paymentStatus || payment.status || '',
+                createdBy: `${packageData.createdByEmployee?.firstName || ''} ${packageData.createdByEmployee?.lastName || ''}`.trim()
+            });
+        });
+
+        rows.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+
+        const workbook = createWorkbook();
+        const sheetName = rawTypeFilter === 'PACKAGE' ? 'Package Payments' : 'Payments';
+
+        addTableSheet(workbook, {
+            name: sheetName,
+            title: `${sheetName} Export`,
+            subtitle: `Generated ${new Date().toISOString()}`,
+            columns: [
+                { key: 'paymentType', header: 'Type' },
+                { key: 'referenceId', header: 'Reference ID' },
+                { key: 'memberCode', header: 'Member Code' },
+                { key: 'memberName', header: 'Member Name' },
+                { key: 'memberPhone', header: 'Phone' },
+                { key: 'itemName', header: 'Plan / Package / Service' },
+                { key: 'totalPrice', header: 'Total Price', type: 'currency' },
+                { key: 'paid', header: 'Paid', type: 'currency' },
+                { key: 'refunded', header: 'Refunded', type: 'currency' },
+                { key: 'due', header: 'Due', type: 'currency' },
+                { key: 'lastActivity', header: 'Last Activity', type: 'date' },
+                { key: 'method', header: 'Method' },
+                { key: 'status', header: 'Status' },
+                { key: 'createdBy', header: 'Created By' }
+            ],
+            rows
+        });
+
+        const fileSuffix = rawTypeFilter ? rawTypeFilter.toLowerCase() : 'all';
+        return sendWorkbook(res, workbook, `payments-${fileSuffix}-${toDateStamp()}.xlsx`);
+    } catch (error) {
+        console.error('Export payments error:', error);
+        return res.status(500).json({
+            success: false,
+            errorCode: 'EXPORT_FAILED',
+            message: 'Failed to export payments'
+        });
     }
 });
 

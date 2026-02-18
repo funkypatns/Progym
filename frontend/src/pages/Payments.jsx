@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../utils/api';
 import toast from 'react-hot-toast';
-import { Plus, DollarSign, CreditCard, TrendingUp, Download } from 'lucide-react';
+import { Plus, DollarSign, CreditCard, TrendingUp } from 'lucide-react';
 
 import PaymentsTable from '../components/payments/PaymentsTable';
 import AddPaymentDialog from '../components/payments/AddPaymentDialog';
@@ -15,7 +15,7 @@ const Payments = () => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedPayment, setSelectedPayment] = useState(null); // For ReceiptModal
     const [summary, setSummary] = useState({ total: 0, count: 0 });
-    const [activeTab, setActiveTab] = useState('all'); // 'all', 'subscription', 'session'
+    const [activeTab, setActiveTab] = useState('all'); // 'all', 'subscription', 'session', 'package'
 
     useEffect(() => {
         fetchPayments();
@@ -33,11 +33,12 @@ const Payments = () => {
     const fetchPayments = async () => {
         setLoading(true);
         try {
-        const params = {};
-        if (activeTab === 'subscription') params.type = 'SUBSCRIPTION';
-        else if (activeTab === 'session') params.type = 'SESSION';
+            const params = {};
+            if (activeTab === 'subscription') params.type = 'SUBSCRIPTION';
+            else if (activeTab === 'session') params.type = 'SESSION';
+            else if (activeTab === 'package') params.type = 'PACKAGE';
 
-        const res = await apiClient.get('/payments', { params });
+            const res = await apiClient.get('/payments', { params });
 
             if (res.data.success) {
                 // Handle various response formats (Array, Paginated with 'docs', Paginated with 'payments')
@@ -45,12 +46,11 @@ const Payments = () => {
                 const data = Array.isArray(rawData)
                     ? rawData
                     : (rawData?.payments || rawData?.docs || []);
-
-
-
                 setPayments(data);
 
-                const total = data.filter(p => p.status === 'completed').reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+                const total = data
+                    .filter((p) => String(p.status || '').toLowerCase() === 'completed')
+                    .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
                 setSummary({ total, count: data.length });
             }
         } catch (e) {
@@ -59,6 +59,37 @@ const Payments = () => {
             setPayments([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleExport = async () => {
+        try {
+            const params = {};
+            if (activeTab === 'subscription') params.type = 'SUBSCRIPTION';
+            else if (activeTab === 'session') params.type = 'SESSION';
+            else if (activeTab === 'package') params.type = 'PACKAGE';
+
+            const response = await apiClient.get('/payments/export', {
+                params,
+                responseType: 'blob'
+            });
+
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const today = new Date().toISOString().slice(0, 10);
+            const suffix = activeTab === 'all' ? 'all' : activeTab;
+            link.href = url;
+            link.setAttribute('download', `payments-${suffix}-${today}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to export payments', error);
+            toast.error(t('reports.exportFailed', 'Export failed'));
         }
     };
 
@@ -157,7 +188,8 @@ const Payments = () => {
                     {[
                         { id: 'all', label: t('payments.allPayments', 'All Payments') },
                         { id: 'subscription', label: t('payments.subscriptionPayments', 'Subscription Payments') },
-                        { id: 'session', label: t('payments.sessionPayments', 'Session Payments') }
+                        { id: 'session', label: t('payments.sessionPayments', 'Session Payments') },
+                        { id: 'package', label: t('payments.packagePayments', 'مدفوعات الباقات') }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -181,6 +213,7 @@ const Payments = () => {
                     onViewReceipt={handleViewReceipt}
                     onDelete={handleDelete}
                     onRefresh={fetchPayments}
+                    onExport={handleExport}
                 />
             </div>
 
