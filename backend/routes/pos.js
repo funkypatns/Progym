@@ -136,20 +136,21 @@ router.get('/shifts', async (req, res) => {
         };
 
         if (startDate || endDate) {
-            where.closedAt = {}; // Filter by when shift was CLOSED, not opened
-            if (startDate) {
-                const start = new Date(startDate);
-                if (!isNaN(start.getTime())) {
-                    start.setHours(0, 0, 0, 0);
-                    where.closedAt.gte = start;
-                }
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                if (!isNaN(end.getTime())) {
-                    end.setHours(23, 59, 59, 999);
-                    where.closedAt.lte = end;
-                }
+            const start = new Date(startDate || '1970-01-01T00:00:00.000Z');
+            const end = new Date(endDate || '9999-12-31T23:59:59.999Z');
+
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                where.AND = [
+                    { openedAt: { lte: end } },
+                    {
+                        OR: [
+                            { closedAt: null },
+                            { closedAt: { gte: start } }
+                        ]
+                    }
+                ];
             }
         }
 
@@ -174,9 +175,16 @@ router.get('/shifts', async (req, res) => {
             }
         });
 
+        const normalizedShifts = shifts.map((shift) => ({
+            ...shift,
+            createdAt: shift.openedAt || null,
+            endedAt: shift.closedAt || null,
+            endedCash: shift.closingCash ?? null
+        }));
+
         res.json({
             success: true,
-            data: shifts
+            data: normalizedShifts
         });
     } catch (error) {
         console.error('Fetch shifts error:', error);

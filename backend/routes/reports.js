@@ -1936,57 +1936,151 @@ router.get('/employee-collections', async (req, res) => {
 
         if (error) return res.status(400).json({ success: false, message: error });
 
-        const where = {
-            paidAt: { gte: start, lte: end },
-            status: { in: ['completed', 'refunded', 'Partial Refund'] }
+        const shiftWhere = {
+            status: 'closed',
+            AND: [
+                { openedAt: { lte: end } },
+                {
+                    OR: [
+                        { closedAt: null },
+                        { closedAt: { gte: start } }
+                    ]
+                }
+            ]
         };
 
         if (employeeId && employeeId !== 'all') {
-            where.createdBy = parseInt(employeeId);
+            const parsedEmployeeId = parseInt(employeeId, 10);
+            if (!Number.isNaN(parsedEmployeeId)) {
+                shiftWhere.OR = [
+                    { openedBy: parsedEmployeeId },
+                    { closedBy: parsedEmployeeId }
+                ];
+            }
         }
 
+        const shifts = await req.prisma.pOSShift.findMany({
+            where: shiftWhere,
+            orderBy: { closedAt: 'desc' },
+            select: {
+                id: true,
+                openedAt: true,
+                closedAt: true,
+                openedBy: true,
+                closedBy: true,
+                cashDifference: true,
+                opener: { select: { id: true, firstName: true, lastName: true } },
+                closer: { select: { id: true, firstName: true, lastName: true } }
+            }
+        });
+
+        const shiftIds = shifts.map((shift) => shift.id);
+        const paymentWhere = {
+            shiftId: { in: shiftIds },
+            status: { in: ['completed', 'refunded', 'Partial Refund'] }
+        };
         if (method) {
-            where.method = method;
+            paymentWhere.method = method;
         }
 
-        // Fetch payments with creators
-        const payments = await req.prisma.payment.findMany({
-            where,
-            include: {
-                creator: {
-                    select: { id: true, firstName: true, lastName: true }
+        const payments = shiftIds.length > 0
+            ? await req.prisma.payment.findMany({
+                where: paymentWhere,
+                select: {
+                    id: true,
+                    amount: true,
+                    method: true,
+                    shiftId: true,
+                    createdBy: true,
+                    creator: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
+                }
+            })
+            : [];
+
+        const totalsByShift = new Map();
+        payments.forEach((payment) => {
+            const key = payment.shiftId;
+            if (!totalsByShift.has(key)) {
+                totalsByShift.set(key, {
+                    count: 0,
+                    cash: 0,
+                    card: 0,
+                    nonCash: 0,
+                    total: 0
+                });
+            }
+
+            const row = totalsByShift.get(key);
+            const amount = Number(payment.amount || 0);
+            const paymentMethod = String(payment.method || 'cash').toLowerCase();
+
+            row.count += 1;
+            row.total += amount;
+            if (paymentMethod === 'cash') {
+                row.cash += amount;
+            } else {
+                row.nonCash += amount;
+                if (paymentMethod === 'card') {
+                    row.card += amount;
                 }
             }
         });
 
-        // Aggregation
         const employeeMap = {};
+        const shiftRows = [];
+        shifts.forEach((shift) => {
+            const shiftTotals = totalsByShift.get(shift.id) || {
+                count: 0,
+                cash: 0,
+                card: 0,
+                nonCash: 0,
+                total: 0
+            };
 
-        payments.forEach(p => {
-            const empId = p.creatorId || 'system';
-            if (!employeeMap[empId]) {
-                employeeMap[empId] = {
-                    id: empId,
-                    name: p.creator ? `${p.creator.firstName} ${p.creator.lastName}` : 'System/Online',
+            const assignedEmployee = shift.closer || shift.opener || null;
+            const fallbackEmployeeId = shift.closedBy ?? shift.openedBy ?? null;
+            const employeeKey = (assignedEmployee?.id ?? fallbackEmployeeId ?? 'system');
+            const employeeName = assignedEmployee
+                ? `${assignedEmployee.firstName || ''} ${assignedEmployee.lastName || ''}`.trim()
+                : 'System/Online';
+
+            if (!employeeMap[employeeKey]) {
+                employeeMap[employeeKey] = {
+                    id: employeeKey,
+                    name: employeeName || 'System/Online',
+                    shiftCount: 0,
                     count: 0,
                     cash: 0,
+                    card: 0,
                     nonCash: 0,
-                    total: 0
+                    total: 0,
+                    difference: 0
                 };
             }
 
-            const amount = p.amount || 0; // Gross collected
-            // If we care about Net, subtract refunds. For Collections, usually Gross is counted (cash in hand).
-            // Let's stick to Gross for "Collections".
+            employeeMap[employeeKey].shiftCount += 1;
+            employeeMap[employeeKey].count += shiftTotals.count;
+            employeeMap[employeeKey].cash += shiftTotals.cash;
+            employeeMap[employeeKey].card += shiftTotals.card;
+            employeeMap[employeeKey].nonCash += shiftTotals.nonCash;
+            employeeMap[employeeKey].total += shiftTotals.total;
+            employeeMap[employeeKey].difference += Number(shift.cashDifference || 0);
 
-            employeeMap[empId].count++;
-            employeeMap[empId].total += amount;
-
-            if ((p.method || 'cash').toLowerCase() === 'cash') {
-                employeeMap[empId].cash += amount;
-            } else {
-                employeeMap[empId].nonCash += amount;
-            }
+            shiftRows.push({
+                shiftId: shift.id,
+                employeeId: employeeKey,
+                employeeName: employeeName || 'System/Online',
+                startAt: shift.openedAt,
+                endAt: shift.closedAt,
+                count: shiftTotals.count,
+                cash: shiftTotals.cash,
+                card: shiftTotals.card,
+                nonCash: shiftTotals.nonCash,
+                total: shiftTotals.total,
+                difference: Number(shift.cashDifference || 0)
+            });
         });
 
         const report = Object.values(employeeMap);
@@ -1997,7 +2091,8 @@ router.get('/employee-collections', async (req, res) => {
 
         res.json({
             success: true,
-            report // Frontend expects 'report' array
+            report, // Frontend expects 'report' array
+            shiftRows
         });
 
     } catch (error) {

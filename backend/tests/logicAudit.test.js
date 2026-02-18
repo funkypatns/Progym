@@ -195,6 +195,20 @@ test('Employee collections should aggregate by createdBy/creator.id instead of c
             endDate: '2026-02-10'
         },
         prisma: {
+            pOSShift: {
+                findMany: async () => [
+                    {
+                        id: 15,
+                        openedAt: new Date('2026-02-10T08:00:00.000Z'),
+                        closedAt: new Date('2026-02-10T16:00:00.000Z'),
+                        openedBy: 77,
+                        closedBy: 77,
+                        cashDifference: 0,
+                        opener: { id: 77, firstName: 'Ali', lastName: 'Cashier' },
+                        closer: { id: 77, firstName: 'Ali', lastName: 'Cashier' }
+                    }
+                ]
+            },
             payment: {
                 findMany: async () => [
                     {
@@ -202,6 +216,7 @@ test('Employee collections should aggregate by createdBy/creator.id instead of c
                         amount: 200,
                         method: 'cash',
                         status: 'completed',
+                        shiftId: 15,
                         createdBy: 77,
                         creator: { id: 77, firstName: 'Ali', lastName: 'Cashier' }
                     }

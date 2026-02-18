@@ -1307,8 +1307,13 @@ router.post('/', [
             }
         );
 
+        const warningCode = toSafeNumber(closeResult.closedPeriod.expectedCashAmount) < 0
+            ? 'NEGATIVE_EXPECTED_CASH'
+            : null;
+
         return res.status(201).json({
             success: true,
+            ...(warningCode ? { warningCode } : {}),
             data: {
                 closeId: closeResult.closedPeriod.id,
                 exportAvailable: true,
