@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Existing Member appointment flow corrected: removed status controls from the member tab, enforced member-required confirmed payload (bookingType=confirmed, default status=booked), added debounced member autocomplete with keyboard navigation and selection validation, and kept status controls only for tentative/preliminary flow. Status: done.
 - Cash Close difference parser/label fixed: declared-vs-expected now uses robust money normalization (Arabic digits/separators, currency symbol stripping, comma/decimal handling), epsilon-zero balancing, and unit coverage for parse/diff logic. Status: done.
 - Added export-demo dataset seeder and generated random realistic data for export QA (members, subscriptions, payments/refunds, sales, trainer earnings/payouts, cash movements, and closed cash-close periods) via `npm run seed:export-demo`. Status: done.
 - License-server admin UI actions restored end-to-end: fixed login/dashboard/vendor scripts not triggering by switching to DOMContentLoaded bootstraps, replacing CSP-blocked inline button handlers with delegated events, adding explicit file:// warnings, and wiring `/api/admin/*` compatibility endpoints (login/logout/licenses/devices/reset/vendor-profile) to the dedicated license-admin auth routes. Status: done.
@@ -86,6 +87,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-18 | c689628  | Fix Existing Member appointment flow by removing member-tab status editing, adding 300ms debounced member autocomplete (name/phone/member code + keyboard support), requiring member selection before confirm, and aligning create payload/backend defaults to confirmed member booking semantics while keeping tentative status logic isolated. |
 | 2026-02-17 | 33c840d  | Fix Cash Close difference status/parsing by introducing shared `parseMoney`/diff helpers, switching declared cash inputs to locale-friendly text decimal mode, enforcing epsilon-balanced `متوازن` state on equal values, and adding frontend unit tests for Arabic numerals and cash-difference rules. |
 | 2026-02-17 | 7555a22  | Add `backend` export-demo seeding command (`npm run seed:export-demo`) that atomically creates realistic random data for export validation across members/subscriptions/payments/refunds/sales/appointments/trainer earnings/cash movements and cash-close history snapshots. |
 | 2026-02-17 | 74e6fed  | Fix license-server admin UI no-action regression: add robust admin UI script bootstraps/logging, block unsupported file:// usage with clear warnings, migrate API calls to `/api/admin/*` with sessionStorage token handling and 401 redirects, remove inline `onclick` handlers (CSP-safe delegated device actions), and add `/api/admin` route compatibility aliases for login/logout/device-list-by-key/reset-by-key while preserving legacy admin routes under `/api/admin/legacy`. |
@@ -287,3 +289,5 @@ Phase 4 - Receipts system
 | 2026-02-17 | 96eb18e | Require gymName in license activation, add frontend validation/input, and return backend 400 for missing gymName. |
 | 2026-02-17 | 7ec923b | Fix backend startup fallback URL to local Postgres default user to prevent API 500 when gym user lacks DB access. |
 | 2026-02-17 | 9c0312a | Auto-bootstrap default admin user on first login when database has no users. |
+
+
