@@ -14,6 +14,10 @@ const {
     runIntegrityVerification
 } = licenseService.__private;
 
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const INTEGRITY_PROBE_BASE_PATH = 'backend/tests/__tmp_integrity_probe';
+const INTEGRITY_PROBE_DIR = path.join(REPO_ROOT, 'backend', 'tests', '__tmp_integrity_probe');
+
 function buildReleaseManifestForFile(relativeFilePath, sha256) {
     return {
         appVersion: 'test',
@@ -21,7 +25,7 @@ function buildReleaseManifestForFile(relativeFilePath, sha256) {
         hashAlgorithm: 'SHA-256',
         artifacts: [
             {
-                basePath: 'frontend/dist',
+                basePath: INTEGRITY_PROBE_BASE_PATH,
                 files: [
                     {
                         path: relativeFilePath,
@@ -114,12 +118,10 @@ test('manifest signature verification blocks invalid signature in strict mode', 
 });
 
 test('integrity verification blocks when a release artifact is tampered (strict mode)', () => {
-    const distDir = path.join(process.cwd(), 'frontend', 'dist');
     const fileName = '__tmp_integrity_probe.txt';
-    const relPath = `frontend/dist/${fileName}`;
-    const absPath = path.join(distDir, fileName);
+    const absPath = path.join(INTEGRITY_PROBE_DIR, fileName);
 
-    fs.mkdirSync(distDir, { recursive: true });
+    fs.mkdirSync(INTEGRITY_PROBE_DIR, { recursive: true });
     fs.writeFileSync(absPath, 'original-content', 'utf8');
 
     const expectedHash = crypto.createHash('sha256').update('original-content').digest('hex');
@@ -140,11 +142,10 @@ test('integrity verification blocks when a release artifact is tampered (strict 
 });
 
 test('integrity verification passes for untampered release artifact (strict mode)', () => {
-    const distDir = path.join(process.cwd(), 'frontend', 'dist');
     const fileName = '__tmp_integrity_probe_ok.txt';
-    const absPath = path.join(distDir, fileName);
+    const absPath = path.join(INTEGRITY_PROBE_DIR, fileName);
 
-    fs.mkdirSync(distDir, { recursive: true });
+    fs.mkdirSync(INTEGRITY_PROBE_DIR, { recursive: true });
     fs.writeFileSync(absPath, 'expected-content', 'utf8');
 
     try {
@@ -162,11 +163,10 @@ test('integrity verification passes for untampered release artifact (strict mode
 });
 
 test('integrity mismatch does not block in dev mode', () => {
-    const distDir = path.join(process.cwd(), 'frontend', 'dist');
     const fileName = '__tmp_integrity_probe_dev.txt';
-    const absPath = path.join(distDir, fileName);
+    const absPath = path.join(INTEGRITY_PROBE_DIR, fileName);
 
-    fs.mkdirSync(distDir, { recursive: true });
+    fs.mkdirSync(INTEGRITY_PROBE_DIR, { recursive: true });
     fs.writeFileSync(absPath, 'expected-content', 'utf8');
 
     const wrongHash = crypto.createHash('sha256').update('different-content').digest('hex');

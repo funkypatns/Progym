@@ -29,6 +29,9 @@ function createMockRes() {
 test('POST /appointments creates tentative appointment from tentative payload', async () => {
     const handler = getRouteHandler('post', '/');
     const originalCreateAppointment = AppointmentService.createAppointment;
+    const start = new Date(Date.now() + (24 * 60 * 60 * 1000));
+    start.setHours(10, 0, 0, 0);
+    const end = new Date(start.getTime() + (60 * 60 * 1000));
 
     const calls = [];
     AppointmentService.createAppointment = async (payload) => {
@@ -45,8 +48,8 @@ test('POST /appointments creates tentative appointment from tentative payload', 
 
     const req = {
         body: {
-            start: '2026-02-17T10:00:00.000Z',
-            end: '2026-02-17T11:00:00.000Z',
+            start: start.toISOString(),
+            end: end.toISOString(),
             durationMinutes: 60,
             bookingType: 'tentative',
             fullName: 'Visitor User',
