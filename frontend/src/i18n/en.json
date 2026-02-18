@@ -300,7 +300,8 @@
         "buyPackageNow": "Buy Package Now",
         "comingSoonTitle": "Coming Soon",
         "comingSoonMessage": "Check-in module is temporarily unavailable while we complete upgrades.",
-        "comingSoonHint": "It will be enabled again after testing is complete."
+        "comingSoonHint": "It will be enabled again after testing is complete.",
+        "qrComingSoonMessage": "QR scanner is coming soon. Please use manual entry for now."
     },
     "payments": {
         "title": "Payments",

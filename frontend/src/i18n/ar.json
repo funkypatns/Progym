@@ -291,6 +291,7 @@
         "comingSoonTitle": "قريبًا",
         "comingSoonMessage": "موديول تسجيل الدخول مغلق مؤقتًا حتى انتهاء الترقية.",
         "comingSoonHint": "سيتم تفعيله مرة أخرى بعد اختبارات الجودة.",
+        "qrComingSoonMessage": "ميزة مسح QR قريبًا. استخدم الإدخال اليدوي حاليًا.",
         "checkoutAction": "تسجيل خروج العضو الآن",
         "checkoutSuccess": "تم تسجيل الخروج بنجاح!",
         "confirmCheckout": "هل أنت متأكد من تسجيل خروج العضو؟"
