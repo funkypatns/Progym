@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Check-in page is now gated behind a release toggle: default behavior shows a "Coming Soon" screen and blocks check-in actions/API polling until explicitly enabled via `VITE_ENABLE_CHECKIN=true`; AR/EN i18n labels were added for the coming-soon state. Status: done.
 - Persistent file-based error logging is now enabled for backend and license-server startup paths: errors/warnings/unhandled exceptions are mirrored to `data/logs/<service>-errors.log` (plus combined logs), and startup output now shows the exact error-log file path for quick support diagnostics. Status: done.
 - Appointments page no longer depends on `/api/settings`: added secured `/api/appointments/meta` (requires `appointments.view`) to provide appointments-only trainers/services/config payload, switched appointments UI alert config loading to meta endpoint, and passed meta into appointment modal with fallback loading; settings endpoints remain protected under settings permissions. Status: done.
 - Appointments permissions are now explicit and enforced end-to-end: split permission categories to include dedicated `Appointments` (view/manage) in permissions UI, enforce `appointments.view` for read endpoints and `appointments.manage` for mutating endpoints, and gate appointments actions in UI for view-only users while keeping friendly access-denied behavior. Status: done.
@@ -93,6 +94,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-18 | cc24781  | Temporarily disable Check-in UI with a Coming Soon gate controlled by `VITE_ENABLE_CHECKIN` (default off), prevent check-in data polling while gated, add AR/EN i18n messaging for the disabled state, and document the env toggle in `frontend/.env.example`. |
 | 2026-02-18 | 661b33e  | Add persistent file logger utilities for backend and license-server, wire startup to initialize `data/logs` and mirror `console.error`/`console.warn` plus uncaught/unhandled failures to `<service>-errors.log`, and print active error-log path on boot for quick troubleshooting. |
 | 2026-02-18 | f87cc29  | Decouple appointments from settings permission by adding `GET /api/appointments/meta` (guarded by `appointments.view`) for trainers/services/appointment-alert config, updating appointments page/modal to consume meta instead of `/api/settings`, and extending appointments permission tests for `/appointments/meta` allow/deny behavior. |
 | 2026-02-18 | 7d6bf33  | Add missing Appointments permission module flow: backend appointments routes now require `appointments.view/manage` by operation type, permissions categories split into dedicated Appointments + Coaches sections for clearer toggles, appointments UI actions gated for view-only staff, and regression tests added for appointments permission middleware enforcement. |
