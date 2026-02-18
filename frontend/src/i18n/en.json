@@ -1101,6 +1101,12 @@
         "noDevices": "No devices found for this license.",
         "approve": "Approve",
         "revoke": "Revoke"
+    },
+    "permissionsManagement": {
+        "viewAppointments": "View Appointments",
+        "manageAppointments": "Manage Appointments",
+        "viewCoaches": "View Coaches",
+        "manageCoaches": "Manage Coaches"
     }
 }
 

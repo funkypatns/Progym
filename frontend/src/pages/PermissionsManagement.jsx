@@ -22,6 +22,13 @@ const PermissionsManagement = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
+    const permissionLabelMap = {
+        [PERMISSIONS.APPOINTMENTS_VIEW]: t('permissionsManagement.viewAppointments', 'View Appointments'),
+        [PERMISSIONS.APPOINTMENTS_MANAGE]: t('permissionsManagement.manageAppointments', 'Manage Appointments'),
+        [PERMISSIONS.COACHES_VIEW]: t('permissionsManagement.viewCoaches', 'View Coaches'),
+        [PERMISSIONS.COACHES_MANAGE]: t('permissionsManagement.manageCoaches', 'Manage Coaches')
+    };
+
     useEffect(() => {
         fetchUsers();
     }, []);
@@ -264,7 +271,8 @@ const PermissionsManagement = () => {
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                     {categoryPerms.map(permission => {
                                                         const isSelected = selectedPermissions.includes(permission);
-                                                        const label = permission.split('.').pop().replace('_', ' ');
+                                                        const label = permissionLabelMap[permission]
+                                                            || permission.split('.').pop().replace('_', ' ');
 
                                                         return (
                                                             <label

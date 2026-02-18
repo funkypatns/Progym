@@ -149,11 +149,16 @@ export const PERMISSION_CATEGORIES = {
             PERMISSIONS.POS_SHIFT_CLOSE
         ]
     },
-    COACHING: {
-        label: 'Coaching',
+    APPOINTMENTS: {
+        label: 'Appointments',
         permissions: [
             PERMISSIONS.APPOINTMENTS_VIEW,
-            PERMISSIONS.APPOINTMENTS_MANAGE,
+            PERMISSIONS.APPOINTMENTS_MANAGE
+        ]
+    },
+    COACHES: {
+        label: 'Coaches',
+        permissions: [
             PERMISSIONS.COACHES_VIEW,
             PERMISSIONS.COACHES_MANAGE
         ]

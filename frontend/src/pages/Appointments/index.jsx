@@ -10,6 +10,7 @@ import AppointmentModal from './AppointmentModal';
 import DayDetailsModal from './DayDetailsModal';
 import AddPaymentDialog from '../../components/payments/AddPaymentDialog'; // Reusing payment dialog
 import { useAuthStore, useSettingsStore } from '../../store';
+import { usePermissions } from '../../hooks/usePermissions';
 
 const PENDING_COMPLETION_SOUND_URL = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleC8KEIQ+WFBQZG54d2uDkIpxTDIvKjo8Oz5BWF9pcXx+d2ttaVtIRxEULztBOzQzMj9KVFhdV09FREJBQkBCQ0ZJTVFVWFlaWldWVFJQT05NTk5PUVNVVldYWFlZWllYV1ZVVFRUVFRVVlZXWFhZWVhaWVlZWFhXV1ZWVVVVVVVVVVZWVldXWFhYWFhYWFhXV1dXVldXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXVw==';
 const PENDING_ALERT_STORAGE_KEY = 'gym:pendingCompletionAlertState';
@@ -19,6 +20,8 @@ const Appointments = () => {
     const isRtl = i18n.dir() === 'rtl';
     const { user } = useAuthStore();
     const { settings, getSetting, fetchSettings } = useSettingsStore();
+    const { can, PERMISSIONS } = usePermissions();
+    const canManageAppointments = can(PERMISSIONS.APPOINTMENTS_MANAGE);
 
     const [view, setView] = useState('calendar'); // calendar | list | notifications
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -291,7 +294,7 @@ const Appointments = () => {
 
     const handleEdit = (apt) => {
         const isPast = apt?.start ? isPastDate(parseISO(apt.start)) : false;
-        setAppointmentReadOnly(isPast);
+        setAppointmentReadOnly(isPast || !canManageAppointments);
         setSelectedAppointment(apt);
         setShowModal(true);
         setPendingCompletionId(null);
@@ -300,6 +303,10 @@ const Appointments = () => {
     const [pendingCompletionId, setPendingCompletionId] = useState(null);
 
     const handleCreate = () => {
+        if (!canManageAppointments) {
+            toast.error(t('auth.unauthorized') || 'Access denied');
+            return;
+        }
         setAppointmentReadOnly(false);
         setSelectedAppointment(null);
         setPreSelectedDate(null);
@@ -308,6 +315,10 @@ const Appointments = () => {
     };
 
     const handleCreateWithDate = (date) => {
+        if (!canManageAppointments) {
+            toast.error(t('auth.unauthorized') || 'Access denied');
+            return;
+        }
         if (isPastDate(date)) {
             return;
         }
@@ -320,6 +331,10 @@ const Appointments = () => {
 
     const handleQuickStatus = async (e, apt, status) => {
         e.stopPropagation();
+        if (!canManageAppointments) {
+            toast.error(t('auth.unauthorized') || 'Access denied');
+            return;
+        }
         if (status === 'completed') {
             const isTentativeBooked = apt?.bookingType === 'tentative' && apt?.status === 'booked' && !apt?.memberId;
             if (!isTentativeBooked) {
@@ -368,6 +383,10 @@ const Appointments = () => {
     };
 
     const handleCompletePending = async (apt) => {
+        if (!canManageAppointments) {
+            toast.error(t('auth.unauthorized') || 'Access denied');
+            return;
+        }
         const appointmentId = apt?.id;
         if (!appointmentId) return;
         if (isAppointmentCompleted(apt)) {
@@ -693,7 +712,7 @@ const Appointments = () => {
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Quick Actions for Scheduled Items */}
-                        {!isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status) && (
+                        {canManageAppointments && !isAppointmentCompleted(apt) && !['cancelled', 'no_show'].includes(apt.status) && (
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {apt.bookingType === 'tentative' && apt.status === 'booked' && !apt.memberId && (
                                     <button
@@ -725,7 +744,7 @@ const Appointments = () => {
                             onClick={() => handleEdit(apt)}
                             className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-bold transition"
                         >
-                            {t('common.edit')}
+                            {canManageAppointments ? t('common.edit') : t('common.view', 'View')}
                         </button>
                     </div>
                 </div>
@@ -780,9 +799,10 @@ const Appointments = () => {
                     </div>
                     <button
                         onClick={handleCreate}
-                        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/30 transition-all hover:scale-105 active:scale-95"
+                        disabled={!canManageAppointments}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/30 transition-all hover:scale-105 active:scale-95 disabled:hover:scale-100 disabled:cursor-not-allowed"
                     >
-                        <Plus size={20} />
+                        {canManageAppointments ? <Plus size={20} /> : <Lock size={18} />}
                         <span>{t('appointments.bookAppointment')}</span>
                     </button>
                 </div>
@@ -881,7 +901,7 @@ const Appointments = () => {
                   onClose={() => setSelectedDayDate(null)}
                   date={selectedDayDate || new Date()}
                   appointments={selectedDayDate ? (appointmentsByDate[format(selectedDayDate, 'yyyy-MM-dd')] || []) : []}
-                  readOnly={selectedDayDate ? isPastDate(selectedDayDate) : false}
+                  readOnly={selectedDayDate ? (isPastDate(selectedDayDate) || !canManageAppointments) : !canManageAppointments}
                   onStatusUpdate={handleQuickStatus}
                   onEdit={(apt) => {
                       setSelectedDayDate(null);

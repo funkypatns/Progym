@@ -116,7 +116,8 @@ export default function DayDetailsModal({ isOpen, onClose, date, appointments, r
                     ) : (
                         filtered.map((apt) => {
                             const person = getAppointmentPerson(apt);
-                            const canComplete = apt?.bookingType === 'tentative'
+                            const canComplete = !readOnly
+                                && apt?.bookingType === 'tentative'
                                 && apt?.status === 'booked'
                                 && !apt?.memberId
                                 && !apt?.isCompleted;

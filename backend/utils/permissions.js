@@ -173,11 +173,16 @@ const PERMISSION_CATEGORIES = {
             PERMISSIONS.POS_SHIFT_CLOSE
         ]
     },
-    coaching: {
-        label: 'Coaching',
+    appointments: {
+        label: 'Appointments',
         permissions: [
             PERMISSIONS.APPOINTMENTS_VIEW,
-            PERMISSIONS.APPOINTMENTS_MANAGE,
+            PERMISSIONS.APPOINTMENTS_MANAGE
+        ]
+    },
+    coaches: {
+        label: 'Coaches',
+        permissions: [
             PERMISSIONS.COACHES_VIEW,
             PERMISSIONS.COACHES_MANAGE
         ]

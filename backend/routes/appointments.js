@@ -1,7 +1,8 @@
 ﻿const express = require('express');
 const router = express.Router();
 const AppointmentService = require('../services/appointmentService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
+const { PERMISSIONS } = require('../utils/permissions');
 const { parseDateRange } = require('../utils/dateParams');
 const { roundMoney } = require('../utils/money');
 const CreditService = require('../services/creditService');
@@ -9,7 +10,7 @@ const { addTableSheet, createWorkbook, sendWorkbook, toDateStamp } = require('..
 const isDev = process.env.NODE_ENV !== 'production';
 
 // Create
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const { start } = req.body;
         if (!start) {
@@ -45,7 +46,7 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 // List
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
     try {
         const appointments = await AppointmentService.getAppointments(req.query);
         const normalized = Array.isArray(appointments) ? appointments : [appointments];
@@ -60,7 +61,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Pending Completion
-router.get('/pending-completion', authenticate, async (req, res) => {
+router.get('/pending-completion', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
     try {
         const {
             startDate: startDateParam,
@@ -197,7 +198,7 @@ router.get('/pending-completion', authenticate, async (req, res) => {
 });
 
 // Update
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const payload = {
             ...req.body,
@@ -211,7 +212,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // Quick Status Update
-router.patch('/:id/status', authenticate, async (req, res) => {
+router.patch('/:id/status', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const updated = await AppointmentService.updateAppointmentStatus(req.params.id, req.body?.status, {
             notes: req.body?.notes
@@ -228,7 +229,7 @@ router.patch('/:id/status', authenticate, async (req, res) => {
 });
 
 // Complete (Transactional)
-router.post('/:id/complete', authenticate, async (req, res) => {
+router.post('/:id/complete', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const { payment, sessionPrice, commissionPercent, paymentMethod, memberDetails, paymentStatus, amount } = req.body || {};
         const rawSessionPrice = sessionPrice ?? payment?.sessionPrice;
@@ -361,7 +362,7 @@ router.post('/:id/complete', authenticate, async (req, res) => {
 });
 
 // Adjust final price after completion
-router.patch('/:id/adjust-price', authenticate, async (req, res) => {
+router.patch('/:id/adjust-price', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const { newFinalPrice, finalPrice, reason } = req.body || {};
         const result = await AppointmentService.adjustAppointmentPrice(
@@ -385,7 +386,7 @@ router.patch('/:id/adjust-price', authenticate, async (req, res) => {
 });
 
 // Price adjustment history
-router.get('/:id/price-adjustments', authenticate, async (req, res) => {
+router.get('/:id/price-adjustments', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (Number.isNaN(id)) return res.json({ success: true, data: [] });
@@ -404,7 +405,7 @@ router.get('/:id/price-adjustments', authenticate, async (req, res) => {
 });
 
 // Quick Settle
-router.post('/:id/settle', authenticate, async (req, res) => {
+router.post('/:id/settle', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
         const result = await CommissionService.settleSingleAppointment(req.params.id);
@@ -415,7 +416,7 @@ router.post('/:id/settle', authenticate, async (req, res) => {
 });
 
 // Preview Completion (Financials)
-router.get('/:id/preview-completion', authenticate, async (req, res) => {
+router.get('/:id/preview-completion', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
     try {
         const CommissionService = require('../services/commissionService');
         const appointmentId = Number(req.params.id);
@@ -537,7 +538,7 @@ router.get('/:id/preview-completion', authenticate, async (req, res) => {
 });
 
 // Delete/Cancel
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_MANAGE), async (req, res) => {
     try {
         const appointment = await AppointmentService.deleteAppointment(req.params.id);
         res.json({ success: true, data: appointment });
@@ -547,7 +548,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 });
 
 // Notifications for sessions (Auto-completed / Cancelled)
-router.get('/notifications', authenticate, async (req, res) => {
+router.get('/notifications', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
     try {
         const type = req.query.type || 'auto_completed'; // or 'cancelled', 'no_show'
         const limit = parseInt(req.query.limit) || 50;
@@ -576,7 +577,7 @@ router.get('/notifications', authenticate, async (req, res) => {
 });
 
 // Availability
-router.get('/availability', authenticate, async (req, res) => {
+router.get('/availability', authenticate, requirePermission(PERMISSIONS.APPOINTMENTS_VIEW), async (req, res) => {
     try {
         const { coachId, from, to } = req.query;
         if (!coachId || !from || !to) {
