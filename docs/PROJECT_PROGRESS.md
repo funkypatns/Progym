@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Full logic audit coverage added: stabilized date-sensitive appointment test + integrity probe-path tests, and introduced `backend/tests/logicAudit.test.js` to assert shift overlap filtering, employee collections grouping/basis, and negative expected-cash warning behavior. Current result: 4 targeted audit assertions fail and point to concrete logic inconsistencies that need product fixes. Status: done.
 - Existing Member appointment flow corrected: removed status controls from the member tab, enforced member-required confirmed payload (bookingType=confirmed, default status=booked), added debounced member autocomplete with keyboard navigation and selection validation, and kept status controls only for tentative/preliminary flow. Status: done.
 - Cash Close difference parser/label fixed: declared-vs-expected now uses robust money normalization (Arabic digits/separators, currency symbol stripping, comma/decimal handling), epsilon-zero balancing, and unit coverage for parse/diff logic. Status: done.
 - Added export-demo dataset seeder and generated random realistic data for export QA (members, subscriptions, payments/refunds, sales, trainer earnings/payouts, cash movements, and closed cash-close periods) via `npm run seed:export-demo`. Status: done.
@@ -87,6 +88,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-18 | d164d92  | Add deterministic logic-audit backend tests for shift overlap filtering, employee collections consistency, and negative expected-cash warning behavior; stabilize flaky appointment/integrity tests (future-date booking payload and writable integrity probe path) so audit failures reflect real logic issues. |
 | 2026-02-18 | c689628  | Fix Existing Member appointment flow by removing member-tab status editing, adding 300ms debounced member autocomplete (name/phone/member code + keyboard support), requiring member selection before confirm, and aligning create payload/backend defaults to confirmed member booking semantics while keeping tentative status logic isolated. |
 | 2026-02-17 | 33c840d  | Fix Cash Close difference status/parsing by introducing shared `parseMoney`/diff helpers, switching declared cash inputs to locale-friendly text decimal mode, enforcing epsilon-balanced `متوازن` state on equal values, and adding frontend unit tests for Arabic numerals and cash-difference rules. |
 | 2026-02-17 | 7555a22  | Add `backend` export-demo seeding command (`npm run seed:export-demo`) that atomically creates realistic random data for export validation across members/subscriptions/payments/refunds/sales/appointments/trainer earnings/cash movements and cash-close history snapshots. |
