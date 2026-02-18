@@ -10,6 +10,7 @@ import { QrCode, ScanFace, Search, Activity, Users, Clock, ShieldCheck, Zap, Log
 const CheckIn = () => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
+    const checkinFeatureEnabled = String(import.meta.env.VITE_ENABLE_CHECKIN || '').toLowerCase() === 'true';
 
     // --- Translation Helper ---
     const tr = (key, fallback) => {
@@ -39,13 +40,15 @@ const CheckIn = () => {
 
     // --- Effects ---
     useEffect(() => {
+        if (!checkinFeatureEnabled) return;
         fetchActivity();
         const interval = setInterval(fetchActivity, 30000);
         if (inputRef.current) inputRef.current.focus();
         return () => clearInterval(interval);
-    }, []);
+    }, [checkinFeatureEnabled]);
 
     useEffect(() => {
+        if (!checkinFeatureEnabled) return;
         if (mode !== 'manual') return;
         if (!memberId.trim() || selectedMember) {
             setSearchResults([]);
@@ -55,7 +58,7 @@ const CheckIn = () => {
             fetchSearchResults(memberId.trim());
         }, 300);
         return () => clearTimeout(timeout);
-    }, [memberId, mode, selectedMember]);
+    }, [memberId, mode, selectedMember, checkinFeatureEnabled]);
 
     const fetchActivity = async () => {
         try {
@@ -338,6 +341,27 @@ const CheckIn = () => {
             </div>
         </div>
     );
+
+    if (!checkinFeatureEnabled) {
+        return (
+            <div className="h-full w-full flex items-center justify-center p-6">
+                <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-slate-900/70 backdrop-blur-xl p-10 text-center shadow-2xl">
+                    <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-500/20 text-blue-300">
+                        <QrCode size={30} />
+                    </div>
+                    <h1 className="text-3xl font-black text-white mb-4">
+                        {tr('checkin.comingSoonTitle', 'Coming Soon')}
+                    </h1>
+                    <p className="text-slate-300 text-lg mb-2">
+                        {tr('checkin.comingSoonMessage', 'Check-in module is temporarily unavailable while we complete upgrades.')}
+                    </p>
+                    <p className="text-slate-400 text-sm">
+                        {tr('checkin.comingSoonHint', 'It will be enabled again after testing is complete.')}
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-full w-full flex flex-col lg:flex-row gap-6 p-2 overflow-hidden">

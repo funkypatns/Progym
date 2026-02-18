@@ -288,6 +288,9 @@
         "notEligibleMembership": "العميل غير مشترك ولا يملك باقة نشطة. اشترك أو اشترِ باقة أولًا.",
         "subscribeNow": "اشترك الآن",
         "buyPackageNow": "اشترِ باقة الآن",
+        "comingSoonTitle": "قريبًا",
+        "comingSoonMessage": "موديول تسجيل الدخول مغلق مؤقتًا حتى انتهاء الترقية.",
+        "comingSoonHint": "سيتم تفعيله مرة أخرى بعد اختبارات الجودة.",
         "checkoutAction": "تسجيل خروج العضو الآن",
         "checkoutSuccess": "تم تسجيل الخروج بنجاح!",
         "confirmCheckout": "هل أنت متأكد من تسجيل خروج العضو؟"

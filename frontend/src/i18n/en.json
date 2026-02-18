@@ -297,7 +297,10 @@
         "remainingSessions": "Remaining Sessions",
         "notEligibleMembership": "Member has no active subscription or package. Subscribe or buy a package first.",
         "subscribeNow": "Subscribe Now",
-        "buyPackageNow": "Buy Package Now"
+        "buyPackageNow": "Buy Package Now",
+        "comingSoonTitle": "Coming Soon",
+        "comingSoonMessage": "Check-in module is temporarily unavailable while we complete upgrades.",
+        "comingSoonHint": "It will be enabled again after testing is complete."
     },
     "payments": {
         "title": "Payments",
