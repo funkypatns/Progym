@@ -14,6 +14,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 
 const licenseRoutes = require('./routes/licenses');
 const legacyAdminRoutes = require('./routes/admin');
@@ -21,9 +22,15 @@ const integrityRoutes = require('./routes/integrity');
 const licenseAdminRoutes = require('./routes/licenseAdmin');
 const publicRoutes = require('./routes/public');
 const { initDatabase } = require('./database');
+const { initFileLogger } = require('./utils/fileLogger');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const LICENSE_SERVER_DATA_PATH = process.env.LICENSE_SERVER_DATA_PATH || path.join(__dirname, '..', 'data');
+const loggerState = initFileLogger({
+    serviceName: 'license-server',
+    logsDir: path.join(LICENSE_SERVER_DATA_PATH, 'logs')
+});
 
 // ============================================
 // MIDDLEWARE
@@ -120,6 +127,7 @@ async function startServer() {
             console.log('');
             console.log('🔐 License Server for Gym Management System');
             console.log(`🚀 Running on http://localhost:${PORT}`);
+            console.log(`🪵 Error logs: ${loggerState.errorLogPath}`);
             console.log('');
             console.log('Endpoints:');
             console.log('  POST /api/licenses/activate   - Activate license');

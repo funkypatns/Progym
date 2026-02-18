@@ -16,6 +16,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { initFileLogger } = require('./utils/fileLogger');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 if (!process.env.DATABASE_URL) {
     process.env.DATABASE_URL = 'postgresql://postgres@localhost:5432/postgres?schema=public';
@@ -40,6 +41,10 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 // Get user data path (set by Electron main process)
 const USER_DATA_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..', 'data');
+const loggerState = initFileLogger({
+    serviceName: 'backend',
+    logsDir: path.join(USER_DATA_PATH, 'logs')
+});
 
 // ============================================
 // DATA DIRECTORIES SETUP
@@ -51,6 +56,7 @@ const USER_DATA_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..', 
 function setupDataDirectories() {
     const directories = [
         path.join(USER_DATA_PATH, 'data'),
+        path.join(USER_DATA_PATH, 'logs'),
         path.join(USER_DATA_PATH, 'uploads'),
         path.join(USER_DATA_PATH, 'uploads', 'members'),
         path.join(USER_DATA_PATH, 'uploads', 'products'),
@@ -308,6 +314,7 @@ async function startServer() {
             console.log(`ðŸ”— API Base: http://localhost:${PORT}/api`);
             console.log(`ðŸ“ Data path: ${USER_DATA_PATH}`);
             console.log(`ðŸ”§ Environment: ${isDev ? 'development' : 'production'}`);
+            console.log(`ðŸªµ Error logs: ${loggerState.errorLogPath}`);
             console.log('');
         });
 
