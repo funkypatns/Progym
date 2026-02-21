@@ -21,6 +21,7 @@ Context recovery checklist:
 5) Resume from the "Current Focus" or "Next Actions" section.
 
 ## Current Focus
+- Added a production-focused Ubuntu cloud runbook (`docs/RUNBOOK_UBUNTU_CLOUD.md`) covering end-to-end setup for frontend/backend/license-server on VPS (Node/PostgreSQL/systemd/Nginx/SSL), integrity manifest signing flow, smoke tests, rollback, and a ready-to-use Codex prompt for server-side execution. Status: done.
 - License-server admin zoom is now page-scoped: Ctrl/Cmd zoom (wheel and +/-/0) is captured inside admin UI and persisted per route path (`/admin/login`, `/admin`, `/admin/vendor-profile`) so zoom changes no longer leak across all admin pages. Status: done.
 - Check-in flow updated per product direction: manual check-in is restored and fully usable, while only QR scanner mode now shows "Coming Soon" (toggle-controlled via `VITE_ENABLE_CHECKIN_QR`, with fallback support for legacy `VITE_ENABLE_CHECKIN`). Status: done.
 - Persistent file-based error logging is now enabled for backend and license-server startup paths: errors/warnings/unhandled exceptions are mirrored to `data/logs/<service>-errors.log` (plus combined logs), and startup output now shows the exact error-log file path for quick support diagnostics. Status: done.
@@ -95,6 +96,7 @@ Phase 4 - Receipts system
 
 | Date       | Commit   | Summary |
 |------------|----------|---------|
+| 2026-02-22 | 83851a4  | Add `docs/RUNBOOK_UBUNTU_CLOUD.md` with full Ubuntu VPS deployment procedure (PostgreSQL, backend/license-server env setup, systemd services, Nginx + TLS, integrity manifest/signing workflow, smoke tests, troubleshooting, rollback, and Codex execution prompt). |
 | 2026-02-18 | 4376239  | Scope license-server admin zoom per page by adding shared `zoom-scope.js` (Ctrl/Cmd + wheel/+/−/0 handling) and storing zoom by pathname so each admin page keeps its own zoom level. |
 | 2026-02-18 | 427914a  | Restore full Check-in page access and scope "Coming Soon" to QR scanner mode only: remove full-page gate, keep manual entry + activity polling active, add QR-specific coming-soon messaging (AR/EN), and switch env toggle guidance to `VITE_ENABLE_CHECKIN_QR` with backward-compatible fallback. |
 | 2026-02-18 | cc24781  | Temporarily disable Check-in UI with a Coming Soon gate controlled by `VITE_ENABLE_CHECKIN` (default off), prevent check-in data polling while gated, add AR/EN i18n messaging for the disabled state, and document the env toggle in `frontend/.env.example`. |
