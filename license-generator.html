@@ -132,7 +132,7 @@
 
 <body>
     <div class="card">
-        <h1>🔑 License Key Generator</h1>
+        <h1>License Key Generator</h1>
 
         <div class="form-group">
             <label for="type">License Type (Duration)</label>
@@ -147,6 +147,16 @@
         <div id="customDaysGroup" class="form-group hidden">
             <label for="days">Enter Number of Days</label>
             <input type="number" id="days" placeholder="e.g. 7" min="1" max="9999">
+        </div>
+
+        <div class="form-group">
+            <label for="adminUsername">Admin Username</label>
+            <input type="text" id="adminUsername" value="admin" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+            <label for="adminPassword">Admin Password</label>
+            <input type="password" id="adminPassword" value="admin123" autocomplete="current-password">
         </div>
 
         <button onclick="generateKey()">Generate License Key</button>
@@ -165,7 +175,33 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:4000/api';
+        const DEFAULT_ADMIN_USERNAME = 'admin';
+        const DEFAULT_ADMIN_PASSWORD = 'admin123';
+        const ADMIN_LOGIN_PATH = '/api/admin/legacy/login';
+        const GENERATE_LICENSE_PATH = '/api/admin/legacy/licenses/generate';
+
+        function normalizeApiBase(value) {
+            const text = String(value || '').trim();
+            if (!text) return '';
+            return text.replace(/\/+$/, '');
+        }
+
+        function resolveApiBase() {
+            const queryBase = new URLSearchParams(window.location.search).get('apiBase');
+            const windowBase = typeof window.LICENSE_SERVER_BASE === 'string' ? window.LICENSE_SERVER_BASE : '';
+            return normalizeApiBase(queryBase || windowBase || '');
+        }
+
+        const apiBase = resolveApiBase();
+
+        function resolveApiUrl(path) {
+            const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+            return `${apiBase}${normalizedPath}`;
+        }
+
+        function parseJsonSafe(response) {
+            return response.json().catch(() => null);
+        }
 
         function toggleCustomDays() {
             const type = document.getElementById('type').value;
@@ -177,49 +213,64 @@
             }
         }
 
-        function generateRandomString(length) {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < length; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
+        async function generateLicenseOnServer(type, customDays, credentials) {
+            const loginUrl = resolveApiUrl(ADMIN_LOGIN_PATH);
+            const generateUrl = resolveApiUrl(GENERATE_LICENSE_PATH);
 
-        async function generateLicenseOnServer(type, days) {
             try {
-                // 1. Login
-                const loginRes = await fetch(`${API_URL}/admin/login`, {
+                const loginRes = await fetch(loginUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: 'admin', password: 'LicenseAdmin123!' })
-                });
-
-                if (!loginRes.ok) throw new Error('Admin login failed. Checking server...');
-                const { token } = await loginRes.json();
-
-                // 2. Call Generate Endpoint
-                const generateRes = await fetch(`${API_URL}/admin/licenses/generate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
                     body: JSON.stringify({
-                        type: type,
-                        days: days,
-                        gymName: 'Generated License',
-                        ownerName: 'Local User'
+                        username: credentials.username,
+                        password: credentials.password
                     })
                 });
 
-                if (!generateRes.ok) throw new Error('Failed to generate license on server');
-                const result = await generateRes.json();
-                return result.data; // { key, expiresAt, id }
+                const loginPayload = await parseJsonSafe(loginRes);
+                if (!loginRes.ok || !loginPayload?.token) {
+                    throw new Error(loginPayload?.message || `Admin login failed (${loginRes.status})`);
+                }
 
+                const requestBody = {
+                    type,
+                    gymName: 'Generated License',
+                    ownerName: 'Local User',
+                    ...(type === 'CUSTOM' ? { customDays, days: customDays } : {})
+                };
+
+                const generateRes = await fetch(generateUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${loginPayload.token}`
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const generatePayload = await parseJsonSafe(generateRes);
+                if (!generateRes.ok || !generatePayload?.success || !generatePayload?.data) {
+                    throw new Error(generatePayload?.message || `Failed to generate license (${generateRes.status})`);
+                }
+
+                return {
+                    ok: true,
+                    data: generatePayload.data,
+                    endpoint: generateUrl
+                };
             } catch (error) {
-                console.error(error);
-                return null;
+                console.error('[License Generator] Request failed', {
+                    endpoint: generateUrl,
+                    loginEndpoint: loginUrl,
+                    apiBase,
+                    error: error?.message || String(error)
+                });
+
+                return {
+                    ok: false,
+                    errorMessage: error?.message || 'Unknown error',
+                    endpoint: generateUrl
+                };
             }
         }
 
@@ -230,38 +281,46 @@
             btn.disabled = true;
 
             try {
-                let type = document.getElementById('type').value;
+                const type = document.getElementById('type').value;
                 let days = 30;
 
                 if (type === 'MONTH') days = 30;
                 if (type === 'YEAR') days = 365;
                 if (type === 'VIP') days = 36500;
                 if (type === 'CUSTOM') {
-                    const daysInput = document.getElementById('days').value;
-                    if (!daysInput || daysInput <= 0) {
+                    const daysInput = Number.parseInt(document.getElementById('days').value, 10);
+                    if (!Number.isInteger(daysInput) || daysInput <= 0) {
                         alert('Please enter a valid number of days');
-                        btn.textContent = originalText;
-                        btn.disabled = false;
                         return;
                     }
-                    days = parseInt(daysInput);
+                    days = daysInput;
                 }
 
-                // Call Server
-                const licenseData = await generateLicenseOnServer(type, days);
+                const credentials = {
+                    username: String(document.getElementById('adminUsername')?.value || DEFAULT_ADMIN_USERNAME).trim(),
+                    password: String(document.getElementById('adminPassword')?.value || DEFAULT_ADMIN_PASSWORD)
+                };
+
+                if (!credentials.username || !credentials.password) {
+                    alert('Please provide admin username and password');
+                    return;
+                }
+
+                const serverResult = await generateLicenseOnServer(type, days, credentials);
 
                 const resultDiv = document.getElementById('result');
                 const keyDisplay = document.getElementById('keyDisplay');
                 const note = document.querySelector('.note');
 
-                if (licenseData && licenseData.key) {
+                if (serverResult.ok && serverResult.data?.key) {
+                    const licenseData = serverResult.data;
                     keyDisplay.textContent = licenseData.key;
-                    keyDisplay.style.color = '#4ade80'; // Green
-                    note.innerHTML = `✅ <b>Success!</b> License generated & registered.<br>Expires: ${new Date(licenseData.expiresAt).toLocaleDateString()}<br>Use in Settings > License.`;
+                    keyDisplay.style.color = '#4ade80';
+                    note.innerHTML = `<b>Success:</b> License generated and registered.<br>Expires: ${new Date(licenseData.expiresAt).toLocaleDateString()}<br>Use in Settings > License.`;
                 } else {
-                    keyDisplay.textContent = "ERROR";
-                    keyDisplay.style.color = '#f87171'; // Red
-                    note.innerHTML = `⚠️ <b>Error:</b> Server generation failed.<br>Ensure License Server is running at port 4000.`;
+                    keyDisplay.textContent = 'ERROR';
+                    keyDisplay.style.color = '#f87171';
+                    note.innerHTML = `<b>Error:</b> ${serverResult.errorMessage || 'Server generation failed'}<br><small>Endpoint: ${serverResult.endpoint || resolveApiUrl(GENERATE_LICENSE_PATH)}</small>`;
                 }
 
                 resultDiv.classList.add('show');
@@ -283,6 +342,11 @@
                     btn.textContent = originalText;
                 }, 2000);
             });
+        }
+
+        if (window.location.protocol === 'file:' && !apiBase) {
+            const note = document.querySelector('.note');
+            note.innerHTML = 'Open this page from <b>http://localhost:4000/license-generator</b> (recommended), or append <b>?apiBase=http://localhost:4000</b>.';
         }
     </script>
 </body>

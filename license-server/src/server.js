@@ -77,6 +77,11 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Standalone license key generator (served from license-server origin)
+app.get('/license-generator', (req, res) => {
+    return res.sendFile(path.join(__dirname, '..', '..', 'license-generator.html'));
+});
+
 // Admin UI aliases (HTTP access only)
 app.get('/admin-ui', (req, res) => res.redirect('/admin'));
 app.get('/admin-ui/login', (req, res) => res.redirect('/admin/login'));
@@ -137,6 +142,7 @@ async function startServer() {
             console.log('  GET  /api/licenses/public-key - Get RS256 public key');
             console.log('  GET  /api/public/vendor-profile - Public vendor support profile');
             console.log('  GET  /api/integrity/manifest?version=... - Get signed integrity manifest');
+            console.log('  GET  /license-generator        - Standalone key generator page');
             console.log('  GET  /admin                   - License admin dashboard');
             console.log('  GET  /admin/login             - License admin login');
             console.log('  GET  /admin/vendor-profile    - Vendor profile admin page');
